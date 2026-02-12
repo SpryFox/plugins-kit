@@ -24,6 +24,7 @@ and shares output for analysis.
 - **Editor-only**: UE Python is for Editor automation, NOT runtime gameplay
 - **Module**: `import unreal` — mirrors C++/Blueprint API
 - **Required plugins**: "Python Editor Script Plugin" + "Editor Scripting Utilities"
+- **Setup**: Run `bin/setup.cmd` once per machine — see `references/project-setup.md`
 - **Stubs**: `<Project>/Intermediate/PythonStub/unreal.py` (enable Developer Mode in Editor Preferences → Plugins → Python)
 - **Local stubs**: Run `scripts/setup-stubs.py` to download searchable API stubs to `stubs/`
 - **Dependencies**: Managed via unreal-pip. See [Dependencies](#dependencies) below
@@ -51,11 +52,17 @@ ${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/ue-runner.cmd script.py --copy-ou
 python ${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/ue_runner.py script.py
 ```
 
-**Setup:**
+**Setup (run once per machine):**
+```bash
+${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/setup.cmd
+```
+Auto-discovers your UE project, configures paths, enables remote execution and developer mode,
+and downloads API stubs. No user input required. See `references/project-setup.md` for details.
+
+**Interactive setup** (alternative — prompts before each change):
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/ue-runner.cmd --setup
 ```
-Discovers your UE project, configures paths, and enables remote execution (prompts before each change).
 
 **Output detection:** Scripts that write YAML to `<Project>/Saved/PythonOutput/` will have their
 output automatically detected and reported. Use `--copy-output` to pull results to a local directory.
@@ -222,6 +229,8 @@ Contains: `upyrc` (remote execution), `pyyaml` (config loading).
 
 Read these references when you need deeper patterns:
 
+- **Project setup** → `references/project-setup.md`
+  Keywords: setup, install, Python not found, setup-status.yaml missing, config validation error, stubs not found
 - **Asset inspection deep dive** → `references/asset-inspection.md`
   Keywords: struct properties, nested objects, class hierarchy, Blueprint inspection, soft references
 - **Reference graph traversal** → `references/reference-graph.md`

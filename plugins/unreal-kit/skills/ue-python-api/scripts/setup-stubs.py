@@ -157,14 +157,44 @@ def copy_from_project(project_path):
     return True
 
 
+def _detect_project_path():
+    """Try to auto-detect project path from runner config."""
+    lib_dir = SKILL_DIR / "lib"
+    if str(lib_dir) not in sys.path:
+        sys.path.insert(0, str(lib_dir))
+    try:
+        from ue_runner_config import load_config
+        config = load_config()
+        if config.uproject and os.path.isfile(config.uproject):
+            return str(Path(config.uproject).parent)
+    except Exception:
+        pass
+    return None
+
+
 def main():
     parser = argparse.ArgumentParser(description="Download UE Python API stubs")
     parser.add_argument("--from-project", type=str,
-                       help="Copy stub from a UE project's Intermediate/PythonStub/ instead of PyPI")
+                       help="Copy stub from a UE project's Intermediate/PythonStub/ instead of PyPI."
+                            " If omitted, auto-detects from runner config when available.")
     args = parser.parse_args()
 
-    if args.from_project:
-        success = copy_from_project(args.from_project)
+    project_path = args.from_project
+    if not project_path:
+        # Auto-detect from runner config
+        project_path = _detect_project_path()
+        if project_path:
+            # Check if project stubs actually exist (requires Developer Mode + editor restart)
+            stub = Path(project_path) / "Intermediate" / "PythonStub" / "unreal.py"
+            if stub.exists():
+                print(f"Auto-detected project: {project_path}")
+                print("Project stubs found — using those (more complete than PyPI).")
+            else:
+                # Project found but no stubs yet — fall back to PyPI
+                project_path = None
+
+    if project_path:
+        success = copy_from_project(project_path)
     else:
         url, version = get_latest_wheel_url()
         if not url:

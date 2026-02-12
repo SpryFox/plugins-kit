@@ -319,14 +319,20 @@ def _warn(msg: str):
 
 
 # ---------------------------------------------------------------------------
-# Setup — interactive check and fix of UE project settings
+# Setup — check project settings (delegates to shared libs)
 # ---------------------------------------------------------------------------
+
+from ue_discovery import find_engine_dir, find_uproject_files, is_game_project
+from ue_ini import read_ini_bool, write_ini_setting
 
 _INI_SECTION = "[/Script/PythonScriptPlugin.PythonScriptPluginSettings]"
 
 
 def run_setup(config: RunnerConfig) -> bool:
-    """Interactive setup: discover UE project, check settings, prompt before fixes."""
+    """Interactive setup: discover UE project, check settings, prompt before fixes.
+
+    For non-interactive setup, use bin/setup.cmd instead.
+    """
     from ue_runner_config import _find_local_config, LOCAL_CONFIG_RELATIVE
 
     all_ok = True
@@ -344,7 +350,7 @@ def run_setup(config: RunnerConfig) -> bool:
         if not uproject:
             return False
 
-        engine_dir = _find_engine_dir(uproject)
+        engine_dir = find_engine_dir(uproject)
         if not engine_dir:
             print(f"  ERROR: Could not find Engine/ directory relative to {uproject}")
             print(f"  (Walked up looking for Engine/Binaries/Win64/UnrealEditor-Cmd.exe)")
@@ -362,12 +368,10 @@ def run_setup(config: RunnerConfig) -> bool:
             return False
 
         project_yaml_path.parent.mkdir(parents=True, exist_ok=True)
-        import yaml
+        # Write YAML without pyyaml dependency
         with open(project_yaml_path, "w") as f:
-            yaml.dump(
-                {"engine_dir": str(engine_dir), "uproject": str(uproject)},
-                f, default_flow_style=False, sort_keys=False,
-            )
+            f.write(f'engine_dir: "{engine_dir}"\n')
+            f.write(f'uproject: "{uproject}"\n')
         print(f"  WROTE {project_yaml_path}")
 
         # Reload config with the new file
@@ -376,34 +380,35 @@ def run_setup(config: RunnerConfig) -> bool:
         print(f"\n  OK    uproject: {config.uproject}")
         print(f"  OK    engine:   {config.engine_dir}")
 
-    # 2. Check bRemoteExecution
-    # This setting is in UPythonScriptPluginSettings (config=Engine, defaultconfig),
-    # so UE reads/writes it directly in DefaultEngine.ini — there is no per-user override layer.
+    # 2. Check editor settings (bRemoteExecution + bIsDeveloperMode)
     project_dir = Path(config.uproject).parent
     default_ini = project_dir / "Config" / "DefaultEngine.ini"
     user_ini = project_dir / "Config" / "UserEngine.ini"
 
-    # UserEngine.ini loads last in UE's config hierarchy and overrides DefaultEngine.ini.
-    # This is the correct per-user override — not checked into source control.
-    default_value = _read_ini_bool(default_ini, _INI_SECTION, "bRemoteExecution")
-    user_value = _read_ini_bool(user_ini, _INI_SECTION, "bRemoteExecution")
-    effective = user_value if user_value is not None else default_value
+    settings_to_check = [
+        ("bRemoteExecution", "Enables remote script execution from terminal"),
+        ("bIsDeveloperMode", "Enables Python API stub generation"),
+    ]
 
-    if effective is True:
-        source = f"UserEngine.ini" if user_value is True else "DefaultEngine.ini"
-        print(f"  OK    bRemoteExecution=True (from {source})")
-    else:
-        print(f"\n  bRemoteExecution is not enabled (remote script execution is disabled).")
-        print(f"  This can be fixed with a per-user override (not checked into source control).")
-        print(f"    File: {user_ini}")
-        print(f"    Setting: bRemoteExecution=True")
-        if _confirm("  Write this setting?"):
-            _write_user_ini_setting(user_ini, _INI_SECTION, "bRemoteExecution", "True")
-            print(f"  WROTE {user_ini}")
-            print(f"  NOTE: Restart the editor for this to take effect.")
+    for key, description in settings_to_check:
+        default_value = read_ini_bool(default_ini, _INI_SECTION, key)
+        user_value = read_ini_bool(user_ini, _INI_SECTION, key)
+        effective = user_value if user_value is not None else default_value
+
+        if effective is True:
+            source = "UserEngine.ini" if user_value is True else "DefaultEngine.ini"
+            print(f"  OK    {key}=True (from {source})")
         else:
-            print("  Skipped. Remote execution will not work until this is enabled.")
-            all_ok = False
+            print(f"\n  {key} is not enabled ({description}).")
+            print(f"    File: {user_ini}")
+            print(f"    Setting: {key}=True")
+            if _confirm(f"  Write this setting?"):
+                write_ini_setting(user_ini, _INI_SECTION, key, "True")
+                print(f"  WROTE {user_ini}")
+                print(f"  NOTE: Restart the editor for this to take effect.")
+            else:
+                print(f"  Skipped.")
+                all_ok = False
 
     # 3. Check host deps
     print()
@@ -452,7 +457,7 @@ def _ask_uproject_path() -> Path | None:
 
     # Directory — search it for .uproject files
     if p.is_dir():
-        found = _find_uproject_files(p, max_depth=4)
+        found = find_uproject_files(p, max_depth=4)
         if not found:
             print(f"  No .uproject files found under {p}")
             return None
@@ -477,111 +482,6 @@ def _ask_uproject_path() -> Path | None:
 
     print(f"  Path not found: {p}")
     return None
-
-
-def _find_uproject_files(root: Path, max_depth: int) -> list[Path]:
-    """Find .uproject files under root, limited to max_depth."""
-    results = []
-    if not root.is_dir():
-        return results
-
-    def _walk(directory: Path, depth: int):
-        if depth > max_depth:
-            return
-        try:
-            for entry in directory.iterdir():
-                if entry.is_file() and entry.suffix == ".uproject":
-                    if _is_game_project(entry):
-                        results.append(entry)
-                elif entry.is_dir() and not entry.name.startswith("."):
-                    _walk(entry, depth + 1)
-        except PermissionError:
-            pass
-
-    _walk(root, 0)
-    results.sort(key=lambda p: len(p.parts))
-    return results
-
-
-def _is_game_project(uproject: Path) -> bool:
-    """Check if a .uproject file is a real game project (has a Modules array)."""
-    import json
-    try:
-        data = json.loads(uproject.read_text(encoding="utf-8"))
-        return bool(data.get("Modules"))
-    except Exception:
-        return False
-
-
-def _find_engine_dir(uproject: Path) -> Path | None:
-    """Find the Engine/ directory by walking up from the .uproject location."""
-    current = uproject.parent
-    for _ in range(5):
-        engine_candidate = current / "Engine"
-        exe = engine_candidate / "Binaries" / "Win64" / "UnrealEditor-Cmd.exe"
-        if exe.is_file():
-            return engine_candidate
-        parent = current.parent
-        if parent == current:
-            break
-        current = parent
-    return None
-
-
-def _read_ini_bool(ini_path: Path, section: str, key: str) -> bool | None:
-    """Read a boolean value from a UE .ini file. Returns None if not found."""
-    if not ini_path.is_file():
-        return None
-    in_section = False
-    with open(ini_path, "r") as f:
-        for line in f:
-            stripped = line.strip()
-            if stripped.startswith("["):
-                in_section = stripped == section
-                continue
-            if in_section and "=" in stripped:
-                k, _, v = stripped.partition("=")
-                if k.strip() == key:
-                    return v.strip().lower() in ("true", "1")
-    return None
-
-
-def _write_user_ini_setting(ini_path: Path, section: str, key: str, value: str):
-    """Write a setting to a UE user config override file (creates if needed)."""
-    lines = []
-    if ini_path.is_file():
-        with open(ini_path, "r") as f:
-            lines = f.readlines()
-
-    # Try to find and update existing key
-    in_section = False
-    section_idx = None
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped.startswith("["):
-            in_section = stripped == section
-            if in_section:
-                section_idx = i
-            continue
-        if in_section and "=" in stripped:
-            k, _, _ = stripped.partition("=")
-            if k.strip() == key:
-                lines[i] = f"{key}={value}\n"
-                with open(ini_path, "w") as f:
-                    f.writelines(lines)
-                return
-
-    # Key not found — append to section or create section
-    if section_idx is not None:
-        lines.insert(section_idx + 1, f"{key}={value}\n")
-    else:
-        if lines and not lines[-1].endswith("\n"):
-            lines.append("\n")
-        lines.append(f"{section}\n")
-        lines.append(f"{key}={value}\n")
-
-    with open(ini_path, "w") as f:
-        f.writelines(lines)
 
 
 # ---------------------------------------------------------------------------
