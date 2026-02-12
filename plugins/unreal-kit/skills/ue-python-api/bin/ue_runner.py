@@ -337,51 +337,43 @@ def run_setup(config: RunnerConfig) -> bool:
 
     all_ok = True
 
-    # 1. Check if we have a configured project
-    local_config_path = _find_local_config()
-    if config.uproject and config.engine_dir and not config.validate():
-        print(f"  OK    uproject: {config.uproject}")
-        print(f"  OK    engine:   {config.engine_dir}")
-        if local_config_path:
-            print(f"        (from {local_config_path})")
-    else:
-        # Ask user for .uproject path (show current value as default if available)
-        current_uproject = Path(config.uproject) if config.uproject else None
-        uproject = _ask_uproject_path(current=current_uproject)
-        if not uproject:
-            return False
+    # 1. Always prompt for .uproject path (show current value as default)
+    current_uproject = Path(config.uproject) if config.uproject else None
+    uproject = _ask_uproject_path(current=current_uproject)
+    if not uproject:
+        return False
 
-        engine_dir = find_engine_dir(uproject)
-        if not engine_dir:
-            print(f"  ERROR: Could not find Engine/ directory relative to {uproject}")
-            print(f"  (Walked up looking for Engine/Binaries/Win64/UnrealEditor-Cmd.exe)")
-            return False
+    engine_dir = find_engine_dir(uproject)
+    if not engine_dir:
+        print(f"  ERROR: Could not find Engine/ directory relative to {uproject}")
+        print(f"  (Walked up looking for Engine/Binaries/Win64/UnrealEditor-Cmd.exe)")
+        return False
 
-        # Write project.yaml — prompt first
-        project_yaml_path = Path.cwd().resolve() / LOCAL_CONFIG_RELATIVE
-        print(f"\n  Project:")
-        print(f"    uproject:   {uproject}")
-        print(f"    engine_dir: {engine_dir}")
-        print(f"\n  Write project config?")
-        print(f"    File: {project_yaml_path}")
-        if not _confirm("  Create this file?", default_yes=True):
-            print("  Skipped.")
-            return False
+    # Write project.yaml
+    project_yaml_path = Path.cwd().resolve() / LOCAL_CONFIG_RELATIVE
+    print(f"\n  Project:")
+    print(f"    uproject:   {uproject}")
+    print(f"    engine_dir: {engine_dir}")
+    print(f"\n  Write project config?")
+    print(f"    File: {project_yaml_path}")
+    if not _confirm("  Save?", default_yes=True):
+        print("  Skipped.")
+        return False
 
-        project_yaml_path.parent.mkdir(parents=True, exist_ok=True)
-        # Write YAML without pyyaml dependency
-        # Use forward slashes — backslashes in YAML double-quoted strings
-        # are escape sequences and break pyyaml parsing on Windows.
-        with open(project_yaml_path, "w") as f:
-            f.write(f'engine_dir: "{str(engine_dir).replace(chr(92), "/")}"\n')
-            f.write(f'uproject: "{str(uproject).replace(chr(92), "/")}"\n')
-        print(f"  WROTE {project_yaml_path}")
+    project_yaml_path.parent.mkdir(parents=True, exist_ok=True)
+    # Write YAML without pyyaml dependency
+    # Use forward slashes — backslashes in YAML double-quoted strings
+    # are escape sequences and break pyyaml parsing on Windows.
+    with open(project_yaml_path, "w") as f:
+        f.write(f'engine_dir: "{str(engine_dir).replace(chr(92), "/")}"\n')
+        f.write(f'uproject: "{str(uproject).replace(chr(92), "/")}"\n')
+    print(f"  WROTE {project_yaml_path}")
 
-        # Reload config with the new file
-        from ue_runner_config import load_config as _reload
-        config = _reload()
-        print(f"\n  OK    uproject: {config.uproject}")
-        print(f"  OK    engine:   {config.engine_dir}")
+    # Reload config with the new file
+    from ue_runner_config import load_config as _reload
+    config = _reload()
+    print(f"\n  OK    uproject: {config.uproject}")
+    print(f"  OK    engine:   {config.engine_dir}")
 
     # 2. Check editor settings (bRemoteExecution + bIsDeveloperMode)
     project_dir = Path(config.uproject).parent
