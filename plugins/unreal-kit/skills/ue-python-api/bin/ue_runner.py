@@ -370,9 +370,11 @@ def run_setup(config: RunnerConfig) -> bool:
 
         project_yaml_path.parent.mkdir(parents=True, exist_ok=True)
         # Write YAML without pyyaml dependency
+        # Use forward slashes — backslashes in YAML double-quoted strings
+        # are escape sequences and break pyyaml parsing on Windows.
         with open(project_yaml_path, "w") as f:
-            f.write(f'engine_dir: "{engine_dir}"\n')
-            f.write(f'uproject: "{uproject}"\n')
+            f.write(f'engine_dir: "{str(engine_dir).replace(chr(92), "/")}"\n')
+            f.write(f'uproject: "{str(uproject).replace(chr(92), "/")}"\n')
         print(f"  WROTE {project_yaml_path}")
 
         # Reload config with the new file

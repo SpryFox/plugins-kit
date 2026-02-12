@@ -84,10 +84,12 @@ def write_project_config(uproject: Path, engine_dir: Path | None) -> Path | None
     config_path = project_root / LOCAL_CONFIG_RELATIVE
 
     # Build YAML content with simple string formatting (no pyyaml needed)
+    # Use forward slashes — backslashes in YAML double-quoted strings
+    # are escape sequences and break pyyaml parsing on Windows.
     lines = []
     if engine_dir:
-        lines.append(f'engine_dir: "{engine_dir}"')
-    lines.append(f'uproject: "{uproject}"')
+        lines.append(f'engine_dir: "{str(engine_dir).replace(chr(92), "/")}"')
+    lines.append(f'uproject: "{str(uproject).replace(chr(92), "/")}"')
 
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -266,10 +268,10 @@ def write_status(
     lines = [
         f'status: complete',
         f'timestamp: "{timestamp}"',
-        f'uproject: "{uproject}"',
+        f'uproject: "{str(uproject).replace(chr(92), "/")}"',
     ]
     if engine_dir:
-        lines.append(f'engine_dir: "{engine_dir}"')
+        lines.append(f'engine_dir: "{str(engine_dir).replace(chr(92), "/")}"')
     lines.append(f'stubs: {stubs_source}')
 
     if settings_written:
