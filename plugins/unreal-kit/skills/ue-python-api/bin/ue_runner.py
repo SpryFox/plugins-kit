@@ -345,8 +345,9 @@ def run_setup(config: RunnerConfig) -> bool:
         if local_config_path:
             print(f"        (from {local_config_path})")
     else:
-        # Ask user for .uproject path
-        uproject = _ask_uproject_path()
+        # Ask user for .uproject path (show current value as default if available)
+        current_uproject = Path(config.uproject) if config.uproject else None
+        uproject = _ask_uproject_path(current=current_uproject)
         if not uproject:
             return False
 
@@ -363,7 +364,7 @@ def run_setup(config: RunnerConfig) -> bool:
         print(f"    engine_dir: {engine_dir}")
         print(f"\n  Write project config?")
         print(f"    File: {project_yaml_path}")
-        if not _confirm("  Create this file?"):
+        if not _confirm("  Create this file?", default_yes=True):
             print("  Skipped.")
             return False
 
@@ -402,7 +403,7 @@ def run_setup(config: RunnerConfig) -> bool:
             print(f"\n  {key} is not enabled ({description}).")
             print(f"    File: {user_ini}")
             print(f"    Setting: {key}=True")
-            if _confirm(f"  Write this setting?"):
+            if _confirm(f"  Write this setting?", default_yes=True):
                 write_ini_setting(user_ini, _INI_SECTION, key, "True")
                 print(f"  WROTE {user_ini}")
                 print(f"  NOTE: Restart the editor for this to take effect.")
@@ -426,27 +427,43 @@ def run_setup(config: RunnerConfig) -> bool:
     return all_ok
 
 
-def _confirm(prompt: str) -> bool:
-    """Ask user yes/no. Returns True for yes."""
+def _confirm(prompt: str, default_yes: bool = False) -> bool:
+    """Ask user yes/no. Returns default on empty input."""
+    hint = "[Y/n]" if default_yes else "[y/N]"
     try:
-        answer = input(f"{prompt} [y/N] ").strip().lower()
+        answer = input(f"{prompt} {hint} ").strip().lower()
+        if not answer:
+            return default_yes
         return answer in ("y", "yes")
     except (EOFError, KeyboardInterrupt):
         print()
         return False
 
 
-def _ask_uproject_path() -> Path | None:
-    """Ask user for a .uproject file or directory containing one."""
-    print("\n  Enter path to your .uproject file (or a directory to search):")
-    try:
-        raw = input("  > ").strip()
-    except (EOFError, KeyboardInterrupt):
-        print()
-        return None
+def _ask_uproject_path(current: Path | None = None) -> Path | None:
+    """Ask user for a .uproject file or directory containing one.
 
-    if not raw:
-        return None
+    If current is set, it's shown as the default — pressing Enter keeps it.
+    """
+    if current:
+        print(f"\n  Enter path to your .uproject file (or a directory to search)")
+        print(f"  Current: {current}")
+        try:
+            raw = input(f"  [{current.name}] > ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return None
+        if not raw:
+            return current
+    else:
+        print("\n  Enter path to your .uproject file (or a directory to search):")
+        try:
+            raw = input("  > ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return None
+        if not raw:
+            return None
 
     # Expand ~ and resolve
     p = Path(os.path.expanduser(raw)).resolve()
