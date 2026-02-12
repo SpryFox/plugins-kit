@@ -83,6 +83,10 @@ Scripts run inside UE's embedded Python (`import unreal`). Key patterns:
 - `lib/unreal_pip.py` and `lib/bootstrap.py` only run inside UE Editor (they `import unreal`)
 - All other `lib/` and `bin/` modules are host-side (system Python, stdlib only)
 
+## Development Workflow
+
+**Always push changes** — the plugin cache (`~/.claude/plugins/cache/`) syncs from the remote repository, not the local working copy. Local edits won't take effect until committed and pushed.
+
 ## Plugin System
 
 Plugins follow the Claude Code plugin spec:
