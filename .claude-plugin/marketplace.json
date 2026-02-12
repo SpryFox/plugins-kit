@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "plugins-kit",
+  "description": "Game development plugins for Claude Code",
+  "owner": {
+    "name": "kitaekatt"
+  },
+  "plugins": [
+    {
+      "name": "unreal-kit",
+      "description": "Unreal Engine Python API automation: asset inspection, reference graph traversal, script execution, and data extraction",
+      "version": "0.1.0",
+      "author": {
+        "name": "Christina"
+      },
+      "source": "./plugins/unreal-kit",
+      "category": "development"
+    }
+  ]
+}

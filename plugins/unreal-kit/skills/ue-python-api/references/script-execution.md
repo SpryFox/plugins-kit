@@ -1,0 +1,157 @@
+# Script Execution Modes
+
+## 1. Output Log Console
+
+The most common way to run scripts interactively.
+
+1. Open: Window → Developer Tools → Output Log
+2. Switch the dropdown from "Cmd" to **"Python"**
+3. Type commands directly, or run a file:
+
+```
+py "C:/path/to/script.py"
+```
+
+**Notes:**
+- Paths must use forward slashes or escaped backslashes
+- The `unreal` module is auto-imported
+- Console history persists during the editor session
+
+## 2. Execute Python Command (Editor Menu)
+
+File → Execute Python Script — opens a file browser to select a `.py` file.
+
+## 3. Startup Scripts
+
+Place `.py` files in `<Project>/Content/Python/` — they run automatically on editor startup.
+
+**Use case:** Setting up persistent editor utilities, registering custom menus, or auto-loading development tools.
+
+**Subfolders:** Scripts in `Content/Python/init_unreal.py` specifically are auto-run.
+
+## 4. Commandline Execution (Headless)
+
+Run scripts without opening the full editor UI:
+
+```
+UnrealEditor-Cmd.exe "C:/path/to/project.uproject" -ExecutePythonScript="C:/path/to/script.py"
+```
+
+**Use case:** CI/CD, batch processing, automated asset audits.
+
+**Caveats:**
+- No UI is available — don't use editor widgets
+- Some editor subsystems may not be initialized
+- Asset registry may need explicit scanning
+
+## 5. Editor Utility Widgets (Python + UI)
+
+Create Python-backed editor tabs with Slate/UMG widgets:
+
+```python
+# Register a simple editor utility
+import unreal
+
+@unreal.uclass()
+class MyEditorUtility(unreal.EditorUtilityObject):
+    pass
+```
+
+More commonly done via Blueprint Editor Utility Widgets that call Python functions.
+
+## 6. Init Scripts and Site Packages
+
+Configure in Editor Preferences → Plugins → Python:
+- **Additional Paths**: Add directories to Python's `sys.path`
+- **Startup Scripts**: List of scripts to run on editor startup
+
+## Progress Feedback for Long Operations
+
+```python
+import unreal
+
+total = 1000
+with unreal.ScopedSlowTask(total, "Processing assets...") as slow_task:
+    slow_task.make_dialog(True)  # Show progress bar with cancel button
+    for i in range(total):
+        if slow_task.should_cancel():
+            break
+        slow_task.enter_progress_frame(1, f"Processing {i}/{total}")
+        # ... do work ...
+```
+
+## Logging
+
+```python
+unreal.log("Info message")          # Normal log
+unreal.log_warning("Warning!")      # Yellow warning
+unreal.log_error("Error!")          # Red error
+```
+
+## Error Handling
+
+```python
+try:
+    asset = unreal.EditorAssetLibrary.load_asset('/Game/Bad/Path')
+    if asset is None:
+        unreal.log_error("Asset not found")
+except Exception as e:
+    unreal.log_error(f"Exception: {e}")
+```
+
+## Batch Operations Pattern
+
+```python
+import unreal, json, os
+
+def batch_process(asset_paths, processor_fn):
+    """Process multiple assets with progress bar and error collection."""
+    results = {'success': [], 'errors': []}
+    total = len(asset_paths)
+
+    with unreal.ScopedSlowTask(total, "Batch processing...") as task:
+        task.make_dialog(True)
+        for i, path in enumerate(asset_paths):
+            if task.should_cancel():
+                unreal.log_warning(f"Cancelled at {i}/{total}")
+                break
+            task.enter_progress_frame(1, f"{i+1}/{total}: {path.split('/')[-1]}")
+            try:
+                result = processor_fn(path)
+                results['success'].append({'path': path, 'result': result})
+            except Exception as e:
+                results['errors'].append({'path': path, 'error': str(e)})
+                unreal.log_warning(f"Error on {path}: {e}")
+
+    unreal.log(f"Done: {len(results['success'])} success, {len(results['errors'])} errors")
+    return results
+```
+
+## Writing Output Files
+
+For large results, write to the project's Saved directory:
+
+```python
+import json, os
+
+def write_output(data, filename):
+    """Write JSON output to <Project>/Saved/PythonOutput/."""
+    out_dir = os.path.join(unreal.Paths.project_dir(), 'Saved', 'PythonOutput')
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, filename)
+    with open(out_path, 'w') as f:
+        json.dump(data, f, indent=2, default=str)
+    unreal.log(f"Output: {out_path}")
+    return out_path
+```
+
+## Importing External Python Packages
+
+The editor's Python is an embedded interpreter. To use external packages:
+
+1. Find the editor's Python: `import sys; print(sys.executable)`
+2. Install with pip: `<UE_Python_exe> -m pip install <package>`
+3. Or add to Additional Paths in Editor Preferences
+
+**Caution:** Installing packages into the engine's Python can cause conflicts.
+Prefer writing to `<Project>/Saved/PythonOutput/` as JSON and processing externally.
