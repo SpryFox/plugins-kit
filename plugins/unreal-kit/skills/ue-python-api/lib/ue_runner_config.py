@@ -13,7 +13,7 @@ from pathlib import Path
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 SKILL_CONFIG_PATH = SKILL_DIR / "ue_runner_config.yaml"
-LOCAL_CONFIG_RELATIVE = Path(".local-data") / "skills" / "ue-python-api" / "project.yaml"
+LOCAL_CONFIG_PATH = Path.home() / ".claude" / ".local-data" / "skills" / "ue-python-api" / "project.yaml"
 
 # Hardcoded defaults for global settings (last resort)
 _DEFAULTS = {
@@ -72,12 +72,11 @@ def load_config(config_path: str | Path | None = None) -> RunnerConfig:
     skill_data = _load_yaml(SKILL_CONFIG_PATH)
     merged = _deep_merge(_DEFAULTS, skill_data)
 
-    # Layer local project config (walks up from cwd)
+    # Layer local project config (~/.claude/.local-data/...)
     if config_path:
         local_data = _load_yaml(config_path)
     else:
-        local_path = _find_local_config()
-        local_data = _load_yaml(local_path) if local_path else {}
+        local_data = _load_yaml(LOCAL_CONFIG_PATH)
     merged = _deep_merge(merged, local_data)
 
     remote_data = merged.get("remote_execution", {})
@@ -92,20 +91,6 @@ def load_config(config_path: str | Path | None = None) -> RunnerConfig:
             multicast_bind_address=str(remote_data.get("multicast_bind_address", "127.0.0.1")),
         ),
     )
-
-
-def _find_local_config() -> Path | None:
-    """Walk up from cwd looking for .local-data/skills/ue-python-api/project.yaml."""
-    current = Path.cwd().resolve()
-    for _ in range(20):  # safety limit
-        candidate = current / LOCAL_CONFIG_RELATIVE
-        if candidate.is_file():
-            return candidate
-        parent = current.parent
-        if parent == current:
-            break
-        current = parent
-    return None
 
 
 def _load_yaml(path: str | Path) -> dict:

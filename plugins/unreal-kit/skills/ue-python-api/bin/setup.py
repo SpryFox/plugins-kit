@@ -39,8 +39,8 @@ if str(LIB_DIR) not in sys.path:
 from ue_discovery import find_engine_dir, find_uproject_from_skill
 from ue_ini import read_ini_bool, write_ini_setting
 
-# Config resolution path (matches ue_runner_config.py)
-LOCAL_CONFIG_RELATIVE = Path(".local-data") / "skills" / "ue-python-api" / "project.yaml"
+# Config path (matches ue_runner_config.py)
+LOCAL_CONFIG_PATH = Path.home() / ".claude" / ".local-data" / "skills" / "ue-python-api" / "project.yaml"
 
 INI_SECTION = "[/Script/PythonScriptPlugin.PythonScriptPluginSettings]"
 
@@ -80,8 +80,7 @@ def discover_project() -> tuple[Path | None, Path | None]:
 
 def write_project_config(uproject: Path, engine_dir: Path | None) -> Path | None:
     """Write project.yaml for the runner config system."""
-    project_root = uproject.parent
-    config_path = project_root / LOCAL_CONFIG_RELATIVE
+    config_path = LOCAL_CONFIG_PATH
 
     # Build YAML content with simple string formatting (no pyyaml needed)
     # Use forward slashes — backslashes in YAML double-quoted strings

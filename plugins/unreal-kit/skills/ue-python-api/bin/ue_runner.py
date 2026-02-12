@@ -333,7 +333,7 @@ def run_setup(config: RunnerConfig) -> bool:
 
     For non-interactive setup, use bin/setup.cmd instead.
     """
-    from ue_runner_config import _find_local_config, LOCAL_CONFIG_RELATIVE
+    from ue_runner_config import LOCAL_CONFIG_PATH
 
     all_ok = True
 
@@ -350,7 +350,7 @@ def run_setup(config: RunnerConfig) -> bool:
         return False
 
     # Write project.yaml
-    project_yaml_path = Path.cwd().resolve() / LOCAL_CONFIG_RELATIVE
+    project_yaml_path = LOCAL_CONFIG_PATH
     print(f"\n  Project:")
     print(f"    uproject:   {uproject}")
     print(f"    engine_dir: {engine_dir}")
