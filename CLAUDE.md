@@ -89,6 +89,22 @@ Scripts run inside UE's embedded Python (`import unreal`). Key patterns:
 
 **Never manually sync the cache** — do not copy files directly into the plugin cache. Always commit and push, then let Claude Code refresh the cache on restart.
 
+**Plan non-trivial tasks**: Before implementing any non-trivial task:
+1. Enter plan mode (EnterPlanMode)
+2. Explore the codebase and design the approach
+3. Write the plan as a proposed task update: "Update Task #{id} ({name}) with the following plan: {plan details}"
+4. Exit plan mode (ExitPlanMode) — user reviews and approves
+5. Update the task description with the approved plan (TaskUpdate)
+6. Implement the task according to the plan
+
+**Skill-based document placement** (package cohesion): When creating a document, ask "what skill does this belong to?" — the same way you'd ask "what package does this class belong in?" Apply these cohesion principles:
+
+- **CRP (Common Reuse Principle)** — If you use one document in a skill, you should plausibly use them all. Don't force a skill to load content the consumer doesn't need.
+- **CCP (Common Closure Principle)** — Documents that change for the same reason belong in the same skill. A schema change should affect one skill, not scatter across several.
+- **ADP (Acyclic Dependencies Principle)** — Skills don't circularly depend on each other. The dependency graph is a DAG.
+
+If no existing skill fits, create a stub skill with a description that explains why it exists. The document lives as a reference within the skill and is progressively disclosed (loaded only when the skill is invoked, not upfront).
+
 ## Plugin System
 
 Plugins follow the Claude Code plugin spec:
