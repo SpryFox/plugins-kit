@@ -41,5 +41,6 @@ references/manifest-schemas.md
 
 ## Related
 
-- **Proposal**: `docs/proposals/session-bootstrap-architecture-proposal.md`
+- **Proposal**: `docs/plans/session-bootstrap-architecture/session-bootstrap-architecture-proposal.md`
+- **Tasks**: `docs/plans/session-bootstrap-architecture/session-bootstrap-architecture-tasks.md`
 - **Manifest files**: `plugins/<plugin-name>/system-tools.yaml`, `git-dependencies.yaml`, `pyproject.toml`
