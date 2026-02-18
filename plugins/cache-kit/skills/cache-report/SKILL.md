@@ -16,3 +16,5 @@ Display the report output below verbatim. Do not summarize, paraphrase, or omit 
 To see all sessions: run `python3 <install-path>/scripts/cache-report.py --all`
 
 To see a specific session: run `python3 <install-path>/scripts/cache-report.py SESSION_ID`
+
+To include per-request breakdown: run `python3 <install-path>/scripts/cache-report.py --detailed`

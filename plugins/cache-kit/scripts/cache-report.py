@@ -8,6 +8,7 @@ Usage:
     python3 cache-report.py                  # most recent session for CWD project
     python3 cache-report.py SESSION_ID       # specific session by ID
     python3 cache-report.py --all            # all sessions for CWD project
+    python3 cache-report.py --detailed       # include per-request breakdown
 """
 
 import json
@@ -167,6 +168,13 @@ def render_session_report(entries: list[dict], transcript_path: Path) -> str:
         f"Hit rate:         {t['cache_hit_rate']:.1f}%",
         f"Tokens from cache: {fmt(t['cache_read_tokens'])} / {fmt(t['total_input'])} total input",
         f"Tokens bypassed cache: {fmt(t['input_tokens'])} ({t['input_tokens']/t['total_input']*100:.1f}%)" if t["total_input"] else "",
+    ]
+
+    return "\n".join(l for l in lines if l is not None)
+
+
+def render_per_request_breakdown(entries: list[dict]) -> str:
+    lines = [
         f"",
         f"### Per-Request Breakdown",
         f"{'#':<4} {'Model':<28} {'Input':>8} {'Write':>8} {'Read':>8} {'Out':>8} {'Hit%':>6}",
@@ -189,7 +197,7 @@ def render_session_report(entries: list[dict], transcript_path: Path) -> str:
             f"{fmt(e['output_tokens']):>8} {hit_pct:>5.0f}%"
         )
 
-    return "\n".join(l for l in lines if l is not None)
+    return "\n".join(lines)
 
 
 def render_all_sessions_report(transcripts: list[Path]) -> str:
@@ -243,6 +251,9 @@ def main():
     cwd = os.getcwd()
     project_dir = find_project_dir(cwd)
 
+    detailed = "--detailed" in args
+    args = [a for a in args if a != "--detailed"]
+
     if "--all" in args:
         transcripts = find_all_transcripts(project_dir)
         print(render_all_sessions_report(transcripts))
@@ -259,7 +270,10 @@ def main():
         sys.exit(1)
 
     entries = parse_transcript(transcript)
-    print(render_session_report(entries, transcript))
+    report = render_session_report(entries, transcript)
+    if detailed:
+        report += render_per_request_breakdown(entries)
+    print(report)
 
 
 if __name__ == "__main__":
