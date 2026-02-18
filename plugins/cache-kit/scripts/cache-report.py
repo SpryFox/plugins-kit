@@ -272,7 +272,7 @@ def main():
     entries = parse_transcript(transcript)
     report = render_session_report(entries, transcript)
     if detailed:
-        report += render_per_request_breakdown(entries)
+        report += "\n" + render_per_request_breakdown(entries)
     print(report)
 
 
