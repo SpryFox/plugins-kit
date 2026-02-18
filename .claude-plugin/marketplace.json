@@ -20,7 +20,7 @@
     {
       "name": "cache-kit",
       "description": "Cache usage reporting - per-request and session-level cache hit analysis from Claude Code transcripts",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "author": {
         "name": "Christina"
       },

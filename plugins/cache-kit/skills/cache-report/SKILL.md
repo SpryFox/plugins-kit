@@ -5,10 +5,10 @@ description: Show cache hit rate and token usage for the current or a specified 
 
 ## Cache Usage Report
 
-!`python3 scripts/cache-report.py`
+!`python3 $(python3 -c "import json;from pathlib import Path;d=json.loads((Path.home()/'.claude/plugins/installed_plugins.json').read_text());print(str(Path(d['plugins']['cache-kit@plugins-kit'][0]['installPath'])/'scripts/cache-report.py'))")`
 
 ---
 
-To see all sessions: `python3 scripts/cache-report.py --all`
+To see all sessions: run `python3 <install-path>/scripts/cache-report.py --all`
 
-To see a specific session: `python3 scripts/cache-report.py SESSION_ID`
+To see a specific session: run `python3 <install-path>/scripts/cache-report.py SESSION_ID`
