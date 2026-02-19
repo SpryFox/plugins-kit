@@ -9,7 +9,7 @@ Task #1: Design manifest schemas ✅ DONE
     ↓
     ├── Task #2: Create manifest files for unreal-kit ✅ DONE
     ├── Task #3: Implement system tool checking (Step 1) ✅ DONE
-    ├── Task #4: Implement venv creation via uv sync (Step 2)
+    ├── Task #4: Implement venv creation via uv sync (Step 2) ✅ DONE
     └── Task #5: Implement data dependency fetching (Step 3)
          ↓ (all three #3, #4, #5 must complete)
          Task #6: Implement validation flag and hash caching (Step 4)
@@ -96,7 +96,7 @@ Bash functions that detect OS, read the system tool manifest for that OS, walk e
 
 ## Task #4: Implement venv Creation via uv sync (Step 2)
 
-**Status**: Pending
+**Status**: Done
 **Blocks**: #6, #7
 **Blocked By**: #1
 
