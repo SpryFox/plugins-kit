@@ -50,10 +50,12 @@ read_silent_config() {
 
 emit_hook_response() {
     local context_message="$1"
-    local escaped
-    escaped="$(json_escape "$context_message")"
+    local user_message="${2:-$1}"
+    local escaped_context escaped_user
+    escaped_context="$(json_escape "$context_message")"
+    escaped_user="$(json_escape "$user_message")"
     cat <<EOF
-{"continue": true, "suppressOutput": false, "hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "$escaped"}}
+{"continue": true, "suppressOutput": false, "systemMessage": "$escaped_user", "hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "$escaped_context"}}
 EOF
 }
 
