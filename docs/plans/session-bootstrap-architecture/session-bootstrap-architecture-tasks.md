@@ -14,7 +14,7 @@ Task #1: Design manifest schemas ✅ DONE
          ↓ (all three #3, #4, #5 must complete)
          Task #6: Implement validation flag and hash caching (Step 4) ✅ DONE
               ↓
-              Task #7: Assemble SessionStart hook and wire into hooks.json
+              Task #7: Assemble SessionStart hook and wire into hooks.json ✅ DONE
                    ↓
                    Task #8: Test bootstrap on macOS
 ```
@@ -181,7 +181,7 @@ Write a validation flag keyed to a combined hash of all three manifests. On subs
 
 ## Task #7: Assemble SessionStart Hook and Wire into hooks.json
 
-**Status**: Pending
+**Status**: Done
 **Blocks**: #8
 **Blocked By**: #2, #3, #4, #5, #6
 
