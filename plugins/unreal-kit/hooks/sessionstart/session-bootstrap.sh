@@ -44,31 +44,42 @@ read_silent_config() {
     printf 'false'
 }
 
+# --- Hook Response Wrapper ---
+# Claude Code SessionStart hooks must output JSON in this format for
+# additionalContext to appear in the session.
+
+emit_hook_response() {
+    local context_message="$1"
+    local escaped
+    escaped="$(json_escape "$context_message")"
+    cat <<EOF
+{"continue": true, "suppressOutput": false, "hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "$escaped"}}
+EOF
+}
+
+emit_hook_silent() {
+    cat <<EOF
+{"continue": true, "suppressOutput": true}
+EOF
+}
+
 # --- Output Helpers ---
 
-emit_cached_success() {
+format_cached_success() {
     local hash="$1"
-    cat <<EOF
-{"status": "ok", "plugin": "unreal-kit", "message": "✓ unreal-kit dependencies validated (cached)", "cached": true, "hash": "$(json_escape "$hash")"}
-EOF
+    printf '%s' "unreal-kit -> ok (cached)"
 }
 
-emit_full_success() {
-    local step_system_tools="$1"
-    local step_venv="$2"
-    local step_git_deps="$3"
-    local step_cache="$4"
-    cat <<EOF
-{"status": "ok", "plugin": "unreal-kit", "message": "✓ unreal-kit dependencies validated", "cached": false, "steps": {"system_tools": $step_system_tools, "venv": $step_venv, "git_deps": $step_git_deps, "cache": $step_cache}}
-EOF
+format_full_success() {
+    printf '%s' "unreal-kit -> ok (validated: system tools, venv, git deps)"
 }
 
-emit_bootstrap_error() {
+format_bootstrap_error() {
     local step_json="$1"
-    # Pass through the step's error JSON, wrapped with plugin context
-    cat <<EOF
-{"status": "error", "plugin": "unreal-kit", "message": "✗ unreal-kit bootstrap failed", "failed_step": $step_json}
-EOF
+    # Extract message from step JSON
+    local msg
+    msg="$(printf '%s' "$step_json" | sed -n 's/.*"message":[[:space:]]*"\([^"]*\)".*/\1/p')"
+    printf '%s' "unreal-kit -> ERROR: $msg"
 }
 
 # --- Main Bootstrap Flow ---
@@ -80,13 +91,14 @@ main() {
     # Step 0: Check validation flag
     local cache_json
     if cache_json=$(check_validation_flag "$PLUGIN_ROOT" "$PLUGIN_DATA" 2>/dev/null); then
-        # Cache hit — extract hash from JSON
-        local hash
-        hash="$(printf '%s' "$cache_json" | sed -n 's/.*"hash":[[:space:]]*"\([^"]*\)".*/\1/p')"
+        # Cache hit
         if [ "$silent_mode" = "true" ]; then
+            emit_hook_silent
             exit 0
         fi
-        emit_cached_success "$hash"
+        local hash
+        hash="$(printf '%s' "$cache_json" | sed -n 's/.*"hash":[[:space:]]*"\([^"]*\)".*/\1/p')"
+        emit_hook_response "$(format_cached_success "$hash")"
         exit 0
     fi
 
@@ -95,36 +107,37 @@ main() {
     # Step 1: Check system tools
     local step1_json
     if ! step1_json=$(check_system_tools "${PLUGIN_ROOT}/system-tools.yaml"); then
-        emit_bootstrap_error "$step1_json"
+        emit_hook_response "$(format_bootstrap_error "$step1_json")"
         exit 1
     fi
 
     # Step 2: Create/update venv
     local step2_json
     if ! step2_json=$(create_venv "$PLUGIN_ROOT" "$PLUGIN_DATA"); then
-        emit_bootstrap_error "$step2_json"
+        emit_hook_response "$(format_bootstrap_error "$step2_json")"
         exit 1
     fi
 
     # Step 3: Fetch git dependencies
     local step3_json
     if ! step3_json=$(fetch_git_deps "${PLUGIN_ROOT}/git-dependencies.yaml" "$PLUGIN_DATA"); then
-        emit_bootstrap_error "$step3_json"
+        emit_hook_response "$(format_bootstrap_error "$step3_json")"
         exit 1
     fi
 
     # Step 4: Write validation flag
     local step4_json
     if ! step4_json=$(write_validation_flag "$PLUGIN_ROOT" "$PLUGIN_DATA"); then
-        emit_bootstrap_error "$step4_json"
+        emit_hook_response "$(format_bootstrap_error "$step4_json")"
         exit 1
     fi
 
     # All steps passed
     if [ "$silent_mode" = "true" ]; then
+        emit_hook_silent
         exit 0
     fi
-    emit_full_success "$step1_json" "$step2_json" "$step3_json" "$step4_json"
+    emit_hook_response "$(format_full_success)"
 }
 
 main
