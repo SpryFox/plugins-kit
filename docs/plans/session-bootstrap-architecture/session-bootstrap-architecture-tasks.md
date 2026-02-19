@@ -198,17 +198,26 @@ Combine Steps 1–4 into a single bash SessionStart hook script. Wire it into th
   - Overall status (success / failure)
   - Per-step status and results
   - Error messages with remediation commands
+  - **Success feedback**: When all pre-reqs validated, output confirmation message
+  - **Silent mode**: Configurable option to suppress success messages (errors always show)
 - Wire into plugin's `hooks.json`: event `SessionStart`, matcher `"*"`
+- **Configuration file**: `plugins/unreal-kit/bootstrap-config.yaml` with `silent_when_valid` flag
 
 **Deliverables**:
 - Single bash SessionStart hook script (composing all functions from Tasks #3–#6)
 - `hooks.json` entry for the plugin
-- Structured JSON output format documentation
+- `bootstrap-config.yaml` configuration file with `silent_when_valid` flag
+- Structured JSON output format documentation with examples:
+  - Success: `{"status": "success", "message": "✓ unreal-kit dependencies validated", "details": {...}, "cached": true}`
+  - Failure: `{"status": "error", "message": "✗ unreal-kit dependencies incomplete", "remediation": {...}}`
 
 **Acceptance criteria**:
 - All four steps execute in correct order
 - Flag check optimization works (skips when current)
 - JSON output includes status, per-step results, and errors with remediation
+- Success feedback displays when all pre-reqs validated (confirms hook ran)
+- Silent mode configuration (`silent_when_valid`) suppresses success messages when enabled
+- Errors always display with actionable guidance regardless of silent mode setting
 - Hook properly registered in hooks.json
 - Errors propagate with actionable guidance in `additionalContext`
 
