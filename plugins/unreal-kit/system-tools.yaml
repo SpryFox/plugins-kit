@@ -1,0 +1,27 @@
+system_tools:
+  macos:
+    - name: uv
+      check: "uv"
+      install: "curl -LsSf https://astral.sh/uv/install.sh | sh"
+    - name: git
+      check: "git"
+      install: "brew install git"
+
+  windows:
+    - name: uv
+      check: "uv"
+      install: 'powershell.exe -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"'
+    - name: git
+      check: "git"
+      install: "winget install --id Git.Git -e --source winget"
+
+  ubuntu:
+    - name: curl
+      check: "curl"
+      install: "sudo apt install -y curl"
+    - name: uv
+      check: "uv"
+      install: "curl -LsSf https://astral.sh/uv/install.sh | sh"
+    - name: git
+      check: "git"
+      install: "sudo apt install -y git"
