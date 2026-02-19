@@ -65,6 +65,19 @@ emit_hook_silent() {
 EOF
 }
 
+# --- JSON Field Extractors ---
+
+_extract_json_field() {
+    local json="$1" field="$2"
+    printf '%s' "$json" | sed -n 's/.*"'"$field"'":[[:space:]]*"\([^"]*\)".*/\1/p'
+}
+
+_extract_json_array() {
+    # Extract array values: ["a", "b"] -> "a, b"
+    local json="$1" field="$2"
+    printf '%s' "$json" | sed -n 's/.*"'"$field"'":[[:space:]]*\[\([^]]*\)\].*/\1/p' | sed 's/"//g; s/,[[:space:]]*/,/g' | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | paste -sd ', ' -
+}
+
 # --- Output Helpers ---
 
 format_cached_success() {
@@ -72,15 +85,37 @@ format_cached_success() {
     printf '%s' "unreal-kit -> ok (cached)"
 }
 
-format_full_success() {
+format_full_success_user() {
+    local steps=()
+    # Extract venv path
+    local venv_path
+    venv_path="$(_extract_json_field "$1" "venv_path")"
+    [ -n "$venv_path" ] && steps+=("synced venv at ${venv_path}")
+
+    # Extract git repos
+    local repos
+    repos="$(_extract_json_array "$2" "repos")"
+    [ -n "$repos" ] && steps+=("fetched git deps: ${repos}")
+
+    # If no details extracted, fall back
+    if [ ${#steps[@]} -eq 0 ]; then
+        printf '%s' "unreal-kit -> bootstrapped (system tools, venv, git deps)"
+        return
+    fi
+
+    local detail
+    detail="$(IFS='; '; printf '%s' "${steps[*]}")"
+    printf '%s' "unreal-kit -> bootstrapped: ${detail}"
+}
+
+format_full_success_agent() {
     printf '%s' "unreal-kit -> ok (validated: system tools, venv, git deps)"
 }
 
 format_bootstrap_error() {
     local step_json="$1"
-    # Extract message from step JSON
     local msg
-    msg="$(printf '%s' "$step_json" | sed -n 's/.*"message":[[:space:]]*"\([^"]*\)".*/\1/p')"
+    msg="$(_extract_json_field "$step_json" "message")"
     printf '%s' "unreal-kit -> ERROR: $msg"
 }
 
@@ -139,7 +174,7 @@ main() {
         emit_hook_silent
         exit 0
     fi
-    emit_hook_response "$(format_full_success)"
+    emit_hook_response "$(format_full_success_agent)" "$(format_full_success_user "$step2_json" "$step3_json")"
 }
 
 main
