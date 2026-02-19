@@ -12,7 +12,7 @@ Task #1: Design manifest schemas ✅ DONE
     ├── Task #4: Implement venv creation via uv sync (Step 2) ✅ DONE
     └── Task #5: Implement data dependency fetching (Step 3) ✅ DONE
          ↓ (all three #3, #4, #5 must complete)
-         Task #6: Implement validation flag and hash caching (Step 4)
+         Task #6: Implement validation flag and hash caching (Step 4) ✅ DONE
               ↓
               Task #7: Assemble SessionStart hook and wire into hooks.json
                    ↓
@@ -153,7 +153,7 @@ Bash logic that reads the data dependency manifest and processes git repos (clon
 
 ## Task #6: Implement Validation Flag and Hash Caching (Step 4)
 
-**Status**: Pending
+**Status**: Done
 **Blocks**: #7
 **Blocked By**: #3, #4, #5
 
