@@ -268,4 +268,13 @@ The plugin is installed via the marketplace (`unreal-kit@plugins-kit`). Tests ru
 - Failure path produces actionable remediation
 - No unexpected errors or warnings
 
+**Test results (macOS, 2026-02-19)**:
+
+| Test | Result |
+|------|--------|
+| 1. Initial run (no flag) | ✅ All 4 steps execute, valid JSON, flag written |
+| 2. Cached run | ✅ Steps skipped, `"cached": true` |
+| 3. Failure path (uv hidden) | ✅ Error JSON with install command, flag NOT written |
+| 4. Manifest change | ✅ Hash mismatch detected, full re-run, new flag written |
+
 **Future**: Windows/WSL and Ubuntu testing in subsequent phases.
