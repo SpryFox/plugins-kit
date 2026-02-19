@@ -8,7 +8,7 @@ Source: Session `f67430da-686a-432a-9e2f-7660d0cca6a1` (2026-02-17)
 Task #1: Design manifest schemas ✅ DONE
     ↓
     ├── Task #2: Create manifest files for unreal-kit ✅ DONE
-    ├── Task #3: Implement system tool checking (Step 1)
+    ├── Task #3: Implement system tool checking (Step 1) ✅ DONE
     ├── Task #4: Implement venv creation via uv sync (Step 2)
     └── Task #5: Implement data dependency fetching (Step 3)
          ↓ (all three #3, #4, #5 must complete)
@@ -67,7 +67,7 @@ Create the three manifest files for unreal-kit — the first consumer of the boo
 
 ## Task #3: Implement System Tool Checking (Step 1)
 
-**Status**: Pending
+**Status**: Done
 **Blocks**: #6, #7
 **Blocked By**: #1
 
