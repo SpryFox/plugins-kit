@@ -10,7 +10,7 @@ system_tools:
   windows:
     - name: uv
       check: "uv"
-      install: 'powershell.exe -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"'
+      install: "curl -LsSf https://astral.sh/uv/install.sh | sh"
     - name: git
       check: "git"
       install: "winget install --id Git.Git -e --source winget"

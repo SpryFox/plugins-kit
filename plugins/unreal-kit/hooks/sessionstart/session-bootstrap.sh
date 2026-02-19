@@ -112,11 +112,30 @@ format_full_success_agent() {
     printf '%s' "unreal-kit -> ok (validated: system tools, venv, git deps)"
 }
 
-format_bootstrap_error() {
+format_bootstrap_error_context() {
     local step_json="$1"
-    local msg
+    local msg tool install_cmd
     msg="$(_extract_json_field "$step_json" "message")"
-    printf '%s' "unreal-kit -> ERROR: $msg"
+    tool="$(_extract_json_field "$step_json" "missing_tool")"
+    install_cmd="$(_extract_json_field "$step_json" "install_command")"
+    if [ -n "$tool" ] && [ -n "$install_cmd" ]; then
+        printf '%s' "unreal-kit -> ERROR: $msg. If the user asks you to 'install $tool', run this command: $install_cmd"
+    else
+        printf '%s' "unreal-kit -> ERROR: $msg"
+    fi
+}
+
+format_bootstrap_error_user() {
+    local step_json="$1"
+    local tool
+    tool="$(_extract_json_field "$step_json" "missing_tool")"
+    if [ -n "$tool" ]; then
+        printf '%s' "unreal-kit -> $tool is not installed. Ask Claude to 'install $tool' to fix this."
+    else
+        local msg
+        msg="$(_extract_json_field "$step_json" "message")"
+        printf '%s' "unreal-kit -> ERROR: $msg"
+    fi
 }
 
 # --- Main Bootstrap Flow ---
@@ -144,28 +163,28 @@ main() {
     # Step 1: Check system tools
     local step1_json
     if ! step1_json=$(check_system_tools "${PLUGIN_ROOT}/system-tools.yaml"); then
-        emit_hook_response "$(format_bootstrap_error "$step1_json")"
-        exit 1
+        emit_hook_response "$(format_bootstrap_error_context "$step1_json")" "$(format_bootstrap_error_user "$step1_json")"
+        exit 0
     fi
 
     # Step 2: Create/update venv
     local step2_json
     if ! step2_json=$(create_venv "$PLUGIN_ROOT" "$PLUGIN_DATA"); then
-        emit_hook_response "$(format_bootstrap_error "$step2_json")"
+        emit_hook_response "$(format_bootstrap_error_context "$step2_json")"
         exit 1
     fi
 
     # Step 3: Fetch git dependencies
     local step3_json
     if ! step3_json=$(fetch_git_deps "${PLUGIN_ROOT}/git-dependencies.yaml" "$PLUGIN_DATA"); then
-        emit_hook_response "$(format_bootstrap_error "$step3_json")"
+        emit_hook_response "$(format_bootstrap_error_context "$step3_json")"
         exit 1
     fi
 
     # Step 4: Write validation flag
     local step4_json
     if ! step4_json=$(write_validation_flag "$PLUGIN_ROOT" "$PLUGIN_DATA"); then
-        emit_hook_response "$(format_bootstrap_error "$step4_json")"
+        emit_hook_response "$(format_bootstrap_error_context "$step4_json")"
         exit 1
     fi
 
