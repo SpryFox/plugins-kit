@@ -16,7 +16,7 @@ Task #1: Design manifest schemas ✅ DONE
               ↓
               Task #7: Assemble SessionStart hook and wire into hooks.json ✅ DONE
                    ↓
-                   Task #8: Test bootstrap on macOS
+                   Task #8: Test bootstrap on macOS ✅ DONE
 ```
 
 **Parallelization**: Tasks #2–#5 can be worked in parallel once #1 is done. Everything converges at #7 (assembly), then #8 (testing).
@@ -225,7 +225,7 @@ Combine Steps 1–4 into a single bash SessionStart hook script. Wire it into th
 
 ## Task #8: Test Bootstrap on macOS
 
-**Status**: Pending
+**Status**: Done
 **Blocks**: None
 **Blocked By**: #7
 
@@ -233,30 +233,33 @@ End-to-end testing on macOS (primary development platform).
 
 **Test plan**:
 
+The plugin is installed via the marketplace (`unreal-kit@plugins-kit`). Tests run the hook script directly from the plugin cache at `~/.claude/plugins/cache/plugins-kit/unreal-kit/<version>/`.
+
 1. **Initial run** (no validation flag):
    - Remove `${PLUGIN_DATA}/.bootstrap-validated`
-   - Start Claude Code with `--plugin-dir plugins/unreal-kit`
+   - Run the hook script from the plugin cache
    - Verify all four steps execute
-   - Verify JSON output appears in `additionalContext`
+   - Verify JSON output is valid and contains per-step results
    - Verify validation flag is written
 
 2. **Cached run** (flag present, manifests unchanged):
-   - Restart Claude Code (same command)
+   - Run the hook script again (same command)
    - Verify flag check skips Steps 1–3
-   - Verify JSON confirms "already validated"
+   - Verify JSON confirms "already validated" with `"cached": true`
 
 3. **Failure path** (tool missing):
    - Temporarily hide a system tool (e.g., rename `uv`)
-   - Restart Claude Code
+   - Run the hook script
    - Verify error message lists missing tool + install command
    - Verify flag is NOT written
    - Restore tool, verify next run succeeds
 
 4. **Manifest change**:
-   - Modify one manifest file
-   - Restart Claude Code
+   - Modify one manifest file temporarily
+   - Run the hook script
    - Verify hash mismatch triggers full re-run
    - Verify new flag written with updated hash
+   - Restore manifest
 
 **Acceptance criteria**:
 - All four sub-tests pass
