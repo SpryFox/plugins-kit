@@ -13,7 +13,9 @@ set -euo pipefail
 # Exit:   0 = all tools present, 1 = missing tool / error
 
 # --- JSON Output Helpers ---
+# Guarded: skip if already provided by bootstrap-helpers.sh
 
+if ! declare -f json_escape >/dev/null 2>&1; then
 json_escape() {
     local s="$1"
     s="${s//\\/\\\\}"
@@ -22,8 +24,9 @@ json_escape() {
     s="${s//$'\t'/\\t}"
     printf '%s' "$s"
 }
+fi
 
-emit_success() {
+_emit_st_success() {
     local os_key="$1"
     shift
     local tools_json=""
@@ -36,7 +39,7 @@ emit_success() {
 EOF
 }
 
-emit_failure() {
+_emit_st_failure() {
     local tool_name="$1"
     local os_key="$2"
     local install_cmd="$3"
@@ -47,7 +50,7 @@ emit_failure() {
 EOF
 }
 
-emit_error() {
+_emit_st_error() {
     local message="$1"
     cat <<EOF
 {"status": "error", "step": "system_tools", "message": "$(json_escape "$message")"}
@@ -55,7 +58,9 @@ EOF
 }
 
 # --- OS Detection ---
+# Guarded: skip if already provided by bootstrap-helpers.sh
 
+if ! declare -f detect_os >/dev/null 2>&1; then
 detect_os() {
     local ostype="${OSTYPE:-}"
     if [ -n "$ostype" ]; then
@@ -77,6 +82,7 @@ detect_os() {
 
     return 1
 }
+fi
 
 # --- YAML Parser ---
 # Extracts entries for a given OS section from system-tools.yaml.
@@ -173,14 +179,14 @@ check_system_tools() {
 
     # Validate input
     if [ ! -f "$yaml_path" ]; then
-        emit_error "Manifest not found: $yaml_path"
+        _emit_st_error "Manifest not found: $yaml_path"
         return 1
     fi
 
     # Detect OS
     local os_key
     os_key="$(detect_os)" || {
-        emit_error "Unable to detect operating system (OSTYPE=${OSTYPE:-unset}, uname=$(uname -s 2>/dev/null || echo unknown))"
+        _emit_st_error "Unable to detect operating system (OSTYPE=${OSTYPE:-unset}, uname=$(uname -s 2>/dev/null || echo unknown))"
         return 1
     }
 
@@ -189,7 +195,7 @@ check_system_tools() {
     entries="$(parse_system_tools "$yaml_path" "$os_key")"
 
     if [ -z "$entries" ]; then
-        emit_error "No system tool entries found for OS '$os_key' in $yaml_path"
+        _emit_st_error "No system tool entries found for OS '$os_key' in $yaml_path"
         return 1
     fi
 
@@ -197,13 +203,13 @@ check_system_tools() {
     local checked_tools=()
     while IFS=$'\t' read -r name check install; do
         if ! command -v "$check" >/dev/null 2>&1; then
-            emit_failure "$name" "$os_key" "$install"
+            _emit_st_failure "$name" "$os_key" "$install"
             return 1
         fi
         checked_tools+=("$name")
     done <<< "$entries"
 
-    emit_success "$os_key" "${checked_tools[@]}"
+    _emit_st_success "$os_key" "${checked_tools[@]}"
     return 0
 }
 
@@ -212,7 +218,7 @@ check_system_tools() {
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     if [ $# -lt 1 ]; then
-        emit_error "Usage: check-system-tools.sh <path-to-system-tools.yaml>"
+        _emit_st_error "Usage: check-system-tools.sh <path-to-system-tools.yaml>"
         exit 1
     fi
     check_system_tools "$1"

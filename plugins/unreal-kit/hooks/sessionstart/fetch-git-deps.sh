@@ -13,9 +13,9 @@ set -euo pipefail
 # Exit:   0 = all deps fetched (or none declared), 1 = error
 
 # --- JSON Output Helpers ---
-# Duplicated from check-system-tools.sh for standalone operation.
-# Task #7 (assembly) will factor these into a shared file.
+# Guarded: skip if already provided by bootstrap-helpers.sh
 
+if ! declare -f json_escape >/dev/null 2>&1; then
 json_escape() {
     local s="$1"
     s="${s//\\/\\\\}"
@@ -24,8 +24,9 @@ json_escape() {
     s="${s//$'\t'/\\t}"
     printf '%s' "$s"
 }
+fi
 
-emit_success() {
+_emit_gd_success() {
     local count="$1"
     shift
     local repos_json=""
@@ -38,7 +39,7 @@ emit_success() {
 EOF
 }
 
-emit_error() {
+_emit_gd_error() {
     local message="$1"
     local remediation="${2:-}"
     local rem_field=""
@@ -110,7 +111,7 @@ fetch_git_deps() {
 
     # Validate manifest exists
     if [ ! -f "$yaml_path" ]; then
-        emit_error "Manifest not found: $yaml_path"
+        _emit_gd_error "Manifest not found: $yaml_path"
         return 1
     fi
 
@@ -120,7 +121,7 @@ fetch_git_deps() {
 
     # Handle empty list
     if [ -z "$entries" ]; then
-        emit_success 0
+        _emit_gd_success 0
         return 0
     fi
 
@@ -137,7 +138,7 @@ fetch_git_deps() {
             # Clone
             local git_output
             if ! git_output=$(git clone --branch "$branch" "$url" "$target" 2>&1); then
-                emit_error "git clone failed for ${repo_name}: ${git_output}" \
+                _emit_gd_error "git clone failed for ${repo_name}: ${git_output}" \
                     "Run manually: git clone --branch ${branch} ${url} ${target}"
                 return 1
             fi
@@ -147,7 +148,7 @@ fetch_git_deps() {
             current_branch="$(git -C "$target" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
 
             if [ "$current_branch" != "$branch" ]; then
-                emit_error "Branch mismatch for ${repo_name}: expected '${branch}', found '${current_branch}'" \
+                _emit_gd_error "Branch mismatch for ${repo_name}: expected '${branch}', found '${current_branch}'" \
                     "Manually switch branch: cd ${target} && git checkout ${branch}"
                 return 1
             fi
@@ -155,7 +156,7 @@ fetch_git_deps() {
             # Pull
             local git_output
             if ! git_output=$(git -C "$target" pull 2>&1); then
-                emit_error "git pull failed for ${repo_name}: ${git_output}" \
+                _emit_gd_error "git pull failed for ${repo_name}: ${git_output}" \
                     "Run manually: cd ${target} && git pull"
                 return 1
             fi
@@ -164,7 +165,7 @@ fetch_git_deps() {
         processed_repos+=("$repo_name")
     done <<< "$entries"
 
-    emit_success "${#processed_repos[@]}" "${processed_repos[@]}"
+    _emit_gd_success "${#processed_repos[@]}" "${processed_repos[@]}"
     return 0
 }
 
@@ -173,7 +174,7 @@ fetch_git_deps() {
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     if [ $# -lt 2 ]; then
-        emit_error "Usage: fetch-git-deps.sh <path-to-git-dependencies.yaml> <plugin-data-dir>"
+        _emit_gd_error "Usage: fetch-git-deps.sh <path-to-git-dependencies.yaml> <plugin-data-dir>"
         exit 1
     fi
     fetch_git_deps "$1" "$2"

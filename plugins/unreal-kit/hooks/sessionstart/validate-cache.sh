@@ -15,9 +15,9 @@ set -euo pipefail
 # Output: JSON to stdout (for additionalContext integration)
 
 # --- JSON Output Helpers ---
-# Duplicated from sibling scripts for standalone operation.
-# Task #7 (assembly) will factor these into a shared file.
+# Guarded: skip if already provided by bootstrap-helpers.sh
 
+if ! declare -f json_escape >/dev/null 2>&1; then
 json_escape() {
     local s="$1"
     s="${s//\\/\\\\}"
@@ -26,8 +26,9 @@ json_escape() {
     s="${s//$'\t'/\\t}"
     printf '%s' "$s"
 }
+fi
 
-emit_error() {
+_emit_vc_error() {
     local message="$1"
     local step="${2:-validate_cache}"
     cat <<EOF
@@ -36,7 +37,9 @@ EOF
 }
 
 # --- Cross-Platform SHA256 ---
+# Guarded: skip if already provided by bootstrap-helpers.sh
 
+if ! declare -f compute_sha256 >/dev/null 2>&1; then
 compute_sha256() {
     if command -v shasum >/dev/null 2>&1; then
         shasum -a 256 | awk '{print $1}'
@@ -46,6 +49,7 @@ compute_sha256() {
         return 1
     fi
 }
+fi
 
 # --- Hash Computation ---
 
@@ -120,13 +124,13 @@ write_validation_flag() {
     # Compute current hash
     local current_hash
     if ! current_hash=$(compute_manifest_hash "$plugin_root"); then
-        emit_error "Failed to compute manifest hash" "write_cache"
+        _emit_vc_error "Failed to compute manifest hash" "write_cache"
         return 1
     fi
 
     # Write flag
     if ! printf '%s' "$current_hash" > "$flag_file"; then
-        emit_error "Failed to write flag file: $flag_file" "write_cache"
+        _emit_vc_error "Failed to write flag file: $flag_file" "write_cache"
         return 1
     fi
 
@@ -141,7 +145,7 @@ EOF
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     if [ $# -lt 2 ]; then
-        emit_error "Usage: validate-cache.sh <plugin-root> <plugin-data-dir>"
+        _emit_vc_error "Usage: validate-cache.sh <plugin-root> <plugin-data-dir>"
         exit 1
     fi
     check_validation_flag "$1" "$2"

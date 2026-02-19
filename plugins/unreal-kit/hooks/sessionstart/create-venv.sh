@@ -14,9 +14,9 @@ set -euo pipefail
 # Exit:   0 = venv ready, 1 = error
 
 # --- JSON Output Helpers ---
-# Duplicated from check-system-tools.sh for standalone operation.
-# Task #7 (assembly) will factor these into a shared file.
+# Guarded: skip if already provided by bootstrap-helpers.sh
 
+if ! declare -f json_escape >/dev/null 2>&1; then
 json_escape() {
     local s="$1"
     s="${s//\\/\\\\}"
@@ -25,8 +25,9 @@ json_escape() {
     s="${s//$'\t'/\\t}"
     printf '%s' "$s"
 }
+fi
 
-emit_success() {
+_emit_venv_success() {
     local venv_path="$1"
     local python_exe="$2"
     cat <<EOF
@@ -34,7 +35,7 @@ emit_success() {
 EOF
 }
 
-emit_error() {
+_emit_venv_error() {
     local message="$1"
     local remediation="${2:-}"
     local rem_field=""
@@ -47,8 +48,9 @@ EOF
 }
 
 # --- OS Detection ---
-# Duplicated from check-system-tools.sh for standalone operation.
+# Guarded: skip if already provided by bootstrap-helpers.sh
 
+if ! declare -f detect_os >/dev/null 2>&1; then
 detect_os() {
     local ostype="${OSTYPE:-}"
     if [ -n "$ostype" ]; then
@@ -69,6 +71,7 @@ detect_os() {
 
     return 1
 }
+fi
 
 # --- Venv Creator ---
 
@@ -80,7 +83,7 @@ create_venv() {
 
     # Validate pyproject.toml exists
     if [ ! -f "$pyproject" ]; then
-        emit_error "pyproject.toml not found: $pyproject"
+        _emit_venv_error "pyproject.toml not found: $pyproject"
         return 1
     fi
 
@@ -93,7 +96,7 @@ create_venv() {
     local uv_output
     if ! uv_output=$(UV_PROJECT_ENVIRONMENT="$venv_dir" uv sync \
         --project "$plugin_root" 2>&1); then
-        emit_error "uv sync failed: $uv_output" \
+        _emit_venv_error "uv sync failed: $uv_output" \
             "Run manually: UV_PROJECT_ENVIRONMENT=\"$venv_dir\" uv sync --project \"$plugin_root\""
         return 1
     fi
@@ -108,17 +111,17 @@ create_venv() {
     elif [ -f "${venv_dir}/bin/python" ]; then
         python_exe="${venv_dir}/bin/python"
     else
-        emit_error "Python executable not found in venv at $venv_dir"
+        _emit_venv_error "Python executable not found in venv at $venv_dir"
         return 1
     fi
 
     # Verify Python works
     if ! "$python_exe" -c "print('ok')" >/dev/null 2>&1; then
-        emit_error "Python executable exists but failed to run: $python_exe"
+        _emit_venv_error "Python executable exists but failed to run: $python_exe"
         return 1
     fi
 
-    emit_success "$venv_dir" "$python_exe"
+    _emit_venv_success "$venv_dir" "$python_exe"
     return 0
 }
 
@@ -127,7 +130,7 @@ create_venv() {
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     if [ $# -lt 2 ]; then
-        emit_error "Usage: create-venv.sh <plugin-root> <plugin-data-dir>"
+        _emit_venv_error "Usage: create-venv.sh <plugin-root> <plugin-data-dir>"
         exit 1
     fi
     create_venv "$1" "$2"
