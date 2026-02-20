@@ -73,7 +73,43 @@ detect_os() {
 }
 fi
 
-# --- Venv Creator ---
+# --- Venv Python Resolver ---
+
+_resolve_python_exe() {
+    local venv_dir="$1"
+    local os_key
+    os_key="$(detect_os 2>/dev/null || true)"
+
+    if [ "$os_key" = "windows" ] && [ -f "${venv_dir}/Scripts/python.exe" ]; then
+        printf '%s' "${venv_dir}/Scripts/python.exe"
+    elif [ -f "${venv_dir}/bin/python" ]; then
+        printf '%s' "${venv_dir}/bin/python"
+    fi
+}
+
+# --- Tier 1: Validate Existing Venv (no uv needed) ---
+
+validate_venv() {
+    local venv_dir="$1"
+
+    # Check 1: venv directory exists
+    [ -d "$venv_dir" ] || return 1
+
+    # Check 2: Python executable exists
+    local python_exe
+    python_exe="$(_resolve_python_exe "$venv_dir")"
+    [ -n "$python_exe" ] || return 1
+
+    # Check 3: Python runs successfully
+    "$python_exe" -c "print('ok')" >/dev/null 2>&1 || return 1
+
+    # Check 4: Required packages are importable
+    "$python_exe" -c "import upyrc; import yaml" >/dev/null 2>&1 || return 1
+
+    return 0
+}
+
+# --- Venv Creator (Tier 1 + Tier 2) ---
 
 create_venv() {
     local plugin_root="$1"
@@ -84,6 +120,22 @@ create_venv() {
     # Validate pyproject.toml exists
     if [ ! -f "$pyproject" ]; then
         _emit_venv_error "pyproject.toml not found: $pyproject"
+        return 1
+    fi
+
+    # Tier 1: Check if existing venv is functional
+    if validate_venv "$venv_dir"; then
+        local python_exe
+        python_exe="$(_resolve_python_exe "$venv_dir")"
+        _emit_venv_success "$venv_dir" "$python_exe"
+        return 0
+    fi
+
+    # Tier 2: Need uv to create/update venv
+    if ! command -v uv >/dev/null 2>&1; then
+        _emit_venv_error \
+            "uv is required to create the Python venv but is not installed" \
+            "Install uv: curl -LsSf https://astral.sh/uv/install.sh | sh"
         return 1
     fi
 
@@ -103,14 +155,9 @@ create_venv() {
 
     # Determine Python executable path (cross-platform)
     local python_exe
-    local os_key
-    os_key="$(detect_os 2>/dev/null || true)"
+    python_exe="$(_resolve_python_exe "$venv_dir")"
 
-    if [ "$os_key" = "windows" ] && [ -f "${venv_dir}/Scripts/python.exe" ]; then
-        python_exe="${venv_dir}/Scripts/python.exe"
-    elif [ -f "${venv_dir}/bin/python" ]; then
-        python_exe="${venv_dir}/bin/python"
-    else
+    if [ -z "$python_exe" ]; then
         _emit_venv_error "Python executable not found in venv at $venv_dir"
         return 1
     fi
