@@ -5,7 +5,6 @@ system_tools:
       check: "$HOME/.local/bin"
       install: "grep -qF '.local/bin' ~/.zshrc 2>/dev/null || echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> ~/.zshrc"
     - name: uv
-      enabled: false
       check: "uv"
       install: "curl -LsSf https://astral.sh/uv/install.sh | sh"
     - name: git
@@ -23,7 +22,6 @@ system_tools:
       check: "$HOME/.local/bintest"
       install: "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ${PLUGIN_ROOT}/hooks/sessionstart/lib/add-to-win-path.ps1 .local/bintest"
     - name: uv
-      enabled: false
       check: "uv"
       install: "curl -LsSf https://astral.sh/uv/install.sh | sh"
     - name: git
@@ -39,7 +37,6 @@ system_tools:
       check: "curl"
       install: "sudo apt install -y curl"
     - name: uv
-      enabled: false
       check: "uv"
       install: "curl -LsSf https://astral.sh/uv/install.sh | sh"
     - name: git
