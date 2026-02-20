@@ -1,4 +1,4 @@
-param([string]$DirSuffix = ".local\bin")
+param([string]$DirSuffix = ".local/bin")
 
 $target = Join-Path $env:USERPROFILE $DirSuffix
 $current = [Environment]::GetEnvironmentVariable("Path", "User")
