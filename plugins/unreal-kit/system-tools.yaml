@@ -1,6 +1,6 @@
 system_tools:
   macos:
-    - name: local-bin-path
+    - name: local-bin
       check_type: persistent_path
       check: "$HOME/.local/bin"
       install: "grep -qF '.local/bin' ~/.zshrc 2>/dev/null || echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> ~/.zshrc"
@@ -12,11 +12,11 @@ system_tools:
       install: "brew install git"
 
   windows:
-    - name: local-bin-path
+    - name: local-bin
       check_type: persistent_path
       check: "$HOME/.local/bin"
       install: "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ${PLUGIN_ROOT}/hooks/sessionstart/lib/add-to-win-path.ps1"
-    - name: local-bintest-path
+    - name: bintest
       check_type: persistent_path
       check: "$HOME/.local/bintest"
       install: "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ${PLUGIN_ROOT}/hooks/sessionstart/lib/add-to-win-path.ps1 .local\bintest"
@@ -28,7 +28,7 @@ system_tools:
       install: "winget install --id Git.Git -e --source winget"
 
   ubuntu:
-    - name: local-bin-path
+    - name: local-bin
       check_type: persistent_path
       check: "$HOME/.local/bin"
       install: "grep -qF '.local/bin' ~/.bashrc 2>/dev/null || echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> ~/.bashrc"

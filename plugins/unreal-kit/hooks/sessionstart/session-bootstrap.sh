@@ -114,18 +114,12 @@ format_full_success_agent() {
 
 format_bootstrap_error_context() {
     local step_json="$1"
-    local msg tool install_cmd ct check_val
+    local msg tool install_cmd
     msg="$(_extract_json_field "$step_json" "message")"
     tool="$(_extract_json_field "$step_json" "missing_tool")"
     install_cmd="$(_extract_json_field "$step_json" "install_command")"
-    ct="$(_extract_json_field "$step_json" "check_type")"
-    check_val="$(_extract_json_field "$step_json" "check")"
     if [ -n "$tool" ] && [ -n "$install_cmd" ]; then
-        if [ "$ct" = "persistent_path" ]; then
-            printf '%s' "unreal-kit -> ERROR: $msg. If the user asks you to 'add $check_val to PATH', run this command: $install_cmd"
-        else
-            printf '%s' "unreal-kit -> ERROR: $msg. If the user asks you to 'install $tool', run this command: $install_cmd"
-        fi
+        printf '%s' "unreal-kit -> ERROR: $msg. The user can say 'fix-$tool' to ask you to resolve this. To fix it, run: $install_cmd"
     else
         printf '%s' "unreal-kit -> ERROR: $msg"
     fi
@@ -133,19 +127,12 @@ format_bootstrap_error_context() {
 
 format_bootstrap_error_user() {
     local step_json="$1"
-    local tool ct check_val
+    local msg tool
+    msg="$(_extract_json_field "$step_json" "message")"
     tool="$(_extract_json_field "$step_json" "missing_tool")"
-    ct="$(_extract_json_field "$step_json" "check_type")"
-    check_val="$(_extract_json_field "$step_json" "check")"
     if [ -n "$tool" ]; then
-        if [ "$ct" = "persistent_path" ]; then
-            printf '%s' "unreal-kit -> $check_val is not in PATH. Ask Claude to 'add $check_val to PATH' to fix this."
-        else
-            printf '%s' "unreal-kit -> $tool is not installed. Ask Claude to 'install $tool' to fix this."
-        fi
+        printf '%s' "unreal-kit -> $msg. Say 'fix-$tool' to resolve this."
     else
-        local msg
-        msg="$(_extract_json_field "$step_json" "message")"
         printf '%s' "unreal-kit -> ERROR: $msg"
     fi
 }
