@@ -127,12 +127,20 @@ format_bootstrap_error_context() {
 
 format_bootstrap_error_user() {
     local step_json="$1"
-    local msg tool
-    msg="$(_extract_json_field "$step_json" "message")"
+    local tool ct check_val
     tool="$(_extract_json_field "$step_json" "missing_tool")"
+    ct="$(_extract_json_field "$step_json" "check_type")"
+    check_val="$(_extract_json_field "$step_json" "check")"
     if [ -n "$tool" ]; then
-        printf '%s' "unreal-kit -> $msg. Say 'fix-$tool' to resolve this."
+        case "$ct" in
+            persistent_path)
+                printf '%s' "unreal-kit -> $check_val is not in PATH. Say 'fix-$tool' to resolve this." ;;
+            *)
+                printf '%s' "unreal-kit -> $tool is not installed. Say 'fix-$tool' to resolve this." ;;
+        esac
     else
+        local msg
+        msg="$(_extract_json_field "$step_json" "message")"
         printf '%s' "unreal-kit -> ERROR: $msg"
     fi
 }
