@@ -104,7 +104,7 @@ validate_venv() {
     "$python_exe" -c "print('ok')" >/dev/null 2>&1 || return 1
 
     # Check 4: Required packages are importable
-    "$python_exe" -c "import upyrc; import yaml" >/dev/null 2>&1 || return 1
+    "$python_exe" -c "import yaml" >/dev/null 2>&1 || return 1
 
     return 0
 }
