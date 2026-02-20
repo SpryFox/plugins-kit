@@ -1,0 +1,15 @@
+system_tools:
+  macos:
+    - name: git
+      check: "git"
+      install: "brew install git"
+
+  windows:
+    - name: git
+      check: "git"
+      install: "winget install --id Git.Git -e --source winget"
+
+  ubuntu:
+    - name: git
+      check: "git"
+      install: "sudo apt install -y git"

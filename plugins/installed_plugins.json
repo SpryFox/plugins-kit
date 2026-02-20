@@ -1,5 +1,6 @@
 {
   "plugins": {
-    "unreal-kit@plugins-kit": [{"installPath": "./unreal-kit", "version": "0.1.0"}]
+    "unreal-kit@plugins-kit": [{"installPath": "./unreal-kit", "version": "0.1.0"}],
+    "test-plugin@plugins-kit": [{"installPath": "./test-plugin", "version": "0.1.0"}]
   }
 }

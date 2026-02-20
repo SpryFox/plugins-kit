@@ -13,7 +13,7 @@ The session bootstrap runs once per session (or skips via cache). The script boo
 
 ## Session Bootstrap
 
-A bash SessionStart hook (`hooks/sessionstart/session-bootstrap.sh`) that validates the entire plugin environment through a 4-step sequence. All platform-specific knowledge lives in manifest files, not in hook logic.
+A bash SessionStart hook (`hooks/sessionstart/session-bootstrap.sh`) that validates the entire plugin environment through a 5-step sequence. Steps 1-4 handle environment readiness (tools, venv, git deps, cache). Step 5 handles plugin configuration via the [Claude-Driven Setup Pattern](claude-driven-setup-pattern.md). All platform-specific knowledge lives in manifest files, not in hook logic.
 
 ### Manifests
 
@@ -55,8 +55,16 @@ Step 3: Fetch git dependencies (fetch-git-deps.sh)
     v
 Step 4: Write validation flag (validate-cache.sh)
     SHA256 hash of all three manifests
-    Stored at ~/.claude/plugins/data/unreal-kit/.bootstrap-validated
+    Stored at ~/.claude/plugins/data/<plugin>/.bootstrap-validated
     Next session: hash matches --> skip Steps 1-3
+    |
+    v
+Step 5: Check plugin config (check-config.sh) [optional]
+    Run setup.py --check if setup script exists
+    Config is NOT cached — checked every session
+    |-- Config valid --> emit success
+    |-- Config missing --> emit setup guidance, exit 0
+    |-- No setup script --> skip (success)
 ```
 
 ### Design Principles
@@ -89,6 +97,11 @@ plugins/unreal-kit/
     validate-cache.sh            # Step 4: hash-based cache validation
     lib/
       bootstrap-helpers.sh       # Shared functions (json_escape, detect_os, sha256)
+    check-config.sh              # Step 5: config setup check (optional)
+  scripts/
+    setup.py                     # Config management (--check/--describe/--apply/--init-defaults)
+  defaults/
+    config.yaml                  # Template config with default values
 ```
 
 ### System Tool Manifest Format
@@ -110,6 +123,18 @@ system_tools:
 ```
 
 Key fields: `name` (display), `check` (what to verify), `install` (exact command), `check_type` (default `command`, or `persistent_path`), `enabled` (default `true`, set `false` to skip).
+
+## Config Setup (Step 5)
+
+Step 5 is an optional config check that runs after the environment bootstrap (Steps 1-4). Plugins that need user-specific configuration (API keys, preferences, paths) provide a `scripts/setup.py` implementing a standard interface contract. The bootstrap step runs `setup.py --check` and, if config is incomplete, emits context directing Claude to guide the user through interactive setup via a setup skill.
+
+Key properties:
+- **Not cached**: Config is user data, checked every session regardless of cache state
+- **Same severity as Step 1**: Missing config emits remediation context and exits 0 (session starts with guidance)
+- **Stdlib-only**: `setup.py` uses no third-party packages — works even if the venv is broken
+- **Optional**: Plugins without a setup script skip Step 5 silently
+
+For the full pattern specification, see [Claude-Driven Setup Pattern](claude-driven-setup-pattern.md). For a reference implementation, see `plugins/test-plugin/`.
 
 ## Script Bootstrap
 
