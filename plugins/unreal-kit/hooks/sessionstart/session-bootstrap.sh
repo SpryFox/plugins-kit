@@ -33,6 +33,7 @@ read_silent_config() {
 
     local line
     while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%$'\r'}"  # strip trailing CR (CRLF on Windows)
         if [[ "$line" =~ silent_when_valid:[[:space:]]+(.*) ]]; then
             local val="${BASH_REMATCH[1]}"
             val="${val#\"}" ; val="${val%\"}"

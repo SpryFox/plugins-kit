@@ -62,6 +62,7 @@ parse_git_deps() {
     local line
 
     while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%$'\r'}"  # strip trailing CR (CRLF on Windows)
         # Skip blank lines and comments
         [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
 

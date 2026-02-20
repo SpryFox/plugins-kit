@@ -21,6 +21,9 @@ system_tools:
       check_type: persistent_path
       check: "$HOME/.local/bintest"
       install: "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ${PLUGIN_ROOT}/hooks/sessionstart/lib/add-to-win-path.ps1 .local/bintest"
+    - name: curl
+      check: "curl"
+      install: "winget install --id cURL.cURL -e --source winget"
     - name: uv
       check: "uv"
       install: "curl -LsSf https://astral.sh/uv/install.sh | sh"
