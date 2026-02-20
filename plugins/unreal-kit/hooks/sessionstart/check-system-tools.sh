@@ -5,7 +5,9 @@ set -euo pipefail
 #
 # Reads system-tools.yaml for the detected OS, checks each entry via
 # command -v (default) or persistent PATH verification (check_type: persistent_path),
-# and fails fast on the first missing tool or unconfigured path.
+# and collects all independent failures. Consequential failures (e.g., a command
+# that lives in a failed persistent_path directory) are skipped since the PATH
+# fix will resolve them.
 #
 # Usage:
 #   bash check-system-tools.sh <path-to-system-tools.yaml>
@@ -37,29 +39,6 @@ _emit_st_success() {
     done
     cat <<EOF
 {"status": "ok", "step": "system_tools", "os": "$os_key", "tools_checked": [$tools_json]}
-EOF
-}
-
-_emit_st_failure() {
-    local tool_name="$1"
-    local os_key="$2"
-    local install_cmd="$3"
-    local check_type="${4:-command}"
-    local check_value="${5:-}"
-    local escaped_cmd escaped_name escaped_check message
-    escaped_cmd="$(json_escape "$install_cmd")"
-    escaped_name="$(json_escape "$tool_name")"
-    escaped_check="$(json_escape "$check_value")"
-    case "$check_type" in
-        persistent_path)
-            message="Required path '$escaped_check' not found in persistent PATH configuration. Add with: $escaped_cmd"
-            ;;
-        *)
-            message="Required tool '$escaped_name' not found. Install with: $escaped_cmd"
-            ;;
-    esac
-    cat <<EOF
-{"status": "error", "step": "system_tools", "os": "$os_key", "missing_tool": "$escaped_name", "check_type": "$check_type", "check": "$escaped_check", "install_command": "$escaped_cmd", "message": "$message"}
 EOF
 }
 
@@ -322,8 +301,13 @@ check_system_tools() {
         return 1
     fi
 
-    # Check each tool in order
+    # Check each tool, collecting all independent failures
     local checked_tools=()
+    local failed_paths=()
+    local user_lines=()
+    local context_lines=()
+    local failure_count=0
+
     while IFS=$'\t' read -r name check install check_type; do
         # Expand ${PLUGIN_ROOT} in install commands
         install="${install//\$\{PLUGIN_ROOT\}/$plugin_root}"
@@ -333,22 +317,65 @@ check_system_tools() {
                 if check_persistent_path "$check" "$os_key"; then
                     _ensure_session_path "$check" "$os_key"
                     check_passed=true
+                else
+                    # Track the resolved path so we can skip dependent command checks
+                    local resolved="${check/\$HOME/$HOME}"
+                    resolved="${resolved/#\~/$HOME}"
+                    failed_paths+=("$resolved")
                 fi
                 ;;
             command)
-                command -v "$check" >/dev/null 2>&1 && check_passed=true
+                if command -v "$check" >/dev/null 2>&1; then
+                    check_passed=true
+                elif [ ${#failed_paths[@]} -gt 0 ]; then
+                    # If command not found, check if it exists in a failed path
+                    # (consequence of PATH issue, not an independent failure)
+                    for fp in "${failed_paths[@]}"; do
+                        if [ -f "$fp/$check" ] || [ -f "$fp/$check.exe" ]; then
+                            check_passed=true  # skip — will be resolved by PATH fix
+                            break
+                        fi
+                    done
+                fi
                 ;;
             *)
                 _emit_st_error "Unknown check_type '$check_type' for tool '$name'"
                 return 1
                 ;;
         esac
-        if ! $check_passed; then
-            _emit_st_failure "$name" "$os_key" "$install" "${check_type:-command}" "$check"
-            return 1
+        if $check_passed; then
+            checked_tools+=("$name")
+        else
+            failure_count=$((failure_count+1))
+            # Build user-facing and context messages per failure
+            case "${check_type:-command}" in
+                persistent_path)
+                    user_lines+=("- $check is not in PATH")
+                    context_lines+=("$failure_count. Required path '$check' not found in persistent PATH configuration. Add with: $install (fix-$name)")
+                    ;;
+                *)
+                    user_lines+=("- $name is not installed")
+                    context_lines+=("$failure_count. Required tool '$name' not found. Install with: $install (fix-$name)")
+                    ;;
+            esac
         fi
-        checked_tools+=("$name")
     done <<< "$entries"
+
+    if [ $failure_count -gt 0 ]; then
+        # Join arrays with real newlines, then json_escape once for the JSON output
+        local user_msg context_msg
+        user_msg="$(printf '%s\n' "${user_lines[@]}")"
+        user_msg+=$'\n'"Say 'fix-all' to fix all issues."
+        context_msg="$(printf '%s\n' "${context_lines[@]}")"
+
+        local escaped_user escaped_context
+        escaped_user="$(json_escape "$user_msg")"
+        escaped_context="$(json_escape "$context_msg")"
+        cat <<EOF
+{"status": "error", "step": "system_tools", "os": "$os_key", "user_message": "$escaped_user", "context_message": "$escaped_context"}
+EOF
+        return 1
+    fi
 
     _emit_st_success "$os_key" "${checked_tools[@]}"
     return 0

@@ -114,30 +114,32 @@ format_full_success_agent() {
 
 format_bootstrap_error_context() {
     local step_json="$1"
-    local msg tool install_cmd
-    msg="$(_extract_json_field "$step_json" "message")"
-    tool="$(_extract_json_field "$step_json" "missing_tool")"
-    install_cmd="$(_extract_json_field "$step_json" "install_command")"
-    if [ -n "$tool" ] && [ -n "$install_cmd" ]; then
-        printf '%s' "unreal-kit -> ERROR: $msg. The user can say 'fix-$tool' to ask you to resolve this. To fix it, run: $install_cmd"
+    local context_msg
+    context_msg="$(_extract_json_field "$step_json" "context_message")"
+    if [ -n "$context_msg" ]; then
+        # Decode JSON escapes (\n → newline, \\ → \) back to real characters
+        local decoded
+        decoded="$(printf '%b' "$context_msg")"
+        printf '%s' "unreal-kit -> Bootstrap failed. Failures (fix in this order):
+${decoded}
+'fix-all' means fix each failure in the order listed above. After all fixes succeed, tell the user to restart Claude Code so bootstrap can verify the changes."
     else
+        local msg
+        msg="$(_extract_json_field "$step_json" "message")"
         printf '%s' "unreal-kit -> ERROR: $msg"
     fi
 }
 
 format_bootstrap_error_user() {
     local step_json="$1"
-    local tool ct check_val
-    tool="$(_extract_json_field "$step_json" "missing_tool")"
-    ct="$(_extract_json_field "$step_json" "check_type")"
-    check_val="$(_extract_json_field "$step_json" "check")"
-    if [ -n "$tool" ]; then
-        case "$ct" in
-            persistent_path)
-                printf '%s' "unreal-kit -> $check_val is not in PATH. Say 'fix-$tool' to resolve this." ;;
-            *)
-                printf '%s' "unreal-kit -> $tool is not installed. Say 'fix-$tool' to resolve this." ;;
-        esac
+    local user_msg
+    user_msg="$(_extract_json_field "$step_json" "user_message")"
+    if [ -n "$user_msg" ]; then
+        # Decode JSON escapes (\n → newline, \\ → \) back to real characters
+        local decoded
+        decoded="$(printf '%b' "$user_msg")"
+        printf '%s' "unreal-kit -> Setup issues found:
+${decoded}"
     else
         local msg
         msg="$(_extract_json_field "$step_json" "message")"
