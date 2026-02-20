@@ -45,19 +45,21 @@ _emit_st_failure() {
     local os_key="$2"
     local install_cmd="$3"
     local check_type="${4:-command}"
-    local escaped_cmd escaped_name message
+    local check_value="${5:-}"
+    local escaped_cmd escaped_name escaped_check message
     escaped_cmd="$(json_escape "$install_cmd")"
     escaped_name="$(json_escape "$tool_name")"
+    escaped_check="$(json_escape "$check_value")"
     case "$check_type" in
         persistent_path)
-            message="Required path '$escaped_name' not found in persistent PATH configuration. Add with: $escaped_cmd"
+            message="Required path '$escaped_check' not found in persistent PATH configuration. Add with: $escaped_cmd"
             ;;
         *)
             message="Required tool '$escaped_name' not found. Install with: $escaped_cmd"
             ;;
     esac
     cat <<EOF
-{"status": "error", "step": "system_tools", "os": "$os_key", "missing_tool": "$escaped_name", "check_type": "$check_type", "install_command": "$escaped_cmd", "message": "$message"}
+{"status": "error", "step": "system_tools", "os": "$os_key", "missing_tool": "$escaped_name", "check_type": "$check_type", "check": "$escaped_check", "install_command": "$escaped_cmd", "message": "$message"}
 EOF
 }
 
@@ -342,7 +344,7 @@ check_system_tools() {
                 ;;
         esac
         if ! $check_passed; then
-            _emit_st_failure "$name" "$os_key" "$install" "${check_type:-command}"
+            _emit_st_failure "$name" "$os_key" "$install" "${check_type:-command}" "$check"
             return 1
         fi
         checked_tools+=("$name")
