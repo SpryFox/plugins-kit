@@ -53,12 +53,14 @@ EOF
 
 # --- YAML Parser ---
 # Extracts entries from git-dependencies.yaml.
-# Output: newline-delimited records, one per entry, as "url\tbranch" (tab-delimited)
+# Output: newline-delimited records, one per entry, as "url\tbranch\tsparse_paths" (tab-delimited)
+# sparse_paths is pipe-delimited (e.g., "agents/|docs/") or empty when not specified.
 
 parse_git_deps() {
     local yaml_path="$1"
     local in_list=false
-    local url="" branch=""
+    local url="" branch="" sparse_paths=""
+    local in_sparse=false
     local line
 
     while IFS= read -r line || [ -n "$line" ]; do
@@ -77,15 +79,39 @@ parse_git_deps() {
         if [[ "$line" =~ ^[[:space:]]+\-[[:space:]]+url:[[:space:]]+(.*) ]]; then
             # Flush previous entry if complete
             if [ -n "$url" ] && [ -n "$branch" ]; then
-                printf '%s\t%s\n' "$url" "$branch"
+                printf '%s\t%s\t%s\n' "$url" "$branch" "$sparse_paths"
             fi
             url="${BASH_REMATCH[1]}"
             branch=""
+            sparse_paths=""
+            in_sparse=false
             # Strip surrounding quotes
             url="${url#\"}" ; url="${url%\"}"
             url="${url#\'}" ; url="${url%\'}"
             continue
         fi
+
+        # Field: "    sparse_paths:" (starts sub-list)
+        if [[ "$line" =~ ^[[:space:]]+sparse_paths:[[:space:]]*$ ]]; then
+            in_sparse=true
+            continue
+        fi
+
+        # Sub-list item under sparse_paths: "      - value"
+        if $in_sparse && [[ "$line" =~ ^[[:space:]]+-[[:space:]]+(.*) ]]; then
+            local path="${BASH_REMATCH[1]}"
+            path="${path#\"}" ; path="${path%\"}"
+            path="${path#\'}" ; path="${path%\'}"
+            if [ -n "$sparse_paths" ]; then
+                sparse_paths="${sparse_paths}|${path}"
+            else
+                sparse_paths="$path"
+            fi
+            continue
+        fi
+
+        # Any other field ends the sparse_paths sub-list
+        in_sparse=false
 
         # Field: "    branch: <value>"
         if [[ "$line" =~ ^[[:space:]]+branch:[[:space:]]+(.*) ]]; then
@@ -98,7 +124,7 @@ parse_git_deps() {
 
     # Flush last entry
     if [ -n "$url" ] && [ -n "$branch" ]; then
-        printf '%s\t%s\n' "$url" "$branch"
+        printf '%s\t%s\t%s\n' "$url" "$branch" "$sparse_paths"
     fi
 }
 
@@ -128,19 +154,43 @@ fetch_git_deps() {
     mkdir -p "$github_dir"
 
     local processed_repos=()
-    while IFS=$'\t' read -r url branch; do
+    while IFS=$'\t' read -r url branch sparse_paths; do
         # Derive repo name from URL
         local repo_name="${url##*/}"
         repo_name="${repo_name%.git}"
         local target="${github_dir}/${repo_name}"
 
+        # Split pipe-delimited sparse_paths into an array
+        local sparse_arr=()
+        if [ -n "$sparse_paths" ]; then
+            IFS='|' read -ra sparse_arr <<< "$sparse_paths"
+        fi
+
         if [ ! -d "${target}/.git" ]; then
             # Clone
             local git_output
-            if ! git_output=$(git clone --branch "$branch" "$url" "$target" 2>&1); then
-                _emit_gd_error "git clone failed for ${repo_name}: ${git_output}" \
-                    "Run manually: git clone --branch ${branch} ${url} ${target}"
-                return 1
+            if [ ${#sparse_arr[@]} -gt 0 ]; then
+                # Sparse clone: partial clone + sparse-checkout
+                if ! git_output=$(git clone --branch "$branch" --no-checkout --filter=blob:none "$url" "$target" 2>&1); then
+                    _emit_gd_error "git clone failed for ${repo_name}: ${git_output}" \
+                        "Run manually: git clone --branch ${branch} --no-checkout --filter=blob:none ${url} ${target}"
+                    return 1
+                fi
+                if ! git_output=$(git -C "$target" sparse-checkout set --no-cone "${sparse_arr[@]}" 2>&1); then
+                    _emit_gd_error "sparse-checkout set failed for ${repo_name}: ${git_output}"
+                    return 1
+                fi
+                if ! git_output=$(git -C "$target" checkout "$branch" 2>&1); then
+                    _emit_gd_error "checkout failed for ${repo_name}: ${git_output}"
+                    return 1
+                fi
+            else
+                # Full clone
+                if ! git_output=$(git clone --branch "$branch" "$url" "$target" 2>&1); then
+                    _emit_gd_error "git clone failed for ${repo_name}: ${git_output}" \
+                        "Run manually: git clone --branch ${branch} ${url} ${target}"
+                    return 1
+                fi
             fi
         else
             # Check branch
@@ -153,8 +203,27 @@ fetch_git_deps() {
                 return 1
             fi
 
-            # Pull
+            # Update sparse-checkout configuration
             local git_output
+            if [ ${#sparse_arr[@]} -gt 0 ]; then
+                # Ensure sparse-checkout is set (idempotent)
+                if ! git_output=$(git -C "$target" sparse-checkout set --no-cone "${sparse_arr[@]}" 2>&1); then
+                    _emit_gd_error "sparse-checkout set failed for ${repo_name}: ${git_output}"
+                    return 1
+                fi
+            else
+                # Disable sparse-checkout if it was previously active
+                local sparse_active
+                sparse_active="$(git -C "$target" config --get core.sparseCheckout 2>/dev/null || true)"
+                if [ "$sparse_active" = "true" ]; then
+                    if ! git_output=$(git -C "$target" sparse-checkout disable 2>&1); then
+                        _emit_gd_error "sparse-checkout disable failed for ${repo_name}: ${git_output}"
+                        return 1
+                    fi
+                fi
+            fi
+
+            # Pull
             if ! git_output=$(git -C "$target" pull 2>&1); then
                 _emit_gd_error "git pull failed for ${repo_name}: ${git_output}" \
                     "Run manually: cd ${target} && git pull"

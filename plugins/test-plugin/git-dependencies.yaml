@@ -1,3 +1,5 @@
 git_dependencies:
   - url: https://github.com/octocat/Hello-World
     branch: master
+    sparse_paths:
+      - README
