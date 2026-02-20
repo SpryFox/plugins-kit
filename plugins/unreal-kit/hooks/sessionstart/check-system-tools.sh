@@ -176,7 +176,7 @@ _ensure_session_path() {
 
 # --- YAML Parser ---
 # Extracts entries for a given OS section from system-tools.yaml.
-# Output: newline-delimited records, one per tool, as "name\tcheck\tinstall\tcheck_type" (tab-delimited)
+# Output: newline-delimited records, one per tool, as "name\tcheck\tinstall\tcheck_type\tenabled" (tab-delimited)
 #
 # Parsing approach: line-by-line scan. Detect OS section headers by matching
 # "  <key>:" at 2-space indent. Within the target section, accumulate fields
@@ -186,7 +186,7 @@ parse_system_tools() {
     local yaml_path="$1"
     local target_os="$2"
     local in_section=false
-    local name="" check="" install="" check_type=""
+    local name="" check="" install="" check_type="" enabled=""
     local line
 
     while IFS= read -r line || [ -n "$line" ]; do
@@ -202,7 +202,7 @@ parse_system_tools() {
         if [[ "$line" =~ ^[[:space:]]{2}[a-z]+:$ ]]; then
             # Flush any pending entry from previous section
             if $in_section && [ -n "$name" ] && [ -n "$check" ] && [ -n "$install" ]; then
-                printf '%s\t%s\t%s\t%s\n' "$name" "$check" "$install" "${check_type:-command}"
+                printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$check" "$install" "${check_type:-command}" "${enabled:-true}"
             fi
 
             # Check if this is our target section
@@ -213,12 +213,12 @@ parse_system_tools() {
             else
                 # If we were in the target section and hit a new one, we're done
                 if $in_section; then
-                    name="" ; check="" ; install="" ; check_type=""
+                    name="" ; check="" ; install="" ; check_type="" ; enabled=""
                     break
                 fi
                 in_section=false
             fi
-            name="" ; check="" ; install="" ; check_type=""
+            name="" ; check="" ; install="" ; check_type="" ; enabled=""
             continue
         fi
 
@@ -229,10 +229,10 @@ parse_system_tools() {
         if [[ "$line" =~ ^[[:space:]]+\-[[:space:]]+name:[[:space:]]+(.*) ]]; then
             # Flush previous entry if complete
             if [ -n "$name" ] && [ -n "$check" ] && [ -n "$install" ]; then
-                printf '%s\t%s\t%s\t%s\n' "$name" "$check" "$install" "${check_type:-command}"
+                printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$check" "$install" "${check_type:-command}" "${enabled:-true}"
             fi
             name="${BASH_REMATCH[1]}"
-            check="" ; install="" ; check_type=""
+            check="" ; install="" ; check_type="" ; enabled=""
             # Strip surrounding quotes
             name="${name#\"}" ; name="${name%\"}"
             name="${name#\'}" ; name="${name%\'}"
@@ -244,6 +244,14 @@ parse_system_tools() {
             check="${BASH_REMATCH[1]}"
             check="${check#\"}" ; check="${check%\"}"
             check="${check#\'}" ; check="${check%\'}"
+            continue
+        fi
+
+        # Field: "      enabled: <value>"
+        if [[ "$line" =~ ^[[:space:]]+enabled:[[:space:]]+(.*) ]]; then
+            enabled="${BASH_REMATCH[1]}"
+            enabled="${enabled#\"}" ; enabled="${enabled%\"}"
+            enabled="${enabled#\'}" ; enabled="${enabled%\'}"
             continue
         fi
 
@@ -266,7 +274,7 @@ parse_system_tools() {
 
     # Flush last entry
     if $in_section && [ -n "$name" ] && [ -n "$check" ] && [ -n "$install" ]; then
-        printf '%s\t%s\t%s\t%s\n' "$name" "$check" "$install" "${check_type:-command}"
+        printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$check" "$install" "${check_type:-command}" "${enabled:-true}"
     fi
 }
 
@@ -308,7 +316,9 @@ check_system_tools() {
     local context_lines=()
     local failure_count=0
 
-    while IFS=$'\t' read -r name check install check_type; do
+    while IFS=$'\t' read -r name check install check_type enabled; do
+        # Skip disabled entries
+        [ "${enabled:-true}" = "false" ] && continue
         # Expand ${PLUGIN_ROOT} in install commands
         install="${install//\$\{PLUGIN_ROOT\}/$plugin_root}"
         local check_passed=false

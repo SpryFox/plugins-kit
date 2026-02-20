@@ -17,6 +17,7 @@ system_tools:
       check: "$HOME/.local/bin"
       install: "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ${PLUGIN_ROOT}/hooks/sessionstart/lib/add-to-win-path.ps1"
     - name: bintest
+      enabled: false
       check_type: persistent_path
       check: "$HOME/.local/bintest"
       install: "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ${PLUGIN_ROOT}/hooks/sessionstart/lib/add-to-win-path.ps1 .local/bintest"
