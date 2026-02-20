@@ -12,15 +12,18 @@ Declares per-OS CLI tool dependencies. The hook processes entries sequentially a
 system_tools:
   macos:                             # OS key: macos | windows | ubuntu
     - name: <string>                 # Human-readable name (for error messages)
-      check: <string>               # Argument to `command -v`
+      check: <string>               # Argument to `command -v` (or path for persistent_path)
+      check_type: <string>          # Optional: "command" (default) or "persistent_path"
       install: <string>             # Exact shell command to install
   windows:
     - name: <string>
       check: <string>
+      check_type: <string>
       install: <string>
   ubuntu:
     - name: <string>
       check: <string>
+      check_type: <string>
       install: <string>
 ```
 
@@ -31,15 +34,16 @@ system_tools:
 | `system_tools` | mapping | Yes | Top-level key |
 | `macos` / `windows` / `ubuntu` | list | At least one | OS section containing tool entries |
 | `name` | string | Yes | Human-readable tool name for error messages |
-| `check` | string | Yes | Argument passed to `command -v` to verify presence |
-| `install` | string | Yes | Exact shell command to install the tool |
+| `check` | string | Yes | For `command` type: argument to `command -v`. For `persistent_path`: directory path to verify in PATH config |
+| `check_type` | string | No | Check method: `command` (default, uses `command -v`) or `persistent_path` (verifies directory in persistent PATH config) |
+| `install` | string | Yes | Exact shell command to install the tool or configure the path |
 
 ### Rules
 
 - **Top-level key**: `system_tools` (exactly one)
 - **OS keys**: `macos`, `windows`, `ubuntu` — maps from `$OSTYPE`: `darwin*` -> macos, `linux-gnu*` -> ubuntu, `msys*`/`cygwin*` -> windows
 - **Each OS section**: Ordered list of tool entries. Only the section for the detected OS is read
-- **Each entry**: Exactly 3 required fields — `name`, `check`, `install`. No optional fields
+- **Each entry**: 3 required fields (`name`, `check`, `install`) + 1 optional field (`check_type`, defaults to `command`)
 - **No defaults**: Each OS section is self-contained. No inheritance between OS sections
 - **Order is the dependency chain**: If tool B installs via tool A (e.g., jq installs via brew), tool A must appear earlier in the list. The manifest author discovers missing chain links by running the hook and fixing errors
 - **Omission = not needed**: If a tool isn't needed on an OS, don't list it in that OS section
@@ -53,8 +57,28 @@ These features are intentionally deferred:
 | `version` / `version_check` | Version validation adds complexity; presence check is sufficient for v1 |
 | `required: true/false` | Everything declared is required — if optional, don't list it |
 | `method: skip` | Omit the tool from the OS section instead |
-| `check_path` / `check_command_inline` | `command -v` covers the common case |
+| `check_path` / `check_command_inline` | Superseded by `check_type` field |
 | Platform inheritance | Explicit duplication is clearer than implicit inheritance |
+
+### Check Types
+
+#### `command` (default)
+
+Verifies a tool is available via `command -v <check>`. Used for CLI tools like `uv`, `git`, `jq`.
+
+#### `persistent_path`
+
+Verifies a directory is configured in the user's persistent PATH. Used for directories like `~/.local/bin` where tools install to but which may not be in PATH by default.
+
+**Per-OS verification**:
+
+| OS | Where it checks | Install method |
+|----|----------------|----------------|
+| macOS | `~/.zshrc` or `~/.zprofile` (grep for directory suffix) | Append `export PATH=...` to `~/.zshrc` |
+| Windows | Windows user-level PATH via `[Environment]::GetEnvironmentVariable('Path', 'User')` | PowerShell `[Environment]::SetEnvironmentVariable` |
+| Ubuntu | `~/.bashrc` or `~/.profile` (grep for directory suffix) | Append `export PATH=...` to `~/.bashrc` |
+
+**Session PATH injection**: When a `persistent_path` check passes, the directory is also added to the current process `$PATH` so that subsequent `command -v` checks (e.g., for `uv` installed in `~/.local/bin`) work within the same bootstrap run.
 
 ### Example
 

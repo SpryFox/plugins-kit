@@ -1,5 +1,9 @@
 system_tools:
   macos:
+    - name: local-bin-path
+      check_type: persistent_path
+      check: "$HOME/.local/bin"
+      install: "grep -qF '.local/bin' ~/.zshrc 2>/dev/null || echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> ~/.zshrc"
     - name: uv
       check: "uv"
       install: "curl -LsSf https://astral.sh/uv/install.sh | sh"
@@ -8,6 +12,10 @@ system_tools:
       install: "brew install git"
 
   windows:
+    - name: local-bin-path
+      check_type: persistent_path
+      check: "$HOME/.local/bin"
+      install: "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ${PLUGIN_ROOT}/hooks/sessionstart/lib/add-to-win-path.ps1"
     - name: uv
       check: "uv"
       install: "curl -LsSf https://astral.sh/uv/install.sh | sh"
@@ -16,6 +24,10 @@ system_tools:
       install: "winget install --id Git.Git -e --source winget"
 
   ubuntu:
+    - name: local-bin-path
+      check_type: persistent_path
+      check: "$HOME/.local/bin"
+      install: "grep -qF '.local/bin' ~/.bashrc 2>/dev/null || echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> ~/.bashrc"
     - name: curl
       check: "curl"
       install: "sudo apt install -y curl"
