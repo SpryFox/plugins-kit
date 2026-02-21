@@ -26,6 +26,16 @@
       },
       "source": "./plugins/cache-kit",
       "category": "development"
+    },
+    {
+      "name": "test-plugin",
+      "description": "Test plugin exercising all 5 bootstrap steps including Claude-driven config setup",
+      "version": "0.1.0",
+      "author": {
+        "name": "Christina"
+      },
+      "source": "./plugins/test-plugin",
+      "category": "development"
     }
   ]
 }
