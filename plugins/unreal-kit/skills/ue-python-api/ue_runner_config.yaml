@@ -1,7 +1,7 @@
 # UE Python Script Runner — global defaults
 #
 # Project-specific paths (engine_dir, uproject) go in:
-#   <project>/.local-data/skills/ue-python-api/project.yaml
+#   ~/.claude/plugins/data/unreal-kit/config.yaml
 #
 # Resolution order: CLI args → local project config → this file → hardcoded defaults
 

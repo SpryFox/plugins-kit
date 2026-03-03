@@ -9,6 +9,7 @@ set -euo pipefail
 #   3. Create/update Python venv
 #   4. Fetch git dependencies
 #   5. Write validation flag
+#   6. Check plugin config (auto-detect UE project from CWD)
 #
 # Output: Single JSON object to stdout (lands in additionalContext)
 # Exit:   0 = bootstrap complete (or cached), 1 = error
@@ -24,6 +25,7 @@ source "$SCRIPT_DIR/check-system-tools.sh"
 source "$SCRIPT_DIR/create-venv.sh"
 source "$SCRIPT_DIR/fetch-git-deps.sh"
 source "$SCRIPT_DIR/validate-cache.sh"
+source "$SCRIPT_DIR/check-config.sh"
 
 # --- Config Reader ---
 
@@ -131,6 +133,37 @@ ${decoded}
     fi
 }
 
+format_config_error_context() {
+    local step_json="$1"
+    local context_msg
+    context_msg="$(_extract_json_field "$step_json" "context_message")"
+    if [ -n "$context_msg" ]; then
+        local decoded
+        decoded="$(printf '%b' "$context_msg")"
+        printf '%s' "unreal-kit -> Config check failed:
+${decoded}"
+    else
+        local msg
+        msg="$(_extract_json_field "$step_json" "message")"
+        printf '%s' "unreal-kit -> Config ERROR: $msg"
+    fi
+}
+
+format_config_error_user() {
+    local step_json="$1"
+    local user_msg
+    user_msg="$(_extract_json_field "$step_json" "user_message")"
+    if [ -n "$user_msg" ]; then
+        local decoded
+        decoded="$(printf '%b' "$user_msg")"
+        printf '%s' "$decoded"
+    else
+        local msg
+        msg="$(_extract_json_field "$step_json" "message")"
+        printf '%s' "unreal-kit -> Config ERROR: $msg"
+    fi
+}
+
 format_bootstrap_error_user() {
     local step_json="$1"
     local user_msg
@@ -157,7 +190,13 @@ main() {
     # Step 0: Check validation flag
     local cache_json
     if cache_json=$(check_validation_flag "$PLUGIN_ROOT" "$PLUGIN_DATA" 2>/dev/null); then
-        # Cache hit
+        # Cache hit — Step 5 still runs (config is not cached)
+        local step5_json
+        if ! step5_json=$(check_config "$PLUGIN_ROOT" "$PLUGIN_DATA" 2>/dev/null); then
+            emit_hook_response "$(format_config_error_context "$step5_json")" "$(format_config_error_user "$step5_json")"
+            exit 0
+        fi
+
         if [ "$silent_mode" = "true" ]; then
             emit_hook_silent
             exit 0
@@ -196,6 +235,13 @@ main() {
     if ! step4_json=$(write_validation_flag "$PLUGIN_ROOT" "$PLUGIN_DATA"); then
         emit_hook_response "$(format_bootstrap_error_context "$step4_json")"
         exit 1
+    fi
+
+    # Step 5: Check plugin config (auto-detect from CWD)
+    local step5_json
+    if ! step5_json=$(check_config "$PLUGIN_ROOT" "$PLUGIN_DATA" 2>/dev/null); then
+        emit_hook_response "$(format_config_error_context "$step5_json")" "$(format_config_error_user "$step5_json")"
+        exit 0
     fi
 
     # All steps passed

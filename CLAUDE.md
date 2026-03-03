@@ -30,7 +30,7 @@ plugins-kit/                          # Marketplace root
 ### Key Design Decisions
 
 - **Bootstrapping**: Two-layer system — session bootstrap (bash SessionStart hook, manifest-driven) ensures system tools, venv, and git deps; script bootstrap (Python, runs inside UE Editor) handles UE-side packages at runtime. See [docs/bootstrapping-architecture.md](docs/bootstrapping-architecture.md) for full details.
-- **Config resolution order**: CLI args > project config (`~/.claude/.local-data/skills/ue-python-api/project.yaml`) > skill config (`ue_runner_config.yaml`) > hardcoded defaults
+- **Config resolution order**: CLI args > project config (`~/.claude/plugins/data/unreal-kit/config.yaml`) > skill config (`ue_runner_config.yaml`) > hardcoded defaults
 - **Auto-detection execution**: `ue_runner.py` tries remote execution (UDP via upyrc) first, falls back to headless commandlet if editor isn't running
 
 ### Core Components

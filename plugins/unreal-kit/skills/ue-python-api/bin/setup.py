@@ -36,11 +36,11 @@ STATUS_FILE = SKILL_DIR / "setup-status.yaml"
 if str(LIB_DIR) not in sys.path:
     sys.path.insert(0, str(LIB_DIR))
 
-from ue_discovery import find_engine_dir, find_uproject_from_skill
+from ue_discovery import find_engine_dir, find_uproject_from_cwd, find_uproject_from_skill
 from ue_ini import read_ini_bool, write_ini_setting
 
 # Config path (matches ue_runner_config.py)
-LOCAL_CONFIG_PATH = Path.home() / ".claude" / ".local-data" / "skills" / "ue-python-api" / "project.yaml"
+LOCAL_CONFIG_PATH = Path.home() / ".claude" / "plugins" / "data" / "unreal-kit" / "config.yaml"
 
 INI_SECTION = "[/Script/PythonScriptPlugin.PythonScriptPluginSettings]"
 
@@ -53,13 +53,22 @@ PYPI_JSON_URL = f"https://pypi.org/pypi/{PYPI_PACKAGE}/json"
 # ---------------------------------------------------------------------------
 
 def discover_project() -> tuple[Path | None, Path | None]:
-    """Find the .uproject and engine directory from the skill's location."""
+    """Find the .uproject and engine directory.
+
+    Tries skill-relative discovery first (works when skill is inside the project
+    tree), then falls back to CWD-based discovery (works when skill is in the
+    plugin cache and Claude Code was launched from the project root).
+    """
     print("[setup] Discovering UE project...")
 
     uproject = find_uproject_from_skill(SKILL_DIR)
     if not uproject:
-        print("[setup] ERROR: No .uproject file found walking up from skill directory.")
-        print(f"[setup]   Searched from: {SKILL_DIR}")
+        # Skill is likely in the plugin cache — try CWD
+        uproject = find_uproject_from_cwd()
+    if not uproject:
+        print("[setup] ERROR: No .uproject file found.")
+        print(f"[setup]   Searched from skill dir: {SKILL_DIR}")
+        print(f"[setup]   Searched from CWD: {Path.cwd()}")
         return None, None
 
     print(f"[setup]   OK  uproject: {uproject}")

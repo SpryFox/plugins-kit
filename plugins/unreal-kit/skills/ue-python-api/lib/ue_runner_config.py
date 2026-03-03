@@ -3,8 +3,8 @@ UE Python Script Runner — Configuration loading.
 
 Resolution order: CLI args → local project config → skill config → defaults.
 
-Local project config is found by walking up from cwd looking for:
-    .local-data/skills/ue-python-api/project.yaml
+Local project config lives at:
+    ~/.claude/plugins/data/unreal-kit/config.yaml
 """
 
 import os
@@ -13,7 +13,7 @@ from pathlib import Path
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 SKILL_CONFIG_PATH = SKILL_DIR / "ue_runner_config.yaml"
-LOCAL_CONFIG_PATH = Path.home() / ".claude" / ".local-data" / "skills" / "ue-python-api" / "project.yaml"
+LOCAL_CONFIG_PATH = Path.home() / ".claude" / "plugins" / "data" / "unreal-kit" / "config.yaml"
 
 # Hardcoded defaults for global settings (last resort)
 _DEFAULTS = {

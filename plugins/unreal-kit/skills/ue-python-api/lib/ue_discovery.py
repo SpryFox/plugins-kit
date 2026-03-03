@@ -59,6 +59,26 @@ def find_engine_dir(uproject: Path) -> Path | None:
     return None
 
 
+def find_uproject_from_cwd() -> Path | None:
+    """Find the nearest .uproject file by searching CWD and its parents.
+
+    Used when the skill lives in the plugin cache (not inside the project tree),
+    so walking up from the skill directory won't reach the project. Instead,
+    searches from CWD — which is the project root when Claude Code is launched
+    from there.
+    """
+    current = Path.cwd().resolve()
+    for _ in range(6):  # safety limit
+        found = find_uproject_files(current, max_depth=2)
+        if found:
+            return found[0]
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    return None
+
+
 def find_uproject_from_skill(skill_dir: Path) -> Path | None:
     """Walk up from the skill directory to find the nearest .uproject file.
 
