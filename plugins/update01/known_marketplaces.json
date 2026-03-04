@@ -1,9 +1,0 @@
-{
-  "plugins-kit": {
-    "source": {
-      "source": "git",
-      "url": "https://github.com/kitaekatt/plugins-kit.git"
-    },
-    "autoUpdate": true
-  }
-}
