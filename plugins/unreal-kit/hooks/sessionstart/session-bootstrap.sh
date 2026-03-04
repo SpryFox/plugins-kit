@@ -42,12 +42,6 @@ emit_hook_response() {
 EOF
 }
 
-emit_hook_silent() {
-    cat <<EOF
-{"continue": true, "suppressOutput": true}
-EOF
-}
-
 # --- JSON Field Extractors ---
 
 _extract_json_field() {
@@ -174,9 +168,8 @@ main() {
             exit 0
         fi
 
-        # Always silent on cache hit — prevents clobbering real bootstrap
-        # output when SessionStart fires twice (e.g. /resume)
-        emit_hook_silent
+        # Bare exit (no stdout) on cache hit — suppressOutput: true is
+        # global and would kill other plugins' output too
         exit 0
     fi
 
