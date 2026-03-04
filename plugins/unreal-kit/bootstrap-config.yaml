@@ -1,2 +1,1 @@
-bootstrap:
-  silent_when_valid: false
+bootstrap: {}

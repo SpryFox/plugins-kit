@@ -27,26 +27,6 @@ source "$SCRIPT_DIR/fetch-git-deps.sh"
 source "$SCRIPT_DIR/validate-cache.sh"
 source "$SCRIPT_DIR/check-config.sh"
 
-# --- Config Reader ---
-
-read_silent_config() {
-    local config_file="${PLUGIN_ROOT}/bootstrap-config.yaml"
-    [ -f "$config_file" ] || { printf 'false'; return; }
-
-    local line
-    while IFS= read -r line || [ -n "$line" ]; do
-        line="${line%$'\r'}"  # strip trailing CR (CRLF on Windows)
-        if [[ "$line" =~ silent_when_valid:[[:space:]]+(.*) ]]; then
-            local val="${BASH_REMATCH[1]}"
-            val="${val#\"}" ; val="${val%\"}"
-            val="${val#\'}" ; val="${val%\'}"
-            printf '%s' "$val"
-            return
-        fi
-    done < "$config_file"
-    printf 'false'
-}
-
 # --- Hook Response Wrapper ---
 # Claude Code SessionStart hooks must output JSON in this format for
 # additionalContext to appear in the session.
@@ -184,9 +164,6 @@ ${decoded}"
 # --- Main Bootstrap Flow ---
 
 main() {
-    local silent_mode
-    silent_mode="$(read_silent_config)"
-
     # Step 0: Check validation flag
     local cache_json
     if cache_json=$(check_validation_flag "$PLUGIN_ROOT" "$PLUGIN_DATA" 2>/dev/null); then
@@ -197,13 +174,9 @@ main() {
             exit 0
         fi
 
-        if [ "$silent_mode" = "true" ]; then
-            emit_hook_silent
-            exit 0
-        fi
-        local hash
-        hash="$(printf '%s' "$cache_json" | sed -n 's/.*"hash":[[:space:]]*"\([^"]*\)".*/\1/p')"
-        emit_hook_response "$(format_cached_success "$hash")"
+        # Always silent on cache hit — prevents clobbering real bootstrap
+        # output when SessionStart fires twice (e.g. /resume)
+        emit_hook_silent
         exit 0
     fi
 
@@ -245,10 +218,6 @@ main() {
     fi
 
     # All steps passed
-    if [ "$silent_mode" = "true" ]; then
-        emit_hook_silent
-        exit 0
-    fi
     emit_hook_response "$(format_full_success_agent)" "$(format_full_success_user "$step2_json" "$step3_json")"
 }
 
