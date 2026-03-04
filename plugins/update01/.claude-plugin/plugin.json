@@ -1,0 +1,7 @@
+{
+  "name": "update01",
+  "version": "0.1.0",
+  "description": "Always-run bootstrap plugin",
+  "author": {"name": "Christina"},
+  "keywords": ["bootstrap"]
+}

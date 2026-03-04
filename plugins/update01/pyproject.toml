@@ -1,0 +1,7 @@
+[project]
+name = "update01"
+version = "0.1.0"
+description = "Host-side dependencies for update01 plugin"
+requires-python = ">=3.10"
+
+dependencies = []
