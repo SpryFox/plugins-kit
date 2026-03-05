@@ -10,7 +10,7 @@ class TestCheckTool:
         result = check_tool("python3")
         assert result.passed is True
         assert result.name == "python3"
-        assert "python3" in result.message
+        assert "found at" in result.message
 
     def test_missing_tool_fails(self):
         result = check_tool("nonexistent_xyz_tool_abc")

@@ -128,33 +128,37 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
         install_cmds = tool_def.get("install", {})
         result = check_tool(name, install_cmds, current_os)
 
-        if not result.passed and result.install_cmd:
-            # Attempt silent remediation
+        if result.passed:
+            log_entries.append(f"{prefix}{result.name}: ok - {result.message}")
+            continue
+
+        # Tool not found — attempt remediation if install command available
+        if result.install_cmd:
+            log_entries.append(f"{prefix}{result.name}: not found, attempting install")
             from tool_check import run_install
             ok, _output = run_install(result.install_cmd)
             if ok:
-                result = check_tool(name, install_cmds, current_os)  # re-check
-                if result.passed:
-                    log_entries.append(f"{prefix}{result.name}: installed - {result.message}")
+                recheck = check_tool(name, install_cmds, current_os)
+                if recheck.passed:
+                    log_entries.append(f"{prefix}{result.name}: installed - ran `{result.install_cmd}`, now {recheck.message}")
                     continue  # no failure to record
             # Install failed or tool still missing after install
-            log_entries.append(f"{prefix}{result.name}: FAILED - install attempted but {result.message}")
+            log_entries.append(f"{prefix}{result.name}: FAILED - install attempted but still not found")
         else:
-            log_entries.append(f"{prefix}{result.name}: {'passed' if result.passed else 'FAILED'} - {result.message}")
+            log_entries.append(f"{prefix}{result.name}: FAILED - {result.message}")
 
-        if not result.passed:
-            failures.append({
-                "type": "tool",
-                "name": result.name,
-                "message": result.message,
-                "install_cmd": result.install_cmd,
-                "plugin": plugin_name,
-            })
+        failures.append({
+            "type": "tool",
+            "name": result.name,
+            "message": result.message,
+            "install_cmd": result.install_cmd,
+            "plugin": plugin_name,
+        })
 
     # Check path entries
     for path_entry in manifest.get("path_entries", []):
         result = check_path_entry(path_entry)
-        log_entries.append(f"{prefix}PATH {result.path}: {'passed' if result.passed else 'FAILED'} - {result.message}")
+        log_entries.append(f"{prefix}PATH {result.path}: {'ok' if result.passed else 'FAILED'} - {result.message}")
         if not result.passed:
             failures.append({
                 "type": "path",
@@ -168,7 +172,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
     if venv_def:
         check_imports = venv_def.get("check_imports", [])
         result = check_venv(data_dir, plugin_root, check_imports)
-        log_entries.append(f"{prefix}venv: {'passed' if result.passed else 'FAILED'} - {result.message}")
+        log_entries.append(f"{prefix}venv: {'ok' if result.passed else 'FAILED'} - {result.message}")
         if not result.passed:
             failures.append({
                 "type": "venv",
@@ -185,7 +189,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
             dep_def["branch"],
             dep_def.get("sparse_paths"),
         )
-        log_entries.append(f"{prefix}git {result.repo_name}: {'passed' if result.passed else 'FAILED'} - {result.message}")
+        log_entries.append(f"{prefix}git {result.repo_name}: {'ok' if result.passed else 'FAILED'} - {result.message}")
         if not result.passed:
             failures.append({
                 "type": "git_dep",

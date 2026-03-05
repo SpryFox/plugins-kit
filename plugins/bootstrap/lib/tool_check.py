@@ -28,7 +28,7 @@ def check_tool(name: str, install_cmds: Optional[dict] = None, current_os: Optio
         return CheckResult(
             name=name,
             passed=True,
-            message=f"{name} installed at {path}",
+            message=f"found at {path}",
         )
 
     install_cmd = None
@@ -38,7 +38,7 @@ def check_tool(name: str, install_cmds: Optional[dict] = None, current_os: Optio
     return CheckResult(
         name=name,
         passed=False,
-        message=f"{name} not found in PATH",
+        message=f"not found in PATH",
         install_cmd=install_cmd,
     )
 
