@@ -155,7 +155,7 @@ EOF
         # Windows: hard link via PowerShell (no elevation needed; same drive assumed)
         WIN_SRC="$(cygpath -w "$PYTHON")"
         WIN_DEST="$(cygpath -w "${HOME}/.local/bin/python3.exe")"
-        powershell.exe -Command "New-Item -ItemType HardLink -Path '$WIN_DEST' -Target '$WIN_SRC' -Force"
+        powershell.exe -Command "New-Item -ItemType HardLink -Path '$WIN_DEST' -Target '$WIN_SRC' -Force" > /dev/null
         log_entry "python3: installed $PYTHON, linked to ~/.local/bin/python3.exe"
     else
         PYTHON="${INSTALL_DIR}/python/install/bin/python3"
