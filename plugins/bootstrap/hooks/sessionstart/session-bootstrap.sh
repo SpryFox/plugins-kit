@@ -74,7 +74,7 @@ EOF
     # Make standalone Python available for future sessions via ~/.local/bin
     mkdir -p "${HOME}/.local/bin"
     if [[ "$OS" == MINGW* ]] || [[ "$OS" == MSYS* ]]; then
-        PYTHON="${INSTALL_DIR}/python/install/python.exe"
+        PYTHON="${INSTALL_DIR}/python/python.exe"
         # Windows: hard link via PowerShell (no elevation needed; same drive assumed)
         WIN_SRC="$(cygpath -w "$PYTHON")"
         WIN_DEST="$(cygpath -w "${HOME}/.local/bin/python3.exe")"
