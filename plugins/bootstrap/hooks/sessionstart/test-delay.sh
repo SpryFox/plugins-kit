@@ -7,8 +7,9 @@
 # Usage:
 #   BOOTSTRAP_TEST_DELAY=3 claude    # test with 3s delay
 #
-# Remove this hook after testing by deleting the SessionStart entry
-# from settings that references this script.
+# As a plugin hook, this runs automatically when the bootstrap plugin is enabled.
+# Set BOOTSTRAP_TEST_DELAY=0 (or unset) to skip the delay and still emit output.
+# The hook always emits output — if you don't see it, suppression is the cause.
 
 set -euo pipefail
 
