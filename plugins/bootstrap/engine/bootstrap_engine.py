@@ -74,6 +74,27 @@ def main():
     # Step 3b: Activate bootstrap venv site-packages so PyYAML is available
     _activate_bootstrap_venv(data_dir)
 
+    # Step 3c: Process personal config (user-bootstrap.json)
+    user_manifest_path = os.path.join(data_dir, "user-bootstrap.json")
+    if os.path.isfile(user_manifest_path):
+        compute_current_hash(data_dir, [user_manifest_path])
+        if check_cache(data_dir, [user_manifest_path]):
+            if log_success:
+                all_log_entries.append("user: cached")
+        else:
+            with open(user_manifest_path, "r") as f:
+                user_manifest = json.load(f)
+            log_entries = []
+            failures = _process_manifest(
+                user_manifest, current_os, data_dir, plugin_root, log_entries,
+                plugin_name="user", log_success=log_success,
+            )
+            all_log_entries.extend(f"user: {e}" for e in log_entries)
+            if failures:
+                all_failures.extend(failures)
+            else:
+                write_cache(data_dir, [user_manifest_path])
+
     # Step 4: Process enabled plugins
     # Compute marketplace root: bootstrap is at <marketplace>/plugins/bootstrap
     plugins_dir = os.path.dirname(plugin_root)
@@ -347,6 +368,42 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
                         "plugin": plugin_name,
                     })
 
+    # Check JSON entries
+    for json_def in manifest.get("json_entries", []):
+        ref_path = resolve_vars(json_def.get("reference", ""), variables)
+        target_path = resolve_vars(json_def.get("target", ""), variables)
+        if ref_path is None or target_path is None:
+            if log_success:
+                log_entries.append(f"{prefix}json: skipped (unresolved vars)")
+            continue
+
+        # Resolve reference relative to plugin root if not absolute
+        if not os.path.isabs(ref_path):
+            ref_path = os.path.join(plugin_root, ref_path)
+        # Expand ~ in target path
+        target_path = os.path.expanduser(target_path)
+
+        merge_fields = json_def.get("merge_fields", [])
+        preserve_fields = json_def.get("preserve_fields", [])
+
+        from json_check import check_json_entries, merge_json_entries
+        result = check_json_entries(ref_path, target_path, merge_fields, preserve_fields)
+        if result.passed:
+            if log_success:
+                log_entries.append(f"{prefix}json {os.path.basename(target_path)}: ok")
+        else:
+            result = merge_json_entries(ref_path, target_path, merge_fields, preserve_fields)
+            if result.passed:
+                log_entries.append(f"{prefix}json {os.path.basename(target_path)}: merged")
+            else:
+                log_entries.append(f"{prefix}json {os.path.basename(target_path)}: FAILED - {result.message}")
+                failures.append({
+                    "type": "json",
+                    "target": target_path,
+                    "message": result.message,
+                    "plugin": plugin_name,
+                })
+
     # Check PyPI packages
     for pypi_def in manifest.get("pypi_packages", []):
         extract_to = resolve_vars(pypi_def["extract_to"], variables)
@@ -361,7 +418,8 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
             if log_success:
                 log_entries.append(f"{prefix}pypi {result.package}: ok")
         else:
-            result = download_and_extract(pypi_def["package"], extract_to)
+            extract_pattern = pypi_def.get("extract_pattern")
+            result = download_and_extract(pypi_def["package"], extract_to, extract_pattern)
             if result.passed:
                 log_entries.append(f"{prefix}pypi {result.package}: {result.message}")
             else:
@@ -372,6 +430,49 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
                     "message": result.message,
                     "plugin": plugin_name,
                 })
+
+    # Check plugin entries
+    for plugin_def in manifest.get("plugins", []):
+        plugin_ref = plugin_def.get("ref", "")
+        enabled = plugin_def.get("enabled", True)
+        if not plugin_ref:
+            continue
+
+        from plugin_lifecycle import check_plugin_registered, check_plugin_enabled
+        # Determine paths from engine context
+        plugins_dir = os.path.dirname(plugin_root)
+        reg_path = os.path.join(plugins_dir, "installed_plugins.json")
+        config_path = os.path.join(os.path.dirname(data_dir), "bootstrap", "config.json")
+
+        reg_result = check_plugin_registered(reg_path, plugin_ref)
+        if not reg_result.passed:
+            log_entries.append(f"{prefix}plugin {plugin_ref}: not registered")
+            failures.append({
+                "type": "plugin",
+                "ref": plugin_ref,
+                "message": "not registered in installed_plugins.json",
+                "plugin": plugin_name,
+            })
+            continue
+
+        if enabled:
+            en_result = check_plugin_enabled(config_path, plugin_ref)
+            if en_result.passed:
+                if log_success:
+                    log_entries.append(f"{prefix}plugin {plugin_ref}: ok")
+            else:
+                from plugin_lifecycle import enable_plugin
+                enable_plugin(config_path, plugin_ref)
+                log_entries.append(f"{prefix}plugin {plugin_ref}: enabled")
+        else:
+            en_result = check_plugin_enabled(config_path, plugin_ref)
+            if not en_result.passed:
+                if log_success:
+                    log_entries.append(f"{prefix}plugin {plugin_ref}: ok (disabled)")
+            else:
+                from plugin_lifecycle import disable_plugin
+                disable_plugin(config_path, plugin_ref)
+                log_entries.append(f"{prefix}plugin {plugin_ref}: disabled")
 
     # Script phase
     script_def = manifest.get("script")
@@ -566,8 +667,12 @@ def emit_failure_response(failures, current_os, log_content):
             agent_lines.append(f"{i}. Download {f['package']} from PyPI{plugin_tag}: {f['message']}")
         elif f["type"] == "script":
             agent_lines.append(f"{i}. Script issue{plugin_tag}: {f.get('message', 'see log')}")
+        elif f["type"] == "json":
+            agent_lines.append(f"{i}. Merge JSON entries into {f['target']}{plugin_tag}: {f['message']}")
+        elif f["type"] == "plugin":
+            agent_lines.append(f"{i}. Register plugin {f['ref']}{plugin_tag}: {f['message']}")
 
-    agent_lines.append("\nAfter fixing, type 'fix-all' or restart Claude Code.")
+    agent_lines.append("\nAfter fixing, type 'fix-all' or 'fixed' to re-run bootstrap, or restart Claude Code.")
     agent_msg = "\n".join(agent_lines)
 
     response = {

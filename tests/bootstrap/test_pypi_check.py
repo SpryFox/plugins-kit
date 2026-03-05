@@ -60,6 +60,30 @@ class TestDownloadAndExtract:
         assert target.is_file()
         assert target.stat().st_size > 100
 
+    @patch("pypi_check.urlopen")
+    @patch("pypi_check._get_wheel_url")
+    def test_extract_pattern_filters_files(self, mock_get_url, mock_urlopen, tmp_path):
+        """extract_pattern selects files matching the glob instead of largest."""
+        wheel_data = self._make_wheel_bytes({
+            "pkg/big_file.py": b"x" * 10000,  # Largest but wrong pattern
+            "pkg/data.json": b'{"key": "value"}',
+            "pkg/small.pyi": b"# stub",
+        })
+
+        mock_get_url.return_value = "https://example.com/pkg-1.0.whl"
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = wheel_data
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_resp
+
+        target = tmp_path / "out" / "data.json"
+        result = download_and_extract("some-pkg", str(target), extract_pattern="*.json")
+        assert result.passed is True
+        assert target.is_file()
+        content = target.read_text()
+        assert "key" in content
+
     @patch("pypi_check._get_wheel_url")
     def test_download_fails_no_url(self, mock_get_url, tmp_path):
         mock_get_url.return_value = None

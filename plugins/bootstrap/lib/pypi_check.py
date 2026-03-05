@@ -4,6 +4,7 @@ Downloads a wheel from PyPI and extracts a specific file. Uses stdlib only
 (urllib + zipfile). No pip required.
 """
 
+import fnmatch
 import io
 import json
 import zipfile
@@ -47,12 +48,15 @@ def check_pypi_package(
 def download_and_extract(
     package: str,
     extract_to: str,
+    extract_pattern: Optional[str] = None,
 ) -> PypiCheckResult:
-    """Download a wheel from PyPI and extract the largest .py file.
+    """Download a wheel from PyPI and extract a file.
 
     Args:
         package: PyPI package name
         extract_to: Target path for the extracted file
+        extract_pattern: Optional glob pattern to match files in the wheel
+            (e.g. "*.py"). If None, extracts the largest .py/.pyi file.
 
     Returns:
         PypiCheckResult with pass/fail and descriptive message
@@ -76,10 +80,14 @@ def download_and_extract(
             message=f"download failed: {e}",
         )
 
-    # Extract the largest .py file
+    # Extract file from wheel
     try:
         with zipfile.ZipFile(io.BytesIO(wheel_bytes)) as zf:
-            py_files = [n for n in zf.namelist() if n.endswith((".py", ".pyi"))]
+            if extract_pattern:
+                py_files = [n for n in zf.namelist()
+                            if fnmatch.fnmatch(Path(n).name, extract_pattern)]
+            else:
+                py_files = [n for n in zf.namelist() if n.endswith((".py", ".pyi"))]
             if not py_files:
                 return PypiCheckResult(
                     passed=False, package=package,

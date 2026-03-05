@@ -1,12 +1,14 @@
-"""Content-hash caching for bootstrap manifests."""
+"""Content-hash and time-based caching for bootstrap manifests."""
 
 import hashlib
 import os
+import time
 from typing import List, Optional
 
 
 CACHE_FILENAME = "bootstrap_cache.sha256"
 CURRENT_HASH_FILENAME = "bootstrap_current.sha256"
+TIME_CACHE_FILENAME = "bootstrap_time_cache.txt"
 
 
 def _compute_hash(paths: List[str]) -> str:
@@ -106,3 +108,57 @@ def check_cache_fast(data_dir: str) -> Optional[bool]:
         return False
 
     return stored_hash == current_hash
+
+
+def check_time_cache(data_dir: str, key: str, cooldown_seconds: int) -> bool:
+    """Check if a time-based cache is still valid.
+
+    Args:
+        data_dir: Directory containing the time cache file
+        key: Cache key (e.g. "git_remote_check")
+        cooldown_seconds: Seconds before the cache expires
+
+    Returns:
+        True if cache is valid (within cooldown window), False otherwise
+    """
+    cache_file = os.path.join(data_dir, TIME_CACHE_FILENAME)
+    try:
+        with open(cache_file, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split("\t", 1)
+                if len(parts) == 2 and parts[0] == key:
+                    timestamp = float(parts[1])
+                    return (time.time() - timestamp) < cooldown_seconds
+    except (FileNotFoundError, PermissionError, ValueError):
+        pass
+    return False
+
+
+def write_time_cache(data_dir: str, key: str) -> None:
+    """Write a time-based cache entry.
+
+    Args:
+        data_dir: Directory to write the time cache file
+        key: Cache key to record
+    """
+    cache_file = os.path.join(data_dir, TIME_CACHE_FILENAME)
+    os.makedirs(data_dir, exist_ok=True)
+
+    # Read existing entries (excluding this key)
+    lines: list[str] = []
+    try:
+        with open(cache_file, "r") as f:
+            for line in f:
+                if line.strip() and not line.startswith(f"{key}\t"):
+                    lines.append(line.rstrip("\n"))
+    except FileNotFoundError:
+        pass
+
+    # Add new entry
+    lines.append(f"{key}\t{time.time()}")
+
+    with open(cache_file, "w") as f:
+        f.write("\n".join(lines) + "\n")
