@@ -10,6 +10,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PLUGIN_DATA="${HOME}/.claude/plugins/data/bootstrap"
 
+# --- Logging ---
+log_entry() {
+    local msg="$1"
+    local ts
+    ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "unknown-time")"
+    mkdir -p "$PLUGIN_DATA"
+    echo "[$ts] $msg" >> "$PLUGIN_DATA/bootstrap.log"
+}
+
 # --- Find Python 3 ---
 # Validate each candidate by execution, not just PATH presence.
 # This handles Windows Store stubs (python3 in PATH but exits 126).
@@ -53,6 +62,7 @@ if [ -z "$PYTHON" ]; then
     elif [[ "$OS" == MINGW* ]] || [[ "$OS" == MSYS* ]]; then
         TRIPLE="x86_64-pc-windows-msvc"
     else
+        log_entry "python3 self-bootstrap: FAILED - unsupported platform ($OS)"
         cat <<'EOF'
 {"continue": true, "suppressOutput": false, "systemMessage": "bootstrap -> python3 not found and platform not supported for auto-install. Install Python 3 manually.", "hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "bootstrap -> CRITICAL: python3 not found. Unsupported platform for auto-install. Install Python 3.x manually."}}
 EOF
@@ -62,9 +72,12 @@ EOF
     ARCHIVE="cpython-${PY_VERSION}+${RELEASE_TAG}-${TRIPLE}-install_only_stripped.tar.gz"
     URL="https://github.com/indygreg/python-build-standalone/releases/download/${RELEASE_TAG}/${ARCHIVE}"
 
+    log_entry "python3 self-bootstrap: downloading $ARCHIVE"
+
     # Download and extract
     mkdir -p "$INSTALL_DIR"
     if ! curl -LsSf "$URL" | tar xz -C "$INSTALL_DIR" 2>/dev/null; then
+        log_entry "python3 self-bootstrap: FAILED - download error"
         cat <<'EOF'
 {"continue": true, "suppressOutput": false, "systemMessage": "bootstrap -> python3 not found and auto-install failed (download error). Install Python 3 manually.", "hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "bootstrap -> CRITICAL: python3 not found. Auto-install download failed. Install Python 3.x manually."}}
 EOF
@@ -79,9 +92,11 @@ EOF
         WIN_SRC="$(cygpath -w "$PYTHON")"
         WIN_DEST="$(cygpath -w "${HOME}/.local/bin/python3.exe")"
         powershell.exe -Command "New-Item -ItemType HardLink -Path '$WIN_DEST' -Target '$WIN_SRC' -Force"
+        log_entry "python3 self-bootstrap: installed $PYTHON, linked to ~/.local/bin/python3.exe"
     else
         PYTHON="${INSTALL_DIR}/python/install/bin/python3"
         ln -sf "$PYTHON" "${HOME}/.local/bin/python3"
+        log_entry "python3 self-bootstrap: installed $PYTHON, linked to ~/.local/bin/python3"
     fi
 fi
 
