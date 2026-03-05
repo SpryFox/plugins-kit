@@ -25,7 +25,6 @@ plugins-kit/                          # Marketplace root
     test-plugin/                      # Test plugin (exercises bootstrap system)
       .claude-plugin/plugin.json      # Plugin manifest
       bootstrap.json                  # Test plugin's bootstrap manifest
-      hooks/stop/                     # Stop hook (fallback bootstrap)
       scripts/                        # Config setup
     unreal-kit/                       # The UE plugin
       .claude-plugin/plugin.json      # Plugin manifest
@@ -57,7 +56,6 @@ plugins-kit/                          # Marketplace root
 | `plugins/bootstrap/bootstrap.json` | Bootstrap plugin's own manifest |
 | `plugins/bootstrap/ARCHITECTURE.md` | Bootstrap system architecture |
 | `plugins/bootstrap/MILESTONES.md` | Development milestones and progress |
-| `plugins/test-plugin/hooks/stop/bootstrap-check.py` | Stop hook — fallback bootstrap for late installs |
 | `plugins/test-plugin/bootstrap.json` | Test plugin's bootstrap manifest |
 | `plugins/test-plugin/scripts/setup.py` | Test plugin config setup |
 | `tests/bootstrap/` | All bootstrap tests (mirrors lib/ structure) |

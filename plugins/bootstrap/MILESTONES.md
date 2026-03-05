@@ -44,9 +44,8 @@ Port the test-plugin to use the bootstrap system and introduce user-configurable
 
 ### Discovered Requirements
 
-- **Stop hook as bootstrap fallback**: When a plugin is installed during startup, SessionStart has already fired. The Stop hook must also run the full bootstrap engine (not just detect-and-block) to handle first-session installs.
-- **Cache compute/check split**: Separate hash computation (expensive) from hash comparison (cheap). SessionStart computes once; Stop checks cheaply with fallback compute if SessionStart was missed.
-- **Lazy imports**: Stop hook loads only `cache` module on the fast path (cache hit). All other bootstrap imports deferred until cache miss confirmed.
+- **No Stop hook fallback**: Plugins installed during startup require a restart before they function — SessionStart hooks from the newly installed plugin don't fire until the next session. A Stop hook cannot bootstrap a plugin mid-session because the plugin's hooks aren't loaded yet. The Stop hook was removed.
+- **Cache compute/check split**: Separate hash computation (expensive) from hash comparison (cheap). `compute_current_hash()` writes a pre-computed hash file; `check_cache_fast()` compares it against the stored cache without recomputing. Available for future per-turn checks if needed.
 
 ### Notes
 
