@@ -1,0 +1,22 @@
+{
+  "tools": [
+    {
+      "name": "git",
+      "install": {
+        "macos": "brew install git",
+        "windows": "winget install --id Git.Git -e --source winget",
+        "ubuntu": "sudo apt install -y git"
+      }
+    }
+  ],
+  "venv": {
+    "check_imports": ["yaml"]
+  },
+  "git_deps": [
+    {
+      "url": "https://github.com/octocat/Hello-World",
+      "branch": "master",
+      "sparse_paths": ["README"]
+    }
+  ]
+}

@@ -36,6 +36,16 @@
       },
       "source": "./plugins/test-plugin",
       "category": "development"
+    },
+    {
+      "name": "bootstrap",
+      "description": "Centralized bootstrap engine for Claude Code plugins",
+      "version": "0.1.0",
+      "author": {
+        "name": "Christina"
+      },
+      "source": "./plugins/bootstrap",
+      "category": "development"
     }
   ]
 }

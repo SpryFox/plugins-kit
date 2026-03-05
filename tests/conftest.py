@@ -40,3 +40,30 @@ def manifest_file(tmp_path):
         return str(path)
 
     return _write
+
+
+@pytest.fixture
+def fake_plugin_root(tmp_path):
+    """Create a fake plugin root directory with optional bootstrap.json."""
+
+    def _create(name="test-plugin", manifest=None):
+        root = tmp_path / "plugins" / name
+        root.mkdir(parents=True)
+        if manifest is not None:
+            (root / "bootstrap.json").write_text(json.dumps(manifest))
+        return str(root)
+
+    return _create
+
+
+@pytest.fixture
+def fake_registry(tmp_path):
+    """Create a fake installed_plugins.json registry."""
+
+    def _create(plugins_dict):
+        registry_path = tmp_path / "plugins" / "installed_plugins.json"
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+        registry_path.write_text(json.dumps({"plugins": plugins_dict}))
+        return str(registry_path)
+
+    return _create

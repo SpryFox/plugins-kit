@@ -36,11 +36,11 @@ Port the test-plugin to use the bootstrap system and introduce user-configurable
 
 ### Deliverables
 
-- [ ] Port test-plugin bootstrap to manifest + optional script per case study
-- [ ] Add additional config mechanism for non-default dependencies (user-defined plugins to bootstrap)
-- [ ] User adds test-plugin to additional config → bootstrap plugin installs and bootstraps it
-- [ ] Bootstrap plugin updates its own config when out of date
-- [ ] Tests for additional config loading and test-plugin manifest processing
+- [x] Port test-plugin bootstrap to manifest + optional script per case study
+- [x] Add additional config mechanism for non-default dependencies (user-defined plugins to bootstrap)
+- [x] User adds test-plugin to additional config → bootstrap plugin installs and bootstraps it
+- [x] Bootstrap plugin updates its own config when out of date
+- [x] Tests for additional config loading and test-plugin manifest processing
 
 ### Notes
 
