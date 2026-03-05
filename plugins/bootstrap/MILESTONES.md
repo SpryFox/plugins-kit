@@ -133,6 +133,11 @@ Make the update01 marketplace a self-contained seed that installs the plugins-ki
 4. `plugins` ensures `plugins-kit:bootstrap` is enabled
 5. On next session, plugins-kit's bootstrap takes over normal plugin management
 
+### Verification
+
+- [x] 185 automated tests pass (179 existing + 6 new cross-marketplace)
+- [ ] Manual end-to-end validation: user runs `claude --plugin-dir ~/Dev/update01/plugins/bootstrap` on a machine without plugins-kit installed and verifies the full team deployment flow
+
 ### Notes
 
 - update01 is the "seed" — it exists only to bootstrap the real marketplace into existence
