@@ -10,6 +10,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PLUGIN_DATA="${HOME}/.claude/plugins/data/bootstrap"
 
+# --- Capture hook input from stdin and record start time ---
+HOOK_INPUT=$(cat)
+HOOK_START_EPOCH=$(date +%s 2>/dev/null || echo "0")
+
 # --- Logging ---
 # Collect entries in memory; write as a block at the end (with header) only if non-empty.
 SHELL_LOG_ENTRIES=()
@@ -150,6 +154,22 @@ EOF
     fi
 fi
 
+# --- Extract hook input fields for logging ---
+HOOK_SOURCE=""
+HOOK_SESSION_ID=""
+HOOK_MODEL=""
+if command -v jq &>/dev/null && [ -n "$HOOK_INPUT" ]; then
+    HOOK_SOURCE=$(echo "$HOOK_INPUT" | jq -r '.source // empty' 2>/dev/null || true)
+    HOOK_SESSION_ID=$(echo "$HOOK_INPUT" | jq -r '.session_id // empty' 2>/dev/null || true)
+    HOOK_MODEL=$(echo "$HOOK_INPUT" | jq -r '.model // empty' 2>/dev/null || true)
+elif [ -n "$HOOK_INPUT" ]; then
+    # Fallback: grep for fields (no jq available)
+    HOOK_SOURCE=$(echo "$HOOK_INPUT" | grep -o '"source"[[:space:]]*:[[:space:]]*"[^"]*"' | grep -o '"[^"]*"$' | tr -d '"' || true)
+    HOOK_SESSION_ID=$(echo "$HOOK_INPUT" | grep -o '"session_id"[[:space:]]*:[[:space:]]*"[^"]*"' | grep -o '"[^"]*"$' | tr -d '"' || true)
+    HOOK_MODEL=$(echo "$HOOK_INPUT" | grep -o '"model"[[:space:]]*:[[:space:]]*"[^"]*"' | grep -o '"[^"]*"$' | tr -d '"' || true)
+fi
+log_entry "hook: source=$HOOK_SOURCE session=$HOOK_SESSION_ID model=$HOOK_MODEL"
+
 # --- Flush shell log entries (if any) before handing off to engine ---
 flush_log
 
@@ -157,4 +177,5 @@ flush_log
 
 exec "$PYTHON" "${PLUGIN_ROOT}/engine/bootstrap_engine.py" \
     --plugin-root "$PLUGIN_ROOT" \
-    --data-dir "$PLUGIN_DATA"
+    --data-dir "$PLUGIN_DATA" \
+    --hook-start-epoch "$HOOK_START_EPOCH"

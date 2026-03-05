@@ -20,6 +20,7 @@ def main():
     parser = argparse.ArgumentParser(description="Bootstrap engine")
     parser.add_argument("--plugin-root", required=True, help="Path to bootstrap plugin root")
     parser.add_argument("--data-dir", required=True, help="Path to bootstrap data directory")
+    parser.add_argument("--hook-start-epoch", type=int, default=0, help="Epoch seconds when the hook started")
     args = parser.parse_args()
 
     plugin_root = args.plugin_root
@@ -108,11 +109,17 @@ def main():
         else:
             write_cache(plugin_data_dir, [plugin_manifest_path])
 
-    # Step 5: Write log block (header + entries) only if we have entries
+    # Step 5: Log hook duration
+    import time
+    if args.hook_start_epoch > 0:
+        duration_s = int(time.time()) - args.hook_start_epoch
+        all_log_entries.append(f"hook duration: {duration_s}s")
+
+    # Step 6: Write log block (header + entries) only if we have entries
     if all_log_entries:
         write_log_block(data_dir, "Engine", all_log_entries)
 
-    # Step 6: Emit results — show new log entries to user (since last display)
+    # Step 7: Emit results — show new log entries to user (since last display)
     log_content = _read_new_log_entries(data_dir)
     if all_failures:
         emit_failure_response(all_failures, current_os, log_content)
