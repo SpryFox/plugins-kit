@@ -1,6 +1,8 @@
 """Tests for bootstrap lib/tool_check.py."""
 
-from tool_check import check_tool
+import sys
+
+from tool_check import check_tool, run_install
 
 
 class TestCheckTool:
@@ -27,3 +29,21 @@ class TestCheckTool:
         result = check_tool("nonexistent_xyz", install_cmds=install_cmds, current_os="freebsd")
         assert result.passed is False
         assert result.install_cmd is None
+
+
+class TestRunInstall:
+    def test_success(self):
+        cmd = f"{sys.executable} -c 'pass'"
+        ok, output = run_install(cmd)
+        assert ok is True
+
+    def test_failure(self):
+        cmd = f"{sys.executable} -c 'import sys; sys.exit(1)'"
+        ok, output = run_install(cmd)
+        assert ok is False
+
+    def test_output_captured(self):
+        cmd = f"{sys.executable} -c 'print(\"hello\")'"
+        ok, output = run_install(cmd)
+        assert ok is True
+        assert "hello" in output

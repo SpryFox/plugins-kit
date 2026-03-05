@@ -124,7 +124,21 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
         name = tool_def["name"]
         install_cmds = tool_def.get("install", {})
         result = check_tool(name, install_cmds, current_os)
-        log_entries.append(f"{prefix}{result.name}: {'passed' if result.passed else 'FAILED'} - {result.message}")
+
+        if not result.passed and result.install_cmd:
+            # Attempt silent remediation
+            from tool_check import run_install
+            ok, _output = run_install(result.install_cmd)
+            if ok:
+                result = check_tool(name, install_cmds, current_os)  # re-check
+                if result.passed:
+                    log_entries.append(f"{prefix}{result.name}: installed - {result.message}")
+                    continue  # no failure to record
+            # Install failed or tool still missing after install
+            log_entries.append(f"{prefix}{result.name}: FAILED - install attempted but {result.message}")
+        else:
+            log_entries.append(f"{prefix}{result.name}: {'passed' if result.passed else 'FAILED'} - {result.message}")
+
         if not result.passed:
             failures.append({
                 "type": "tool",

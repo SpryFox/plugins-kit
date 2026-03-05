@@ -1,6 +1,7 @@
 """Tool installation verification."""
 
 import shutil
+import subprocess
 from typing import NamedTuple, Optional
 
 
@@ -40,3 +41,25 @@ def check_tool(name: str, install_cmds: Optional[dict] = None, current_os: Optio
         message=f"{name} not found in PATH",
         install_cmd=install_cmd,
     )
+
+
+def run_install(install_cmd: str) -> tuple[bool, str]:
+    """Run a platform-specific install command.
+
+    Returns:
+        (success, output) — success=True if returncode==0
+    """
+    try:
+        result = subprocess.run(
+            install_cmd,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        output = (result.stdout + result.stderr).strip()
+        return result.returncode == 0, output
+    except subprocess.TimeoutExpired:
+        return False, "install timed out after 120s"
+    except Exception as e:
+        return False, str(e)

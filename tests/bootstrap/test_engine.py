@@ -68,6 +68,35 @@ class TestEngineIntegration:
         assert "hookSpecificOutput" in response
         assert "nonexistent_tool_xyz_abc" in response["hookSpecificOutput"]["additionalContext"]
 
+    def test_remediation_attempted_but_still_fails(self, data_dir, tmp_path):
+        """When install command runs but tool is still missing, failure JSON is emitted."""
+        fake_root = tmp_path / "fake_plugin"
+        fake_root.mkdir()
+        (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
+        (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
+        (fake_root / "defaults").symlink_to(os.path.join(BOOTSTRAP_ROOT, "defaults"))
+
+        # Install command succeeds (python -c pass) but tool still won't exist after
+        manifest = {
+            "tools": [{
+                "name": "nonexistent_tool_xyz_abc",
+                "install": {
+                    "macos": f"{sys.executable} -c 'pass'",
+                    "windows": f"{sys.executable} -c 'pass'",
+                    "ubuntu": f"{sys.executable} -c 'pass'",
+                },
+            }],
+        }
+        (fake_root / "bootstrap.json").write_text(json.dumps(manifest))
+
+        result = run_engine(data_dir, plugin_root=str(fake_root))
+        assert result.returncode == 0
+        assert result.stdout.strip() != ""
+
+        response = json.loads(result.stdout)
+        assert response["continue"] is True
+        assert "nonexistent_tool_xyz_abc" in response["hookSpecificOutput"]["additionalContext"]
+
     def test_config_migration_on_run(self, data_dir):
         """Engine should migrate v0 config to v1 on first run."""
         # Pre-create a v0 config
