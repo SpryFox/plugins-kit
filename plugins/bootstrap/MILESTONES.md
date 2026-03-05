@@ -59,22 +59,43 @@ Port the test-plugin to use the bootstrap system and introduce user-configurable
 
 ---
 
-## Milestone 3: Unreal-Kit Integration
+## Milestone 3: Plugin Integration
 
-Port unreal-kit to use the bootstrap system — the most complex case with manifest + script hybrid.
+Port local-review-kit and unreal-kit to the bootstrap system. Two real-world plugins validate the engine before moving to marketplace distribution.
 
 ### Deliverables
 
-- [ ] Port unreal-kit bootstrap to manifest + script per case study
-- [ ] User adds unreal-kit to additional config → bootstrap plugin installs and bootstraps it
-- [ ] Manifest handles: path entries, tools, venv, ini settings, PyPI package
-- [ ] Script handles: `.uproject` discovery, project-specific stub copy
-- [ ] Tests for hybrid manifest+script processing and variable resolution
+#### Part A: local-review-kit port
+
+- [x] Create `plugins/local-review-kit/bootstrap.json` (tools, venv, git_deps)
+- [x] Implement engine config phase for config check (setup.py integration)
+- [x] Remove hand-rolled hooks (sessionstart/*, stop/bootstrap-check.py, lib/)
+- [x] Add local-review-kit to installed_plugins.json and bootstrap config
+- [x] Tests for local-review-kit manifest processing
+- [x] Verify equivalent output (cached/success/failure messages)
+
+#### Part B: unreal-kit port
+
+- [x] Port unreal-kit bootstrap to manifest + script per case study
+- [x] User adds unreal-kit to additional config → bootstrap plugin installs and bootstraps it
+- [x] Manifest handles: path entries, tools, venv, ini settings, PyPI package
+- [x] Script handles: `.uproject` discovery, project-specific stub copy
+- [x] Tests for hybrid manifest+script processing and variable resolution
+
+#### Shared engine work
+
+- [x] Implement script phase in bootstrap_engine.py (import + call entry point)
+- [x] Implement ini_settings manifest processing
+- [x] Implement pypi_packages manifest processing
+- [x] Implement variable resolution (${plugin_root}, ${data_dir}, ${uproject_dir})
 
 ### Notes
 
-- This exercises the full hybrid model — manifest for standard ops, script for domain-specific logic
+- Part A is simpler (standard operations only) and validates the engine handles real workloads before Part B
+- local-review-kit has ~600 lines of hand-rolled bash bootstrap (5 sessionstart scripts, stop hook, YAML parsers, JSON formatting) that duplicates what the engine already provides
+- Part B exercises the full hybrid model — manifest for standard ops, script for domain-specific logic
 - The `ini_settings` manifest entry depends on `${uproject_dir}` — engine skips entries with unresolved variables until the script discovers the project
+- local-review-kit's Stop hook (re-validates bootstrap mid-session) is out of scope — the engine runs on SessionStart only
 
 ---
 
