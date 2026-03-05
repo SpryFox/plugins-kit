@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# create-venv.sh — Step 2 of session bootstrap
+#
+# Creates a persistent Python virtual environment from pyproject.toml
+# using uv sync. The venv is stored in plugin data (outside the cache)
+# so it survives cache refreshes.
+#
+# Usage:
+#   bash create-venv.sh <plugin-root> <plugin-data-dir>
+#
+# Output: JSON to stdout (for additionalContext integration)
+# Exit:   0 = venv ready, 1 = error
+
+# --- JSON Output Helpers ---
+# Guarded: skip if already provided by bootstrap-helpers.sh
+
+if ! declare -f json_escape >/dev/null 2>&1; then
+json_escape() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "$s"
+}
+fi
+
+_emit_venv_success() {
+    local venv_path="$1"
+    local python_exe="$2"
+    cat <<EOF
+{"status": "ok", "step": "venv", "venv_path": "$(json_escape "$venv_path")", "python_executable": "$(json_escape "$python_exe")"}
+EOF
+}
+
+_emit_venv_error() {
+    local message="$1"
+    local remediation="${2:-}"
+    local rem_field=""
+    if [ -n "$remediation" ]; then
+        rem_field=", \"remediation\": \"$(json_escape "$remediation")\""
+    fi
+    cat <<EOF
+{"status": "error", "step": "venv", "message": "$(json_escape "$message")"$rem_field}
+EOF
+}
+
+# --- OS Detection ---
+# Guarded: skip if already provided by bootstrap-helpers.sh
+
+if ! declare -f detect_os >/dev/null 2>&1; then
+detect_os() {
+    local ostype="${OSTYPE:-}"
+    if [ -n "$ostype" ]; then
+        case "$ostype" in
+            darwin*)    printf 'macos'   ; return ;;
+            linux-gnu*) printf 'ubuntu'  ; return ;;
+            msys*|cygwin*) printf 'windows'; return ;;
+        esac
+    fi
+
+    local uname_s
+    uname_s="$(uname -s 2>/dev/null || true)"
+    case "$uname_s" in
+        Darwin)  printf 'macos'   ; return ;;
+        Linux)   printf 'ubuntu'  ; return ;;
+        MINGW*|MSYS*|CYGWIN*) printf 'windows'; return ;;
+    esac
+
+    return 1
+}
+fi
+
+# --- Venv Python Resolver ---
+
+_resolve_python_exe() {
+    local venv_dir="$1"
+    local os_key
+    os_key="$(detect_os 2>/dev/null || true)"
+
+    if [ "$os_key" = "windows" ] && [ -f "${venv_dir}/Scripts/python.exe" ]; then
+        printf '%s' "${venv_dir}/Scripts/python.exe"
+    elif [ -f "${venv_dir}/bin/python" ]; then
+        printf '%s' "${venv_dir}/bin/python"
+    fi
+}
+
+# --- Tier 1: Validate Existing Venv (no uv needed) ---
+
+validate_venv() {
+    local venv_dir="$1"
+
+    # Check 1: venv directory exists
+    [ -d "$venv_dir" ] || return 1
+
+    # Check 2: Python executable exists
+    local python_exe
+    python_exe="$(_resolve_python_exe "$venv_dir")"
+    [ -n "$python_exe" ] || return 1
+
+    # Check 3: Python runs successfully
+    "$python_exe" -c "print('ok')" >/dev/null 2>&1 || return 1
+
+    # Check 4: Required packages are importable
+    "$python_exe" -c "import yaml" >/dev/null 2>&1 || return 1
+
+    return 0
+}
+
+# --- Venv Creator (Tier 1 + Tier 2) ---
+
+create_venv() {
+    local plugin_root="$1"
+    local plugin_data="$2"
+    local pyproject="${plugin_root}/pyproject.toml"
+    local venv_dir="${plugin_data}/.venv"
+
+    # Validate pyproject.toml exists
+    if [ ! -f "$pyproject" ]; then
+        _emit_venv_error "pyproject.toml not found: $pyproject"
+        return 1
+    fi
+
+    # Tier 1: Check if existing venv is functional
+    if validate_venv "$venv_dir"; then
+        local python_exe
+        python_exe="$(_resolve_python_exe "$venv_dir")"
+        _emit_venv_success "$venv_dir" "$python_exe"
+        return 0
+    fi
+
+    # Tier 2: Need uv to create/update venv
+    if ! command -v uv >/dev/null 2>&1; then
+        _emit_venv_error \
+            "uv is required to create the Python venv but is not installed" \
+            "Install uv: curl -LsSf https://astral.sh/uv/install.sh | sh"
+        return 1
+    fi
+
+    # Ensure plugin data directory exists
+    mkdir -p "$plugin_data"
+
+    # Run uv sync with redirected venv location
+    # UV_PROJECT_ENVIRONMENT tells uv where to place the venv
+    # instead of adjacent to pyproject.toml
+    local uv_output
+    if ! uv_output=$(UV_PROJECT_ENVIRONMENT="$venv_dir" uv sync \
+        --project "$plugin_root" 2>&1); then
+        _emit_venv_error "uv sync failed: $uv_output" \
+            "Run manually: UV_PROJECT_ENVIRONMENT=\"$venv_dir\" uv sync --project \"$plugin_root\""
+        return 1
+    fi
+
+    # Determine Python executable path (cross-platform)
+    local python_exe
+    python_exe="$(_resolve_python_exe "$venv_dir")"
+
+    if [ -z "$python_exe" ]; then
+        _emit_venv_error "Python executable not found in venv at $venv_dir"
+        return 1
+    fi
+
+    # Verify Python works
+    if ! "$python_exe" -c "print('ok')" >/dev/null 2>&1; then
+        _emit_venv_error "Python executable exists but failed to run: $python_exe"
+        return 1
+    fi
+
+    _emit_venv_success "$venv_dir" "$python_exe"
+    return 0
+}
+
+# --- Main ---
+# When run directly (not sourced), execute create_venv with $1 and $2
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    if [ $# -lt 2 ]; then
+        _emit_venv_error "Usage: create-venv.sh <plugin-root> <plugin-data-dir>"
+        exit 1
+    fi
+    create_venv "$1" "$2"
+fi

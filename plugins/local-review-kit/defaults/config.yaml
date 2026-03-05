@@ -1,0 +1,5 @@
+OPENAI_API_KEY: ""
+OPENROUTER_API_KEY: ""
+P4PORT: ""
+P4USER: ""
+DEFAULT_AGENT: "claude-opus"

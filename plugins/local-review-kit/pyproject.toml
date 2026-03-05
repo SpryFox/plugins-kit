@@ -1,0 +1,10 @@
+[project]
+name = "local-review-kit"
+version = "0.1.0"
+description = "Host-side dependencies for local-review-kit"
+requires-python = ">=3.11"
+
+dependencies = [
+    "code-review @ git+https://github.com/kitaekatt/code-review-research.git",
+    "pyyaml",
+]

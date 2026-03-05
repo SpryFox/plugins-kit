@@ -1,0 +1,5 @@
+git_dependencies:
+  - url: https://github.com/kitaekatt/code-review-research
+    branch: main
+    sparse_paths:
+      - agents/

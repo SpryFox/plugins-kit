@@ -1,0 +1,24 @@
+system_tools:
+  macos:
+    - name: p4
+      check: "p4"
+      install: "brew install --cask perforce"
+    - name: uv
+      check: "uv"
+      install: "curl -LsSf https://astral.sh/uv/install.sh | sh"
+
+  windows:
+    - name: p4
+      check: "p4"
+      install: "Download from https://www.perforce.com/downloads/helix-command-line-client-p4"
+    - name: uv
+      check: "uv"
+      install: "powershell -ExecutionPolicy ByPass -c \"irm https://astral.sh/uv/install.ps1 | iex\""
+
+  ubuntu:
+    - name: p4
+      check: "p4"
+      install: "Download from https://www.perforce.com/downloads/helix-command-line-client-p4"
+    - name: uv
+      check: "uv"
+      install: "curl -LsSf https://astral.sh/uv/install.sh | sh"

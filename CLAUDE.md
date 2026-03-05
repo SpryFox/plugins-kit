@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**plugins-kit** is a Claude Code plugin marketplace containing game development plugins. Currently ships one plugin: **unreal-kit**, which provides Unreal Engine Python API automation for asset inspection, reference graph traversal, script execution, and data extraction.
+**plugins-kit** is a Claude Code plugin marketplace containing development plugins for Claude Code. Currently ships one plugin: **unreal-kit**, which provides Unreal Engine Python API automation for asset inspection, reference graph traversal, script execution, and data extraction.
 
 This is a **Claude Code plugin** — it extends Claude Code with skills, commands, and hooks via the `.claude-plugin/marketplace.json` manifest. Plugins are loaded either via `--plugin-dir` (development) or `enabledPlugins` in settings (production).
 
@@ -26,6 +26,12 @@ plugins-kit/                          # Marketplace root
       .claude-plugin/plugin.json      # Plugin manifest
       bootstrap.json                  # Test plugin's bootstrap manifest
       scripts/                        # Config setup
+    local-review-kit/                 # P4/Swarm AI code review plugin
+      .claude-plugin/plugin.json      # Plugin manifest
+      hooks/sessionstart/             # 5-step bootstrap scripts
+      hooks/stop/                     # Bootstrap re-check
+      scripts/                        # Review execution + config setup
+      defaults/                       # Default config template
     unreal-kit/                       # The UE plugin
       .claude-plugin/plugin.json      # Plugin manifest
       skills/

@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "plugins-kit",
-  "description": "Game development plugins for Claude Code",
+  "description": "Development plugins for Claude Code",
   "owner": {
     "name": "kitaekatt"
   },
@@ -45,6 +45,16 @@
         "name": "Christina"
       },
       "source": "./plugins/bootstrap",
+      "category": "development"
+    },
+    {
+      "name": "local-review-kit",
+      "description": "Interactive local code review of Perforce changelists in Claude Code",
+      "version": "0.1.0",
+      "author": {
+        "name": "Christina"
+      },
+      "source": "./plugins/local-review-kit",
       "category": "development"
     }
   ]

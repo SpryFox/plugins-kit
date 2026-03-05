@@ -1,0 +1,9 @@
+{
+  "name": "local-review-kit",
+  "version": "0.1.0",
+  "description": "Interactive local code review of Perforce changelists in Claude Code",
+  "author": {
+    "name": "Christina"
+  },
+  "keywords": ["code-review", "perforce", "p4", "swarm", "ai-review"]
+}
