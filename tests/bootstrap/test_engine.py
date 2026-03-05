@@ -23,26 +23,26 @@ def run_engine(data_dir, plugin_root=BOOTSTRAP_ROOT):
 
 
 class TestEngineIntegration:
-    def test_first_run_bare_exit(self, data_dir):
+    def test_first_run_emits_log(self, data_dir):
         """All tools in the real manifest (uv, git) should be present on dev machines."""
         result = run_engine(data_dir)
         assert result.returncode == 0
-        assert result.stdout == ""  # Bare exit = no stdout
+        assert result.stdout.strip() != ""
+        response = json.loads(result.stdout)
+        assert response["continue"] is True
+        assert "bootstrap" in response["systemMessage"]
         # Cache and log should be written
         assert os.path.exists(os.path.join(data_dir, "bootstrap_cache.sha256"))
         assert os.path.exists(os.path.join(data_dir, "bootstrap.log"))
 
-    def test_cached_run_bare_exit(self, data_dir):
-        """Second run should hit cache — still bare exit."""
+    def test_cached_run_emits_log(self, data_dir):
+        """Second run should hit cache — still emits log."""
         run_engine(data_dir)  # First run populates cache
         result = run_engine(data_dir)  # Second run hits cache
         assert result.returncode == 0
-        assert result.stdout == ""
-        # Log should contain "cached" entry
-        log_path = os.path.join(data_dir, "bootstrap.log")
-        with open(log_path) as f:
-            content = f.read()
-        assert "cached" in content
+        response = json.loads(result.stdout)
+        assert response["continue"] is True
+        assert "cached" in response["systemMessage"]
 
     def test_failure_emits_json(self, data_dir, tmp_path):
         """A manifest with a fake tool should produce JSON failure output."""

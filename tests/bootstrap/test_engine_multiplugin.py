@@ -37,8 +37,8 @@ def make_fake_bootstrap_root(tmp_path, manifest=None):
 
 
 class TestMultiPluginEngine:
-    def test_no_enabled_plugins_bare_exit(self, tmp_path):
-        """Engine with no enabled plugins should bare exit after self-bootstrap."""
+    def test_no_enabled_plugins_emits_log(self, tmp_path):
+        """Engine with no enabled plugins should emit log after self-bootstrap."""
         fake_root = make_fake_bootstrap_root(tmp_path)
         data_dir = str(tmp_path / "data")
         os.makedirs(data_dir)
@@ -46,7 +46,9 @@ class TestMultiPluginEngine:
         result = run_engine(data_dir, plugin_root=fake_root)
 
         assert result.returncode == 0
-        assert result.stdout == ""
+        response = json.loads(result.stdout)
+        assert response["continue"] is True
+        assert "bootstrap" in response["systemMessage"]
 
     def test_enabled_plugin_with_tool_check(self, tmp_path):
         """Engine processes an enabled plugin's tool checks."""
@@ -89,8 +91,8 @@ class TestMultiPluginEngine:
         assert "fake_tool_xyz_999" in response["hookSpecificOutput"]["additionalContext"]
         assert "[my-test]" in response["hookSpecificOutput"]["additionalContext"]
 
-    def test_enabled_plugin_all_pass_bare_exit(self, tmp_path):
-        """Plugin with passing checks produces bare exit."""
+    def test_enabled_plugin_all_pass_emits_log(self, tmp_path):
+        """Plugin with passing checks emits log."""
         plugins_dir = tmp_path / "plugins"
         plugins_dir.mkdir()
 
@@ -120,7 +122,9 @@ class TestMultiPluginEngine:
         result = run_engine(data_dir, plugin_root=str(fake_root))
 
         assert result.returncode == 0
-        assert result.stdout == ""
+        response = json.loads(result.stdout)
+        assert response["continue"] is True
+        assert "good-plugin" in response["systemMessage"]
 
         # Plugin cache should be written in its own data dir
         plugin_data_dir = os.path.join(str(tmp_path / "data"), "good-plugin")
@@ -159,13 +163,8 @@ class TestMultiPluginEngine:
         # Second run — should hit cache for both self and plugin
         result = run_engine(data_dir, plugin_root=str(fake_root))
         assert result.returncode == 0
-        assert result.stdout == ""
-
-        # Log should contain cached entries
-        log_path = os.path.join(data_dir, "bootstrap.log")
-        with open(log_path) as f:
-            log_content = f.read()
-        assert "cached-plugin: cached" in log_content
+        response = json.loads(result.stdout)
+        assert "cached" in response["systemMessage"]
 
     def test_plugin_without_manifest_skipped(self, tmp_path):
         """Plugin with no bootstrap.json is silently skipped."""
@@ -195,7 +194,8 @@ class TestMultiPluginEngine:
         result = run_engine(data_dir, plugin_root=str(fake_root))
 
         assert result.returncode == 0
-        assert result.stdout == ""
+        response = json.loads(result.stdout)
+        assert response["continue"] is True
 
     def test_venv_failure_in_plugin(self, tmp_path):
         """Plugin with venv check that fails emits JSON with remediation."""

@@ -5,9 +5,8 @@ Usage:
     python3 bootstrap_engine.py --plugin-root /path/to/bootstrap --data-dir /path/to/data
 
 Exit behavior:
-    - Cache hit: bare exit (no stdout, exit 0)
-    - All checks pass: write cache, bare exit (no stdout, exit 0)
-    - Failures: emit hook JSON to stdout, exit 0
+    Always emits hook JSON to stdout with systemMessage showing check results.
+    On failure, additionalContext includes remediation instructions for the agent.
 """
 
 import argparse
@@ -107,9 +106,12 @@ def main():
         else:
             write_cache(plugin_data_dir, [plugin_manifest_path])
 
-    # Step 5: Handle results
+    # Step 5: Emit results — always show log to user
+    log_content = _read_session_log(data_dir)
     if all_failures:
-        emit_failure_response(all_failures, current_os)
+        emit_failure_response(all_failures, current_os, log_content)
+    else:
+        emit_success_response(log_content)
 
 
 def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, plugin_name="bootstrap"):
@@ -202,36 +204,65 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
     return failures
 
 
-def emit_failure_response(failures, current_os):
+def _read_session_log(data_dir):
+    """Read the current session's log entries (everything after the last session header)."""
+    from log import LOG_FILENAME
+    log_file = os.path.join(data_dir, LOG_FILENAME)
+    try:
+        with open(log_file, "r") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        return ""
+
+    # Find the last session header and return everything after it
+    last_header = -1
+    for i, line in enumerate(lines):
+        if line.startswith("--- Session"):
+            last_header = i
+
+    if last_header >= 0:
+        session_lines = lines[last_header:]
+    else:
+        session_lines = lines
+
+    return "".join(session_lines).rstrip("\n")
+
+
+def emit_success_response(log_content):
+    """Emit hook JSON showing bootstrap log to user."""
+    response = {
+        "continue": True,
+        "suppressOutput": False,
+        "systemMessage": f"bootstrap:\n{log_content}",
+        "hookSpecificOutput": {
+            "hookEventName": "SessionStart",
+        },
+    }
+    print(json.dumps(response))
+
+
+def emit_failure_response(failures, current_os, log_content):
     """Emit hook JSON with fix-all directives to stdout."""
     agent_lines = ["bootstrap -> Setup issues found. Fix in order:\n"]
-    user_lines = ["bootstrap -> Setup issues:\n"]
 
     for i, f in enumerate(failures, 1):
         plugin_tag = f" [{f['plugin']}]" if f.get("plugin", "bootstrap") != "bootstrap" else ""
         if f["type"] == "tool":
             agent_lines.append(f"{i}. Install {f['name']}{plugin_tag}: `{f['install_cmd'] or 'see documentation'}`")
-            user_lines.append(f"{i}. {f['name']} not installed{plugin_tag}")
         elif f["type"] == "path":
             agent_lines.append(f"{i}. Add {f['path']} to PATH{plugin_tag}")
-            user_lines.append(f"{i}. {f['path']} not in PATH{plugin_tag}")
         elif f["type"] == "venv":
             agent_lines.append(f"{i}. Setup venv{plugin_tag}: `{f['remediation_cmd']}`")
-            user_lines.append(f"{i}. Python venv needs setup{plugin_tag}")
         elif f["type"] == "git_dep":
             agent_lines.append(f"{i}. Clone {f['name']}{plugin_tag}: `{f['remediation_cmd']}`")
-            user_lines.append(f"{i}. Git dependency {f['name']} missing{plugin_tag}")
 
     agent_lines.append("\nAfter fixing, type 'fix-all' or restart Claude Code.")
-    user_lines.append("\nType 'fix-all' to remediate.")
-
     agent_msg = "\n".join(agent_lines)
-    user_msg = "\n".join(user_lines)
 
     response = {
         "continue": True,
         "suppressOutput": False,
-        "systemMessage": user_msg,
+        "systemMessage": f"bootstrap:\n{log_content}",
         "hookSpecificOutput": {
             "hookEventName": "SessionStart",
             "additionalContext": agent_msg,
