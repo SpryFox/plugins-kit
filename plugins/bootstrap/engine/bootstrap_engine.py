@@ -302,6 +302,25 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
     if venv_def:
         check_imports = venv_def.get("check_imports", [])
         result = check_venv(data_dir, plugin_root, check_imports)
+
+        if not result.passed and result.remediation_cmd:
+            # Attempt auto-remediation
+            log_entries.append(f"{prefix}venv: not ready, attempting setup")
+            import subprocess as _sp
+            venv_path = os.path.join(data_dir, ".venv")
+            env = dict(os.environ, UV_PROJECT_ENVIRONMENT=venv_path)
+            try:
+                _sp.run(
+                    result.remediation_cmd, shell=True, env=env,
+                    capture_output=True, timeout=120,
+                )
+                # Re-check after remediation
+                result = check_venv(data_dir, plugin_root, check_imports)
+                if result.passed:
+                    log_entries.append(f"{prefix}venv: created")
+            except (_sp.SubprocessError, OSError):
+                pass  # Fall through to failure handling
+
         if not result.passed or log_success:
             log_entries.append(f"{prefix}venv: {'ok' if result.passed else 'FAILED'} - {result.message}")
         if not result.passed:

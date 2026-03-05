@@ -16,7 +16,12 @@ trap '[ -z "$HOOK_OUTPUT_EMITTED" ] && echo "{\"continue\": true, \"suppressOutp
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-PLUGIN_DATA="${HOME}/.claude/plugins/data/bootstrap"
+
+# Derive marketplace name from plugin root path.
+# Works for both dev layout (~/Dev/<marketplace>/plugins/bootstrap/)
+# and cache layout (~/.claude/plugins/cache/<marketplace>/bootstrap/<version>/).
+MARKETPLACE_NAME="$(basename "$(cd "$PLUGIN_ROOT/../.." && pwd)")"
+PLUGIN_DATA="${HOME}/.claude/plugins/data/${MARKETPLACE_NAME}/bootstrap"
 
 # --- Capture hook input from stdin and record start time ---
 HOOK_INPUT=$(cat)
