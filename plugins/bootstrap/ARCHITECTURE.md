@@ -92,11 +92,30 @@ The engine collects messages from all plugin scripts and emits a unified respons
 - **Agent message** (`additionalContext`): Instructions to Claude on what needs fixing and how
 - **User message** (`systemMessage`): Human-readable summary of what needs attention
 
+## User Experience
+
+From the user's perspective, there are three possible outcomes on session start:
+
+| What the user sees | What happened |
+|--------------------|---------------|
+| Nothing | All checks passed (or cache hit) — environment is ready |
+| Nothing (first run after install) | Tool was missing, install ran silently, re-check passed — logged internally, no user-visible output |
+| Fix-all message | Something needs user action: install failed, no install command, missing config, or external app needs restart |
+
+**Healthy steady state**: The user sees nothing. Bootstrap is working correctly when it's invisible.
+
 ## Execution Flow
 
-1. **Auto-run phase**: Bootstrap runs on session start. Each plugin's script executes, using the library or custom code to check conditions and apply remediations silently.
+1. **Auto-run phase**: Bootstrap runs on session start. For each tool check, the engine runs check → remediate → re-check:
+   - Tool present → log `<name>: passed`, continue
+   - Tool missing, install command available → run install silently → re-check:
+     - Now present → log `<name>: installed`, continue (no fix-all entry)
+     - Still missing → log `<name>: FAILED - install attempted but <name> not found in PATH`, add to fix-all
+   - Tool missing, no install command → log `<name>: FAILED`, add to fix-all
 
-2. **Fix-all phase**: If any operations remain unresolved (information unknown, user action required), the engine emits:
+   This means most first-run tool installs (e.g. `uv`) succeed silently. The user never sees a fix-all message unless the install itself fails or no install command exists.
+
+2. **Fix-all phase**: Only reached if one or more operations remain unresolved after remediation attempts (install failed, user action required, information unknown). The engine emits:
    - **Agent message**: What needs fixing and how to fix it (e.g. "Ask the user where the `.uproject` file is, then write that information to `{path}` as the value of the `UPROJECT_LOCATION` variable")
    - **User message**: What needs fixing and an instruction to type `fix-all` to remediate
 
@@ -130,7 +149,7 @@ Library boundaries follow Robert C. Martin's [package cohesion principles](https
 
 | Condition | Check Method | Remediation |
 |-----------|-------------|-------------|
-| CLI tool not installed | `command -v <tool>` | Run platform-specific install command |
+| CLI tool not installed | `shutil.which(name)` | Run platform-specific install command → re-check → escalate to fix-all only if still missing |
 
 ### Library / Data
 
@@ -193,6 +212,10 @@ All bootstrap modules have automated tests at the repo level in `tests/bootstrap
 **Why repo-level**: The bootstrap engine is cross-cutting infrastructure that will orchestrate multiple plugins. Tests need to span plugin boundaries (e.g. verifying engine+plugin manifest interactions), which doesn't fit inside any single plugin's directory.
 
 **Standard**: Every new library module or engine capability must have corresponding tests before the milestone is considered complete. See [MILESTONES.md](./MILESTONES.md) for per-milestone test deliverables.
+
+## Related Documentation
+
+- [docs/bootstrapping-architecture.md](../../docs/bootstrapping-architecture.md) — Broader bootstrapping overview covering both the session bootstrap layer (this engine) and the UE script bootstrap layer
 
 ## Case Studies
 

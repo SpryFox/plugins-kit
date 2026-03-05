@@ -235,6 +235,10 @@ Script Bootstrap (inside UE Python)
 Script executes with all dependencies available
 ```
 
+## Related Documentation
+
+- [plugins/bootstrap/ARCHITECTURE.md](../plugins/bootstrap/ARCHITECTURE.md) — Bootstrap engine internals: manifest processing, remediation loop, caching, messaging protocol
+
 ## Historical Context
 
 The session bootstrap architecture was designed and implemented in February 2026. The original proposal and implementation task breakdown are preserved in `docs/historical/session-bootstrap-architecture/`.
