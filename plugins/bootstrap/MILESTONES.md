@@ -24,7 +24,7 @@ Create the bootstrap plugin itself with engine, default config, and logging.
 
 ### Notes
 
-- Logging is always on by default for easier debugging during development
+- Success logging is off by default (config v3) — output only appears on failures or remediation. Enable `log_success_shell`/`log_success_checks` in config.json for verbose output
 - The bootstrap plugin is always enabled (engine exception) — no user opt-in required
 - Self-update: when the bootstrap plugin's config schema changes, it migrates the installed config automatically
 
@@ -50,7 +50,7 @@ Port the test-plugin to use the bootstrap system and introduce user-configurable
 
 - **No Stop hook fallback**: Plugins installed during startup require a restart before they function — SessionStart hooks from the newly installed plugin don't fire until the next session. A Stop hook cannot bootstrap a plugin mid-session because the plugin's hooks aren't loaded yet. The Stop hook was removed.
 - **Cache compute/check split**: Separate hash computation (expensive) from hash comparison (cheap). `compute_current_hash()` writes a pre-computed hash file; `check_cache_fast()` compares it against the stored cache without recomputing. Available for future per-turn checks if needed.
-- **Robust Python detection + self-bootstrap**: `command -v python3` passes on Windows even for the Windows Store stub (which exits 126 and isn't a real interpreter). Detection now validates each candidate by execution. When no valid Python 3 is found, the script self-bootstraps by downloading a pinned python-build-standalone build (`cpython-3.12.9+20250317`) to `~/.claude/plugins/data/bootstrap/python/` and symlinking `~/.local/bin/python3` (already guaranteed by bootstrap's `path_entries`).
+- **Robust Python detection + self-bootstrap**: `command -v python3` passes on Windows even for the Windows Store stub (which exits 126 and isn't a real interpreter). Detection now validates each candidate by execution. When no valid Python 3 is found, the script self-bootstraps by downloading a pinned python-build-standalone build (`cpython-3.12.9+20250317`) to `~/.local/share/python-standalone/` and linking `~/.local/bin/python3`. On Windows, hard links via `New-Item -ItemType HardLink` can't find stdlib (Python resolves relative to executable path), so detection also checks the standalone install directory directly. PowerShell `New-Item` output must be redirected to `/dev/null` to avoid corrupting hook JSON output.
 
 ### Notes
 
