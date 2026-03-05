@@ -184,6 +184,16 @@ The hybrid model enables a "personal config" use case: a user who just wants to 
 
 This gives a no-code path for the most common bootstrap need: "make sure my tools are installed on every machine." No plugin directory, no manifest, no script — just a JSON file declaring what you need.
 
+## Testing
+
+All bootstrap modules have automated tests at the repo level in `tests/bootstrap/`. Tests use pytest and run via `uv run --extra dev pytest -v` from the repo root.
+
+**Structure**: Library modules get unit tests with direct imports. The engine gets integration tests that invoke `bootstrap_engine.py` as a subprocess (matching how the bash wrapper calls it). Shared fixtures in `tests/conftest.py` provide temporary data directories, manifest builders, and path helpers.
+
+**Why repo-level**: The bootstrap engine is cross-cutting infrastructure that will orchestrate multiple plugins. Tests need to span plugin boundaries (e.g. verifying engine+plugin manifest interactions), which doesn't fit inside any single plugin's directory.
+
+**Standard**: Every new library module or engine capability must have corresponding tests before the milestone is considered complete. See [MILESTONES.md](./MILESTONES.md) for per-milestone test deliverables.
+
 ## Case Studies
 
 - [test-plugin](./case-studies/test-plugin.md) — Minimal reference implementation exercising core bootstrap operations

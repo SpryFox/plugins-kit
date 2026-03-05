@@ -83,6 +83,8 @@ Scripts run inside UE's embedded Python (`import unreal`). Key patterns:
 
 ## Development Workflow
 
+**Automated tests required** — every new module or integration point must have corresponding tests in `tests/` before the work is considered complete. Tests run via `uv run --extra dev pytest -v` from the repo root. Test directories mirror the plugin structure (e.g. `tests/bootstrap/` for the bootstrap plugin). This standard was established with the bootstrap plugin's M1 test suite and applies to all subsequent development.
+
 **Always push changes** — the plugin cache (`~/.claude/plugins/cache/`) syncs from the remote repository, not the local working copy. Local edits won't take effect until committed and pushed.
 
 **Never manually sync the cache** — do not copy files directly into the plugin cache. Always commit and push, then let Claude Code refresh the cache on restart.
