@@ -17,5 +17,8 @@
       }
     }
   ],
-  "path_entries": ["~/.local/bin"]
+  "path_entries": ["~/.local/bin"],
+  "venv": {
+    "check_imports": ["yaml"]
+  }
 }

@@ -23,19 +23,33 @@ def run_engine(data_dir, plugin_root=BOOTSTRAP_ROOT):
 
 
 class TestEngineIntegration:
-    def test_first_run_silent_on_success(self, data_dir):
+    @staticmethod
+    def _make_minimal_root(tmp_path):
+        """Create a fake bootstrap root with tools only (no venv requirement)."""
+        fake_root = tmp_path / "bootstrap_minimal"
+        fake_root.mkdir()
+        (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
+        (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
+        (fake_root / "defaults").symlink_to(os.path.join(BOOTSTRAP_ROOT, "defaults"))
+        manifest = {"tools": [{"name": "git", "install": {"macos": "brew install git"}}], "path_entries": ["~/.local/bin"]}
+        (fake_root / "bootstrap.json").write_text(json.dumps(manifest))
+        return str(fake_root)
+
+    def test_first_run_silent_on_success(self, data_dir, tmp_path):
         """With log_success disabled, successful runs produce no output."""
-        result = run_engine(data_dir)
+        fake_root = self._make_minimal_root(tmp_path)
+        result = run_engine(data_dir, plugin_root=fake_root)
         assert result.returncode == 0
         # No stdout when everything succeeds and success logging is off
         assert result.stdout.strip() == ""
         # Cache and log should still be written
         assert os.path.exists(os.path.join(data_dir, "bootstrap_cache.sha256"))
 
-    def test_cached_run_silent(self, data_dir):
+    def test_cached_run_silent(self, data_dir, tmp_path):
         """Second run should hit cache — no output with success logging off."""
-        run_engine(data_dir)  # First run populates cache
-        result = run_engine(data_dir)  # Second run hits cache
+        fake_root = self._make_minimal_root(tmp_path)
+        run_engine(data_dir, plugin_root=fake_root)  # First run populates cache
+        result = run_engine(data_dir, plugin_root=fake_root)  # Second run hits cache
         assert result.returncode == 0
         assert result.stdout.strip() == ""
 

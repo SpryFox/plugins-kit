@@ -1,0 +1,58 @@
+{
+  "tools": [
+    {
+      "name": "p4",
+      "install": {
+        "macos": "brew install --cask perforce",
+        "windows": "manual",
+        "ubuntu": "manual"
+      }
+    },
+    {
+      "name": "uv",
+      "install": {
+        "macos": "curl -LsSf https://astral.sh/uv/install.sh | sh",
+        "windows": "powershell -ExecutionPolicy ByPass -c \"irm https://astral.sh/uv/install.ps1 | iex\"",
+        "ubuntu": "curl -LsSf https://astral.sh/uv/install.sh | sh"
+      }
+    }
+  ],
+  "venv": {
+    "check_imports": []
+  },
+  "git_deps": [
+    {
+      "url": "https://github.com/kitaekatt/code-review-research",
+      "branch": "main",
+      "sparse_paths": ["agents/"]
+    }
+  ],
+  "config": {
+    "file": "config.yaml",
+    "defaults_source": "defaults/config.yaml",
+    "required_fields": {
+      "P4PORT": {
+        "user_msg": "Perforce server address (e.g. ssl:perforce:1666)",
+        "agent_msg": "Ask the user for their Perforce server address and write it to {config_path} as the P4PORT field"
+      },
+      "P4USER": {
+        "user_msg": "Perforce username",
+        "agent_msg": "Ask the user for their Perforce username and write it to {config_path} as the P4USER field"
+      },
+      "OPENAI_API_KEY": {
+        "user_msg": "OpenAI API key (set 'none' if not used)",
+        "agent_msg": "Ask the user for their OpenAI API key. 'none' is acceptable. Write to {config_path} as OPENAI_API_KEY"
+      },
+      "OPENROUTER_API_KEY": {
+        "user_msg": "OpenRouter API key (set 'none' if not used)",
+        "agent_msg": "Ask the user for their OpenRouter API key. 'none' is acceptable. Write to {config_path} as OPENROUTER_API_KEY"
+      },
+      "DEFAULT_AGENT": {
+        "user_msg": "Default review agent",
+        "agent_msg": "Ask the user which agent to use for reviews. Write to {config_path} as DEFAULT_AGENT",
+        "default": "claude-opus"
+      }
+    },
+    "autodetect": "custom_bootstrap.py autodetect"
+  }
+}

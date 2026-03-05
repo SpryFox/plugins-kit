@@ -71,6 +71,9 @@ def main():
         else:
             write_cache(data_dir, [manifest_path])
 
+    # Step 3b: Activate bootstrap venv site-packages so PyYAML is available
+    _activate_bootstrap_venv(data_dir)
+
     # Step 4: Process enabled plugins
     # Compute marketplace root: bootstrap is at <marketplace>/plugins/bootstrap
     plugins_dir = os.path.dirname(plugin_root)
@@ -88,14 +91,25 @@ def main():
         )
         os.makedirs(plugin_data_dir, exist_ok=True)
 
+        with open(plugin_manifest_path, "r") as f:
+            plugin_manifest = json.load(f)
+
+        # Config phase runs outside the cache gate (config can change between sessions)
+        config_section = plugin_manifest.get("config")
+        if config_section:
+            config_failures = _process_config(
+                config_section, plugin_data_dir, plugin_info.install_path,
+                all_log_entries, plugin_name=plugin_info.name,
+            )
+            if config_failures:
+                all_failures.extend(config_failures)
+
+        # Cache gate for tools/venv/git_deps
         compute_current_hash(plugin_data_dir, [plugin_manifest_path])
         if check_cache(plugin_data_dir, [plugin_manifest_path]):
             if log_success:
                 all_log_entries.append(f"{plugin_info.name}: cached")
             continue
-
-        with open(plugin_manifest_path, "r") as f:
-            plugin_manifest = json.load(f)
 
         log_entries = []
         failures = _process_manifest(
@@ -120,6 +134,88 @@ def main():
     elif log_content:
         emit_success_response(log_content)
     # else: nothing to show — silent exit
+
+
+def _activate_bootstrap_venv(data_dir):
+    """Add bootstrap venv site-packages to sys.path so PyYAML is importable."""
+    import glob as globmod
+    venv_path = os.path.join(data_dir, ".venv")
+    # Look for site-packages in both Unix and Windows layouts
+    patterns = [
+        os.path.join(venv_path, "lib", "python*", "site-packages"),
+        os.path.join(venv_path, "Lib", "site-packages"),
+    ]
+    for pattern in patterns:
+        matches = globmod.glob(pattern)
+        for sp in matches:
+            if sp not in sys.path:
+                sys.path.insert(0, sp)
+
+
+def _process_config(config_section, plugin_data_dir, plugin_root, log_entries, plugin_name=""):
+    """Process the config section of a plugin manifest.
+
+    Runs outside the cache gate — config can change between sessions.
+    Returns list of failures (missing config fields).
+    """
+    from config_check import config_init, config_validate, run_autodetect, load_yaml_config, save_yaml_config
+
+    config_file = config_section["file"]
+    defaults_source = config_section.get("defaults_source")
+
+    # 1. Config init: copy defaults if config doesn't exist
+    if defaults_source:
+        config_path = config_init(plugin_data_dir, plugin_root, defaults_source, config_file)
+    else:
+        config_path = os.path.join(plugin_data_dir, config_file)
+
+    if not os.path.isfile(config_path):
+        return []
+
+    # 2. Load config
+    config = load_yaml_config(config_path)
+
+    required_fields = config_section.get("required_fields", {})
+
+    # 3. Autodetect (optional): run only when at least one required field is empty
+    autodetect_spec = config_section.get("autodetect")
+    if autodetect_spec and required_fields:
+        has_empty = any(not config.get(f) for f in required_fields)
+        if has_empty:
+            try:
+                changed = run_autodetect(plugin_root, autodetect_spec, config, config_path)
+                if changed:
+                    save_yaml_config(config_path, config)
+                    log_entries.append(f"{plugin_name}: config autodetect updated values")
+            except Exception:
+                pass  # Autodetect errors are non-fatal
+
+    # 4. Validate required fields (apply defaults, collect missing)
+    config, missing = config_validate(config, required_fields, config_path)
+
+    # Write back if defaults were applied
+    if any(f.get("default") is not None for f in required_fields.values()):
+        # Re-check if any defaults were actually applied (config may have changed)
+        current_on_disk = load_yaml_config(config_path)
+        if config != current_on_disk:
+            save_yaml_config(config_path, config)
+
+    if not missing:
+        log_entries.append(f"{plugin_name}: config ok")
+        return []
+
+    # 5. Fix-all: aggregate missing fields into failure directives
+    failures = []
+    for m in missing:
+        failures.append({
+            "type": "config",
+            "field": m["field"],
+            "user_msg": m["user_msg"],
+            "agent_msg": m["agent_msg"],
+            "plugin": plugin_name,
+        })
+
+    return failures
 
 
 def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, plugin_name="bootstrap", log_success=True):
@@ -314,6 +410,8 @@ def emit_failure_response(failures, current_os, log_content):
             agent_lines.append(f"{i}. Setup venv{plugin_tag}: `{f['remediation_cmd']}`")
         elif f["type"] == "git_dep":
             agent_lines.append(f"{i}. Clone {f['name']}{plugin_tag}: `{f['remediation_cmd']}`")
+        elif f["type"] == "config":
+            agent_lines.append(f"{i}. {f['agent_msg']}{plugin_tag}")
 
     agent_lines.append("\nAfter fixing, type 'fix-all' or restart Claude Code.")
     agent_msg = "\n".join(agent_lines)
