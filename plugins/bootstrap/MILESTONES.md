@@ -42,6 +42,12 @@ Port the test-plugin to use the bootstrap system and introduce user-configurable
 - [x] Bootstrap plugin updates its own config when out of date
 - [x] Tests for additional config loading and test-plugin manifest processing
 
+### Discovered Requirements
+
+- **Stop hook as bootstrap fallback**: When a plugin is installed during startup, SessionStart has already fired. The Stop hook must also run the full bootstrap engine (not just detect-and-block) to handle first-session installs.
+- **Cache compute/check split**: Separate hash computation (expensive) from hash comparison (cheap). SessionStart computes once; Stop checks cheaply with fallback compute if SessionStart was missed.
+- **Lazy imports**: Stop hook loads only `cache` module on the fast path (cache hit). All other bootstrap imports deferred until cache miss confirmed.
+
 ### Notes
 
 - The additional config is how users opt in to bootstrapping plugins beyond the defaults

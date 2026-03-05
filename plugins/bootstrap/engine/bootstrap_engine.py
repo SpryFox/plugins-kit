@@ -30,7 +30,7 @@ def main():
     sys.path.insert(0, os.path.join(plugin_root, "engine"))
 
     from config import load_config
-    from cache import check_cache, write_cache
+    from cache import check_cache, write_cache, compute_current_hash
     from log import write_log
     from tool_check import check_tool
     from path_check import check_path_entry
@@ -43,8 +43,9 @@ def main():
     defaults_dir = os.path.join(plugin_root, "defaults")
     config = load_config(data_dir, defaults_dir)
 
-    # Step 2: Check cache (self-bootstrap only)
+    # Step 2: Compute current hash + check cache (self-bootstrap only)
     manifest_path = os.path.join(plugin_root, "bootstrap.json")
+    compute_current_hash(data_dir, [manifest_path])
     self_cached = check_cache(data_dir, [manifest_path])
     if self_cached:
         write_log(data_dir, ["bootstrap: cached"])
@@ -83,6 +84,7 @@ def main():
         )
         os.makedirs(plugin_data_dir, exist_ok=True)
 
+        compute_current_hash(plugin_data_dir, [plugin_manifest_path])
         if check_cache(plugin_data_dir, [plugin_manifest_path]):
             write_log(data_dir, [f"{plugin_info.name}: cached"])
             continue

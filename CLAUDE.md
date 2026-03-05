@@ -15,6 +15,18 @@ plugins-kit/                          # Marketplace root
   .claude-plugin/marketplace.json     # Marketplace manifest (lists all plugins)
   plugins/
     installed_plugins.json            # Plugin registry
+    bootstrap/                        # Bootstrap plugin (always enabled)
+      .claude-plugin/plugin.json      # Plugin manifest
+      bootstrap.json                  # Bootstrap plugin's own manifest
+      engine/                         # Bootstrap engine + config
+      lib/                            # Shared libraries (cache, tool_check, etc.)
+      hooks/sessionstart/             # SessionStart hook (bash wrapper)
+      defaults/                       # Default config files
+    test-plugin/                      # Test plugin (exercises bootstrap system)
+      .claude-plugin/plugin.json      # Plugin manifest
+      bootstrap.json                  # Test plugin's bootstrap manifest
+      hooks/stop/                     # Stop hook (fallback bootstrap)
+      scripts/                        # Config setup
     unreal-kit/                       # The UE plugin
       .claude-plugin/plugin.json      # Plugin manifest
       skills/
@@ -26,6 +38,29 @@ plugins-kit/                          # Marketplace root
           stubs/                      # UE Python API stubs (generated, gitignored)
           references/                 # Detailed docs loaded conditionally by SKILL.md
 ```
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `plugins/bootstrap/engine/bootstrap_engine.py` | Main engine — processes manifests, runs checks, emits hook JSON |
+| `plugins/bootstrap/lib/cache.py` | Content-hash caching (compute, check, write) |
+| `plugins/bootstrap/lib/tool_check.py` | System tool availability checks |
+| `plugins/bootstrap/lib/platform_detect.py` | OS detection |
+| `plugins/bootstrap/lib/log.py` | File-based bootstrap logging |
+| `plugins/bootstrap/lib/venv_check.py` | Python venv validation |
+| `plugins/bootstrap/lib/git_dep_check.py` | Git dependency validation |
+| `plugins/bootstrap/lib/plugin_resolve.py` | Plugin registry resolution |
+| `plugins/bootstrap/lib/path_check.py` | PATH entry validation |
+| `plugins/bootstrap/engine/config.py` | Config loading, migration, persistence |
+| `plugins/bootstrap/hooks/sessionstart/session-bootstrap.sh` | SessionStart hook (bash wrapper for engine) |
+| `plugins/bootstrap/bootstrap.json` | Bootstrap plugin's own manifest |
+| `plugins/bootstrap/ARCHITECTURE.md` | Bootstrap system architecture |
+| `plugins/bootstrap/MILESTONES.md` | Development milestones and progress |
+| `plugins/test-plugin/hooks/stop/bootstrap-check.py` | Stop hook — fallback bootstrap for late installs |
+| `plugins/test-plugin/bootstrap.json` | Test plugin's bootstrap manifest |
+| `plugins/test-plugin/scripts/setup.py` | Test plugin config setup |
+| `tests/bootstrap/` | All bootstrap tests (mirrors lib/ structure) |
 
 ### Key Design Decisions
 
@@ -88,6 +123,8 @@ Scripts run inside UE's embedded Python (`import unreal`). Key patterns:
 **Always push changes** — the plugin cache (`~/.claude/plugins/cache/`) syncs from the remote repository, not the local working copy. Local edits won't take effect until committed and pushed.
 
 **Never manually sync the cache** — do not copy files directly into the plugin cache. Always commit and push, then let Claude Code refresh the cache on restart.
+
+**Keep architecture docs current** — when modifying bootstrap behavior, update `plugins/bootstrap/ARCHITECTURE.md` and `docs/bootstrapping-architecture.md` to reflect the changes. These are the source of truth for how the system works.
 
 **Plan non-trivial tasks**: Before implementing any non-trivial task:
 1. Enter plan mode (EnterPlanMode)
