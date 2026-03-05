@@ -31,7 +31,7 @@ done
 if [ -z "$PYTHON" ]; then
     PY_VERSION="3.12.9"
     RELEASE_TAG="20250317"
-    INSTALL_DIR="${PLUGIN_DATA}/python"
+    INSTALL_DIR="${HOME}/.local/share/python-standalone"
 
     # Detect platform
     OS="$(uname -s)"
