@@ -3,62 +3,58 @@
 import os
 import re
 
-from log import LOG_FILENAME, MAX_LOG_LINES, write_log, write_session_header
+from log import LOG_FILENAME, MAX_LOG_LINES, write_log_block
 
 
-class TestWriteLog:
+class TestWriteLogBlock:
     def test_creates_log_file(self, data_dir):
-        write_log(data_dir, ["test entry"])
+        write_log_block(data_dir, "Test", ["test entry"])
         log_path = os.path.join(data_dir, LOG_FILENAME)
         assert os.path.exists(log_path)
 
-    def test_appends_entries(self, data_dir):
-        write_log(data_dir, ["first"])
-        write_log(data_dir, ["second"])
+    def test_writes_header_and_entries(self, data_dir):
+        write_log_block(data_dir, "Engine", ["first", "second"])
         log_path = os.path.join(data_dir, LOG_FILENAME)
         with open(log_path) as f:
             lines = f.readlines()
-        assert len(lines) == 2
-        assert "first" in lines[0]
-        assert "second" in lines[1]
+        assert len(lines) == 3
+        assert lines[0].startswith("--- Engine ")
+        assert lines[0].strip().endswith(" ---")
+        assert "first" in lines[1]
+        assert "second" in lines[2]
 
     def test_entries_have_timestamps(self, data_dir):
-        write_log(data_dir, ["timestamped"])
+        write_log_block(data_dir, "Engine", ["timestamped"])
         log_path = os.path.join(data_dir, LOG_FILENAME)
         with open(log_path) as f:
-            line = f.readline()
-        # ISO 8601 UTC: [2024-01-15T12:00:00Z]
-        assert re.match(r"\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\]", line)
+            lines = f.readlines()
+        # Second line is the entry (first is header)
+        assert re.match(r"\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\]", lines[1])
 
-    def test_session_header_written(self, data_dir):
-        write_session_header(data_dir)
-        log_path = os.path.join(data_dir, LOG_FILENAME)
-        with open(log_path) as f:
-            line = f.readline()
-        assert line.startswith("--- Session ")
-        assert line.strip().endswith(" ---")
-
-    def test_session_header_separates_runs(self, data_dir):
-        write_session_header(data_dir)
-        write_log(data_dir, ["entry one"])
-        write_session_header(data_dir)
-        write_log(data_dir, ["entry two"])
+    def test_separate_blocks_have_separate_headers(self, data_dir):
+        write_log_block(data_dir, "Shell", ["entry one"])
+        write_log_block(data_dir, "Engine", ["entry two"])
         log_path = os.path.join(data_dir, LOG_FILENAME)
         with open(log_path) as f:
             lines = f.readlines()
         assert len(lines) == 4
-        assert lines[0].startswith("--- Session ")
+        assert lines[0].startswith("--- Shell ")
         assert "entry one" in lines[1]
-        assert lines[2].startswith("--- Session ")
+        assert lines[2].startswith("--- Engine ")
         assert "entry two" in lines[3]
 
+    def test_empty_entries_noop(self, data_dir):
+        write_log_block(data_dir, "Engine", [])
+        log_path = os.path.join(data_dir, LOG_FILENAME)
+        assert not os.path.exists(log_path)
+
     def test_trims_at_max_lines(self, data_dir):
-        # Write more than MAX_LOG_LINES
+        # Write more than MAX_LOG_LINES across multiple blocks
         for i in range(MAX_LOG_LINES + 50):
-            write_log(data_dir, [f"entry-{i}"])
+            write_log_block(data_dir, "Test", [f"entry-{i}"])
         log_path = os.path.join(data_dir, LOG_FILENAME)
         with open(log_path) as f:
             lines = f.readlines()
         assert len(lines) <= MAX_LOG_LINES
-        # Oldest entries should be trimmed, newest kept
+        # Newest entries should be kept
         assert "entry-" in lines[-1]

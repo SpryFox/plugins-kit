@@ -11,12 +11,30 @@ PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PLUGIN_DATA="${HOME}/.claude/plugins/data/bootstrap"
 
 # --- Logging ---
+# Collect entries in memory; write as a block at the end (with header) only if non-empty.
+SHELL_LOG_ENTRIES=()
+
 log_entry() {
     local msg="$1"
     local ts
     ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "unknown-time")"
+    SHELL_LOG_ENTRIES+=("[$ts] $msg")
+}
+
+flush_log() {
+    # Write collected entries as a block with a "Shell" header, only if non-empty.
+    if [ ${#SHELL_LOG_ENTRIES[@]} -eq 0 ]; then
+        return
+    fi
+    local ts
+    ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "unknown-time")"
     mkdir -p "$PLUGIN_DATA"
-    echo "[$ts] $msg" >> "$PLUGIN_DATA/bootstrap.log"
+    {
+        echo "--- Shell $ts ---"
+        for entry in "${SHELL_LOG_ENTRIES[@]}"; do
+            echo "$entry"
+        done
+    } >> "$PLUGIN_DATA/bootstrap.log"
 }
 
 # --- Read log_success_shell from config (pre-Python, so use grep) ---
@@ -82,6 +100,7 @@ if [ -z "$PYTHON" ]; then
         TRIPLE="x86_64-pc-windows-msvc"
     else
         log_entry "python3: FAILED - unsupported platform for auto-install ($OS)"
+        flush_log
         cat <<'EOF'
 {"continue": true, "suppressOutput": false, "systemMessage": "bootstrap -> python3 not found and platform not supported for auto-install. Install Python 3 manually.", "hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "bootstrap -> CRITICAL: python3 not found. Unsupported platform for auto-install. Install Python 3.x manually."}}
 EOF
@@ -97,6 +116,7 @@ EOF
     mkdir -p "$INSTALL_DIR"
     if ! curl -LsSf "$URL" | tar xz -C "$INSTALL_DIR" 2>/dev/null; then
         log_entry "python3: FAILED - download error"
+        flush_log
         cat <<'EOF'
 {"continue": true, "suppressOutput": false, "systemMessage": "bootstrap -> python3 not found and auto-install failed (download error). Install Python 3 manually.", "hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "bootstrap -> CRITICAL: python3 not found. Auto-install download failed. Install Python 3.x manually."}}
 EOF
@@ -118,6 +138,9 @@ EOF
         log_entry "python3: installed $PYTHON, linked to ~/.local/bin/python3"
     fi
 fi
+
+# --- Flush shell log entries (if any) before handing off to engine ---
+flush_log
 
 # --- Invoke Engine ---
 

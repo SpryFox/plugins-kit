@@ -36,8 +36,12 @@ class TestEngineIntegration:
         assert os.path.exists(os.path.join(data_dir, "bootstrap.log"))
 
     def test_cached_run_emits_log(self, data_dir):
-        """Second run should hit cache — still emits log."""
+        """Second run should hit cache — emits 'cached' in new log entries."""
         run_engine(data_dir)  # First run populates cache
+        # Clear the display marker so second run's entries are "new"
+        marker_path = os.path.join(data_dir, "last_displayed_at")
+        if os.path.exists(marker_path):
+            os.remove(marker_path)
         result = run_engine(data_dir)  # Second run hits cache
         assert result.returncode == 0
         response = json.loads(result.stdout)

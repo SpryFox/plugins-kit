@@ -9,44 +9,32 @@ LOG_FILENAME = "bootstrap.log"
 MAX_LOG_LINES = 500
 
 
-def write_session_header(data_dir: str) -> None:
-    """Write a session separator line to bootstrap.log.
+def write_log_block(data_dir: str, header_label: str, entries: List[str]) -> None:
+    """Write a header + timestamped log entries as an atomic block.
 
-    Called once at the start of each engine run so sessions are visually
-    distinct when tailing the log across multiple Claude Code startups.
-
-    Args:
-        data_dir: Directory containing the log file
-    """
-    os.makedirs(data_dir, exist_ok=True)
-    log_file = os.path.join(data_dir, LOG_FILENAME)
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    with open(log_file, "a") as f:
-        f.write(f"--- Session {timestamp} ---\n")
-    _trim_log(log_file)
-
-
-def write_log(data_dir: str, entries: List[str]) -> None:
-    """Append timestamped log entries to bootstrap.log.
+    Only call this when entries is non-empty. Writes a section header
+    followed by the timestamped entries, then trims the log if needed.
 
     Args:
         data_dir: Directory containing the log file
-        entries: List of log messages to append
+        header_label: Label for the section header (e.g. "Shell", "Engine")
+        entries: List of log messages to append (must be non-empty)
     """
+    if not entries:
+        return
+
     os.makedirs(data_dir, exist_ok=True)
     log_file = os.path.join(data_dir, LOG_FILENAME)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    lines = []
+    lines = [f"--- {header_label} {timestamp} ---\n"]
     for entry in entries:
         lines.append(f"[{timestamp}] {entry}\n")
 
-    # Append to log
     with open(log_file, "a") as f:
         f.writelines(lines)
 
-    # Trim if too long
     _trim_log(log_file)
 
 

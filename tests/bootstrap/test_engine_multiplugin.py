@@ -46,9 +46,8 @@ class TestMultiPluginEngine:
         result = run_engine(data_dir, plugin_root=fake_root)
 
         assert result.returncode == 0
-        response = json.loads(result.stdout)
-        assert response["continue"] is True
-        assert "bootstrap" in response["systemMessage"]
+        # Empty manifest = no checks = no log entries = silent exit
+        assert result.stdout == ""
 
     def test_enabled_plugin_with_tool_check(self, tmp_path):
         """Engine processes an enabled plugin's tool checks."""
@@ -160,11 +159,17 @@ class TestMultiPluginEngine:
         # First run
         run_engine(data_dir, plugin_root=str(fake_root))
 
-        # Second run — should hit cache for both self and plugin
+        # Second run — hits cache, but entries already displayed → silent
         result = run_engine(data_dir, plugin_root=str(fake_root))
         assert result.returncode == 0
-        response = json.loads(result.stdout)
-        assert "cached" in response["systemMessage"]
+        # All entries were already displayed on first run
+        assert result.stdout == ""
+
+        # Verify cache entries are in the log file
+        log_path = os.path.join(data_dir, "bootstrap.log")
+        with open(log_path) as f:
+            log_content = f.read()
+        assert "cached-plugin: cached" in log_content
 
     def test_plugin_without_manifest_skipped(self, tmp_path):
         """Plugin with no bootstrap.json is silently skipped."""
@@ -194,8 +199,8 @@ class TestMultiPluginEngine:
         result = run_engine(data_dir, plugin_root=str(fake_root))
 
         assert result.returncode == 0
-        response = json.loads(result.stdout)
-        assert response["continue"] is True
+        # Plugin with no manifest is skipped — nothing to log → silent exit
+        assert result.stdout == ""
 
     def test_venv_failure_in_plugin(self, tmp_path):
         """Plugin with venv check that fails emits JSON with remediation."""

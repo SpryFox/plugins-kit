@@ -5,8 +5,9 @@ Usage:
     python3 bootstrap_engine.py --plugin-root /path/to/bootstrap --data-dir /path/to/data
 
 Exit behavior:
-    Always emits hook JSON to stdout with systemMessage showing check results.
+    Emits hook JSON to stdout with systemMessage showing new log entries.
     On failure, additionalContext includes remediation instructions for the agent.
+    Silent exit (no stdout) when there are no new log entries to display.
 """
 
 import argparse
@@ -30,16 +31,13 @@ def main():
 
     from config import load_config
     from cache import check_cache, write_cache, compute_current_hash
-    from log import write_log, write_session_header
+    from log import write_log_block
     from tool_check import check_tool
     from path_check import check_path_entry
     from platform_detect import detect_os
     from plugin_resolve import list_enabled_plugins
     from venv_check import check_venv
     from git_dep_check import check_git_dep
-
-    # Write session separator (one line per engine run, helps reading multi-session logs)
-    write_session_header(data_dir)
 
     # Step 1: Load/migrate config
     defaults_dir = os.path.join(plugin_root, "defaults")
@@ -49,21 +47,23 @@ def main():
     manifest_path = os.path.join(plugin_root, "bootstrap.json")
     compute_current_hash(data_dir, [manifest_path])
     self_cached = check_cache(data_dir, [manifest_path])
-    if self_cached:
-        write_log(data_dir, ["bootstrap: cached"])
 
     current_os = detect_os()
     log_success = config.get("log_success_checks", True)
     all_failures = []
+    all_log_entries = []
 
     # Step 3: Self-bootstrap (own manifest)
-    if not self_cached:
+    if self_cached:
+        if log_success:
+            all_log_entries.append("bootstrap: cached")
+    else:
         with open(manifest_path, "r") as f:
             manifest = json.load(f)
 
         log_entries = []
         failures = _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, log_success=log_success)
-        write_log(data_dir, log_entries)
+        all_log_entries.extend(log_entries)
 
         if failures:
             all_failures.extend(failures)
@@ -89,7 +89,8 @@ def main():
 
         compute_current_hash(plugin_data_dir, [plugin_manifest_path])
         if check_cache(plugin_data_dir, [plugin_manifest_path]):
-            write_log(data_dir, [f"{plugin_info.name}: cached"])
+            if log_success:
+                all_log_entries.append(f"{plugin_info.name}: cached")
             continue
 
         with open(plugin_manifest_path, "r") as f:
@@ -100,19 +101,24 @@ def main():
             plugin_manifest, current_os, plugin_data_dir, plugin_info.install_path, log_entries,
             plugin_name=plugin_info.name, log_success=log_success,
         )
-        write_log(data_dir, [f"{plugin_info.name}: {e}" for e in log_entries])
+        all_log_entries.extend(f"{plugin_info.name}: {e}" for e in log_entries)
 
         if failures:
             all_failures.extend(failures)
         else:
             write_cache(plugin_data_dir, [plugin_manifest_path])
 
-    # Step 5: Emit results — always show log to user
-    log_content = _read_session_log(data_dir)
+    # Step 5: Write log block (header + entries) only if we have entries
+    if all_log_entries:
+        write_log_block(data_dir, "Engine", all_log_entries)
+
+    # Step 6: Emit results — show new log entries to user (since last display)
+    log_content = _read_new_log_entries(data_dir)
     if all_failures:
         emit_failure_response(all_failures, current_os, log_content)
-    else:
+    elif log_content:
         emit_success_response(log_content)
+    # else: nothing to show — silent exit
 
 
 def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, plugin_name="bootstrap", log_success=True):
@@ -210,28 +216,74 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
     return failures
 
 
-def _read_session_log(data_dir):
-    """Read the current session's log entries (everything after the last session header)."""
+def _read_new_log_entries(data_dir):
+    """Read log entries since the last time we displayed them.
+
+    Uses a 'last_displayed_at' file to track the timestamp of the last display.
+    After reading, updates the timestamp so the next call only shows new entries.
+    """
     from log import LOG_FILENAME
     log_file = os.path.join(data_dir, LOG_FILENAME)
+    marker_file = os.path.join(data_dir, "last_displayed_at")
+
     try:
         with open(log_file, "r") as f:
             lines = f.readlines()
     except FileNotFoundError:
         return ""
 
-    # Find the last session header and return everything after it
-    last_header = -1
-    for i, line in enumerate(lines):
-        if line.startswith("--- Session"):
-            last_header = i
+    # Read last-displayed timestamp
+    last_displayed = ""
+    try:
+        with open(marker_file, "r") as f:
+            last_displayed = f.read().strip()
+    except FileNotFoundError:
+        pass
 
-    if last_header >= 0:
-        session_lines = lines[last_header:]
-    else:
-        session_lines = lines
+    # Filter to entries after the last-displayed timestamp
+    new_lines = []
+    for line in lines:
+        # Extract timestamp from lines like "[2026-03-05T18:47:24Z] ..."
+        # or include header lines like "--- Shell 2026-03-05T18:47:24Z ---"
+        ts = _extract_timestamp(line)
+        if ts and last_displayed and ts <= last_displayed:
+            continue
+        new_lines.append(line)
 
-    return "".join(session_lines).rstrip("\n")
+    if not new_lines:
+        return ""
+
+    # Update the marker to the latest timestamp in the log
+    latest_ts = ""
+    for line in reversed(lines):
+        ts = _extract_timestamp(line)
+        if ts:
+            latest_ts = ts
+            break
+    if latest_ts:
+        os.makedirs(data_dir, exist_ok=True)
+        with open(marker_file, "w") as f:
+            f.write(latest_ts)
+
+    return "".join(new_lines).rstrip("\n")
+
+
+def _extract_timestamp(line):
+    """Extract ISO timestamp from a log line.
+
+    Handles both formats:
+        [2026-03-05T18:47:24Z] message...
+        --- Shell 2026-03-05T18:47:24Z ---
+    Returns the timestamp string or empty string.
+    """
+    line = line.strip()
+    if line.startswith("[") and "]" in line:
+        return line[1:line.index("]")]
+    if line.startswith("---") and line.endswith("---"):
+        parts = line.split()
+        if len(parts) >= 3:
+            return parts[-2]
+    return ""
 
 
 def emit_success_response(log_content):
