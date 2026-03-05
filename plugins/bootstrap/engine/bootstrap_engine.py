@@ -439,9 +439,26 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
             continue
 
         from plugin_lifecycle import check_plugin_registered, check_plugin_enabled
-        # Determine paths from engine context
+        from plugin_resolve import parse_plugin_ref
+
+        # Determine registry path — use global registry for cross-marketplace refs
+        ref_marketplace, _ = parse_plugin_ref(plugin_ref)
         plugins_dir = os.path.dirname(plugin_root)
-        reg_path = os.path.join(plugins_dir, "installed_plugins.json")
+        local_reg_path = os.path.join(plugins_dir, "installed_plugins.json")
+
+        # Detect current marketplace name from the plugins dir path
+        current_marketplace = os.path.basename(os.path.dirname(plugins_dir))
+        # For plugin cache layout: ~/.claude/plugins/cache/<marketplace>/<plugin>/
+        # For dev layout: ~/Dev/<marketplace>/plugins/
+        # The marketplace name is the grandparent of plugins_dir in cache,
+        # or the parent dir name in dev layout. We check if the ref's marketplace
+        # matches by comparing against the local registry content.
+        if ref_marketplace and ref_marketplace != _detect_marketplace_name(plugins_dir):
+            # Cross-marketplace ref — use global Claude Code registry
+            reg_path = os.path.expanduser("~/.claude/plugins/installed_plugins.json")
+        else:
+            reg_path = local_reg_path
+
         config_path = os.path.join(os.path.dirname(data_dir), "bootstrap", "config.json")
 
         reg_result = check_plugin_registered(reg_path, plugin_ref)
@@ -497,6 +514,26 @@ def _load_plugin_config(data_dir):
     except Exception:
         pass
     return {}
+
+
+def _detect_marketplace_name(plugins_dir):
+    """Detect the marketplace name from the plugins directory path.
+
+    Works for both dev layout (~/Dev/<marketplace>/plugins/) and
+    cache layout (~/.claude/plugins/cache/<marketplace>/<plugin>/).
+    Falls back to reading installed_plugins.json keys for the marketplace name.
+    """
+    reg_path = os.path.join(plugins_dir, "installed_plugins.json")
+    try:
+        with open(reg_path, "r") as f:
+            registry = json.load(f)
+        for ref in registry.get("plugins", {}):
+            if ":" in ref:
+                return ref.split(":", 1)[0]
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        pass
+    # Fallback: parent directory name
+    return os.path.basename(os.path.dirname(plugins_dir))
 
 
 def _run_script_phase(script_def, plugin_root, data_dir, config, log_entries, prefix="", plugin_name=""):

@@ -41,6 +41,6 @@ plugins/installed_plugins.json      ← {"version": 2, "plugins": {}}
 **State after Phase 2**:
 ```
 plugins/cache/plugins-kit/bootstrap/0.1.0/   ← plugin files cached
-plugins/installed_plugins.json               ← bootstrap@plugins-kit entry
+plugins/installed_plugins.json               ← plugins-kit:bootstrap entry
 ~/.local/share/python-standalone/            ← standalone Python runtime (~3500 files)
 ```

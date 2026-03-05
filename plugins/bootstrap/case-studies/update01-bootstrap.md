@@ -9,7 +9,7 @@ Marketplace sync and plugin cache refresh. Currently lives in its own marketplac
 | Category | Condition | Check Method | Remediation |
 |----------|-----------|-------------|-------------|
 | Configuration | Known marketplaces JSON lacks expected entries | Compare reference `known_marketplaces.json` against `~/.claude/plugins/known_marketplaces.json` | Additive JSON merge (add missing entries, update `source`/`autoUpdate`, preserve runtime fields) |
-| Plugin | Plugin out of date (`unreal-kit@plugins-kit`) | Time-based throttle (16 hours) | `claude plugin update --scope <scope> unreal-kit@plugins-kit` |
+| Plugin | Plugin out of date (`plugins-kit:unreal-kit`) | Time-based throttle (16 hours) | `claude plugin update --scope <scope> plugins-kit:unreal-kit` |
 
 ### Manual
 
@@ -30,7 +30,7 @@ All operations are expressible as manifest entries — no bootstrap script neede
     }
   ],
   "plugins": [
-    {"ref": "unreal-kit@plugins-kit", "enabled": true}
+    {"ref": "plugins-kit:unreal-kit", "enabled": true}
   ]
 }
 ```

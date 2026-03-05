@@ -11,12 +11,24 @@ class PluginInfo(NamedTuple):
     version: str
 
 
+def parse_plugin_ref(plugin_ref: str) -> tuple:
+    """Parse a plugin ref into (marketplace, plugin_name).
+
+    Format: 'marketplace:plugin' (e.g. 'plugins-kit:bootstrap').
+    Returns ('', plugin_ref) if no colon separator found.
+    """
+    if ":" in plugin_ref:
+        marketplace, plugin_name = plugin_ref.split(":", 1)
+        return marketplace, plugin_name
+    return "", plugin_ref
+
+
 def resolve_plugin(registry_path: str, plugin_ref: str, base_dir: str) -> Optional[PluginInfo]:
     """Resolve a plugin reference to its install path.
 
     Args:
         registry_path: Path to installed_plugins.json
-        plugin_ref: Plugin key (e.g. "test-plugin@plugins-kit")
+        plugin_ref: Plugin key (e.g. "plugins-kit:test-plugin")
         base_dir: Base directory for resolving relative paths (the plugins/ dir)
 
     Returns:
@@ -43,8 +55,8 @@ def resolve_plugin(registry_path: str, plugin_ref: str, base_dir: str) -> Option
     else:
         install_path = os.path.normpath(install_path)
 
-    # Extract plugin name from ref (part before @)
-    name = plugin_ref.split("@")[0] if "@" in plugin_ref else plugin_ref
+    # Extract plugin name from ref (part after :)
+    _, name = parse_plugin_ref(plugin_ref)
 
     return PluginInfo(name=name, install_path=install_path, version=version)
 

@@ -65,7 +65,7 @@ A declarative configuration file covering automatable operations. The engine rea
     }
   ],
   "plugins": [
-    {"ref": "unreal-kit@plugins-kit", "enabled": true}
+    {"ref": "plugins-kit:unreal-kit", "enabled": true}
   ]
 }
 ```

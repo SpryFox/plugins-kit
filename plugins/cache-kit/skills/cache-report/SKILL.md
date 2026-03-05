@@ -9,7 +9,7 @@ Display the report output below verbatim. Do not summarize, paraphrase, or omit 
 
 ## Cache Usage Report
 
-!`python3 $(python3 -c "import json;from pathlib import Path;d=json.loads((Path.home()/'.claude/plugins/installed_plugins.json').read_text());print(str(Path(d['plugins']['cache-kit@plugins-kit'][0]['installPath'])/'scripts/cache-report.py'))") $ARGUMENTS`
+!`python3 $(python3 -c "import json;from pathlib import Path;d=json.loads((Path.home()/'.claude/plugins/installed_plugins.json').read_text());print(str(Path(d['plugins']['plugins-kit:cache-kit'][0]['installPath'])/'scripts/cache-report.py'))") $ARGUMENTS`
 
 ---
 

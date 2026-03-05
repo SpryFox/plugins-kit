@@ -59,12 +59,12 @@ class TestEngineConfigPhase:
             },
         }))
 
-        registry = {"plugins": {"cfg-plugin@kit": [{"installPath": "./cfg-plugin", "version": "1.0.0"}]}}
+        registry = {"plugins": {"kit:cfg-plugin": [{"installPath": "./cfg-plugin", "version": "1.0.0"}]}}
         (plugins_dir / "installed_plugins.json").write_text(json.dumps(registry))
 
         data_dir = str(tmp_path / "data" / "bootstrap")
         os.makedirs(data_dir)
-        config = {"schema_version": 3, "enabled_plugins": ["cfg-plugin@kit"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
+        config = {"schema_version": 3, "enabled_plugins": ["kit:cfg-plugin"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
@@ -97,12 +97,12 @@ class TestEngineConfigPhase:
             },
         }))
 
-        registry = {"plugins": {"cfg-plugin@kit": [{"installPath": "./cfg-plugin", "version": "1.0.0"}]}}
+        registry = {"plugins": {"kit:cfg-plugin": [{"installPath": "./cfg-plugin", "version": "1.0.0"}]}}
         (plugins_dir / "installed_plugins.json").write_text(json.dumps(registry))
 
         data_dir = str(tmp_path / "data" / "bootstrap")
         os.makedirs(data_dir)
-        config = {"schema_version": 3, "enabled_plugins": ["cfg-plugin@kit"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
+        config = {"schema_version": 3, "enabled_plugins": ["kit:cfg-plugin"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
@@ -136,12 +136,12 @@ class TestEngineConfigPhase:
             },
         }))
 
-        registry = {"plugins": {"cfg-plugin@kit": [{"installPath": "./cfg-plugin", "version": "1.0.0"}]}}
+        registry = {"plugins": {"kit:cfg-plugin": [{"installPath": "./cfg-plugin", "version": "1.0.0"}]}}
         (plugins_dir / "installed_plugins.json").write_text(json.dumps(registry))
 
         data_dir = str(tmp_path / "data" / "bootstrap")
         os.makedirs(data_dir)
-        config = {"schema_version": 3, "enabled_plugins": ["cfg-plugin@kit"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
+        config = {"schema_version": 3, "enabled_plugins": ["kit:cfg-plugin"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
@@ -174,12 +174,12 @@ class TestEngineConfigPhase:
             },
         }))
 
-        registry = {"plugins": {"cfg-plugin@kit": [{"installPath": "./cfg-plugin", "version": "1.0.0"}]}}
+        registry = {"plugins": {"kit:cfg-plugin": [{"installPath": "./cfg-plugin", "version": "1.0.0"}]}}
         (plugins_dir / "installed_plugins.json").write_text(json.dumps(registry))
 
         data_dir = str(tmp_path / "data" / "bootstrap")
         os.makedirs(data_dir)
-        config = {"schema_version": 3, "enabled_plugins": ["cfg-plugin@kit"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
+        config = {"schema_version": 3, "enabled_plugins": ["kit:cfg-plugin"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
@@ -224,12 +224,12 @@ class TestEngineConfigPhase:
             },
         }))
 
-        registry = {"plugins": {"ad-plugin@kit": [{"installPath": "./ad-plugin", "version": "1.0.0"}]}}
+        registry = {"plugins": {"kit:ad-plugin": [{"installPath": "./ad-plugin", "version": "1.0.0"}]}}
         (plugins_dir / "installed_plugins.json").write_text(json.dumps(registry))
 
         data_dir = str(tmp_path / "data" / "bootstrap")
         os.makedirs(data_dir)
-        config = {"schema_version": 3, "enabled_plugins": ["ad-plugin@kit"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
+        config = {"schema_version": 3, "enabled_plugins": ["kit:ad-plugin"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 

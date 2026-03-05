@@ -70,13 +70,13 @@ class TestMultiPluginEngine:
         }))
 
         # Create registry
-        registry = {"plugins": {"my-test@kit": [{"installPath": "./my-test", "version": "1.0.0"}]}}
+        registry = {"plugins": {"kit:my-test": [{"installPath": "./my-test", "version": "1.0.0"}]}}
         (plugins_dir / "installed_plugins.json").write_text(json.dumps(registry))
 
         # Create data dir with config enabling the plugin
         data_dir = str(tmp_path / "data" / "bootstrap")
         os.makedirs(data_dir)
-        config = {"schema_version": 3, "enabled_plugins": ["my-test@kit"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
+        config = {"schema_version": 3, "enabled_plugins": ["kit:my-test"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
@@ -109,12 +109,12 @@ class TestMultiPluginEngine:
             "tools": [{"name": "git", "install": {"macos": "brew install git"}}],
         }))
 
-        registry = {"plugins": {"good-plugin@kit": [{"installPath": "./good-plugin", "version": "1.0.0"}]}}
+        registry = {"plugins": {"kit:good-plugin": [{"installPath": "./good-plugin", "version": "1.0.0"}]}}
         (plugins_dir / "installed_plugins.json").write_text(json.dumps(registry))
 
         data_dir = str(tmp_path / "data" / "bootstrap")
         os.makedirs(data_dir)
-        config = {"schema_version": 3, "enabled_plugins": ["good-plugin@kit"], "log_level": "info", "log_success_shell": False, "log_success_checks": True}
+        config = {"schema_version": 3, "enabled_plugins": ["kit:good-plugin"], "log_level": "info", "log_success_shell": False, "log_success_checks": True}
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
@@ -147,12 +147,12 @@ class TestMultiPluginEngine:
             "tools": [{"name": "git", "install": {"macos": "brew install git"}}],
         }))
 
-        registry = {"plugins": {"cached-plugin@kit": [{"installPath": "./cached-plugin", "version": "1.0.0"}]}}
+        registry = {"plugins": {"kit:cached-plugin": [{"installPath": "./cached-plugin", "version": "1.0.0"}]}}
         (plugins_dir / "installed_plugins.json").write_text(json.dumps(registry))
 
         data_dir = str(tmp_path / "data" / "bootstrap")
         os.makedirs(data_dir)
-        config = {"schema_version": 3, "enabled_plugins": ["cached-plugin@kit"], "log_level": "info", "log_success_shell": False, "log_success_checks": True}
+        config = {"schema_version": 3, "enabled_plugins": ["kit:cached-plugin"], "log_level": "info", "log_success_shell": False, "log_success_checks": True}
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
@@ -187,12 +187,12 @@ class TestMultiPluginEngine:
         no_manifest_dir = plugins_dir / "no-manifest"
         no_manifest_dir.mkdir()
 
-        registry = {"plugins": {"no-manifest@kit": [{"installPath": "./no-manifest", "version": "1.0.0"}]}}
+        registry = {"plugins": {"kit:no-manifest": [{"installPath": "./no-manifest", "version": "1.0.0"}]}}
         (plugins_dir / "installed_plugins.json").write_text(json.dumps(registry))
 
         data_dir = str(tmp_path / "data" / "bootstrap")
         os.makedirs(data_dir)
-        config = {"schema_version": 3, "enabled_plugins": ["no-manifest@kit"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
+        config = {"schema_version": 3, "enabled_plugins": ["kit:no-manifest"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
@@ -221,12 +221,12 @@ class TestMultiPluginEngine:
             "venv": {"check_imports": ["yaml"]},
         }))
 
-        registry = {"plugins": {"venv-plugin@kit": [{"installPath": "./venv-plugin", "version": "1.0.0"}]}}
+        registry = {"plugins": {"kit:venv-plugin": [{"installPath": "./venv-plugin", "version": "1.0.0"}]}}
         (plugins_dir / "installed_plugins.json").write_text(json.dumps(registry))
 
         data_dir = str(tmp_path / "data" / "bootstrap")
         os.makedirs(data_dir)
-        config = {"schema_version": 3, "enabled_plugins": ["venv-plugin@kit"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
+        config = {"schema_version": 3, "enabled_plugins": ["kit:venv-plugin"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
@@ -255,12 +255,12 @@ class TestMultiPluginEngine:
             "git_deps": [{"url": "https://github.com/octocat/Hello-World", "branch": "master"}],
         }))
 
-        registry = {"plugins": {"git-plugin@kit": [{"installPath": "./git-plugin", "version": "1.0.0"}]}}
+        registry = {"plugins": {"kit:git-plugin": [{"installPath": "./git-plugin", "version": "1.0.0"}]}}
         (plugins_dir / "installed_plugins.json").write_text(json.dumps(registry))
 
         data_dir = str(tmp_path / "data" / "bootstrap")
         os.makedirs(data_dir)
-        config = {"schema_version": 3, "enabled_plugins": ["git-plugin@kit"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
+        config = {"schema_version": 3, "enabled_plugins": ["kit:git-plugin"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 

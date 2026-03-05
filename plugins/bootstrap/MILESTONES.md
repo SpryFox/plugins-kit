@@ -101,32 +101,36 @@ Port local-review-kit and unreal-kit to the bootstrap system. Two real-world plu
 
 ## Milestone 4: Update01 as Standalone Marketplace Bootstrapper
 
-Make the update01 marketplace a carbon copy of plugins-kit, used to force-install the plugins-kit marketplace and bootstrap plugin in team environments.
+Make the update01 marketplace a self-contained seed that installs the plugins-kit marketplace and bootstrap plugin on team machines.
 
 ### Deliverables
 
-- [ ] Delete existing update01 content and replace with a copy of the plugins-kit repository
-- [ ] update01 uses `additionalKnownMarketplaces` to install the update01 marketplace and the `update01:bootstrap` plugin
-- [ ] update01's bootstrap plugin forces installation of the plugins-kit marketplace
-- [ ] update01's bootstrap plugin forces installation of the `plugins-kit:bootstrap` plugin
-- [ ] Support marketplace operations: install, delete, and update marketplaces (not just plugins)
-- [ ] Tests for marketplace install/delete/update operations and cross-marketplace bootstrap flow
+- [x] Replace update01's hand-rolled bash scripts with plugins-kit's bootstrap engine
+- [x] Adopt `marketplace:plugin` identity format across the codebase (replaces `plugin@marketplace`)
+- [x] Engine cross-marketplace plugin resolution: refs like `plugins-kit:bootstrap` resolve from global registry (`~/.claude/plugins/installed_plugins.json`) when the marketplace differs from the current one
+- [x] update01's `bootstrap.json` uses `json_entries` to sync `known_marketplaces.json` and `plugins` to enable `plugins-kit:bootstrap`
+- [x] Tests for cross-marketplace resolution (same-marketplace local, cross-marketplace global, missing ref)
+- [x] Tests for marketplace name detection from registry keys
 
-### New Requirement: Marketplace Management
+### Implementation
 
-In addition to plugin operations (install, delete, update), the bootstrap system must support **marketplace operations**:
+**Plugin identity format change**: `plugin@marketplace` → `marketplace:plugin` (colon separator). Updated in:
+- `plugin_resolve.py` (parsing logic + `parse_plugin_ref()` helper)
+- `plugin_lifecycle.py` (docstring examples)
+- `installed_plugins.json` (key format)
+- `bootstrap_engine.py` (cross-marketplace resolution)
+- All test files and documentation
 
-| Operation | Description |
-|-----------|-------------|
-| Install marketplace | Register a new marketplace in `known_marketplaces.json` |
-| Delete marketplace | Remove a marketplace registration |
-| Update marketplace | Refresh marketplace metadata and plugin cache |
+**Cross-marketplace resolution**: The engine's `plugins` processing in `_process_manifest()` now detects when a plugin ref's marketplace differs from the current one (detected from local registry keys or parent directory name). Cross-marketplace refs resolve against `~/.claude/plugins/installed_plugins.json` instead of the local registry.
 
-This is required for the team deployment flow:
+**update01 structure**: Identical bootstrap engine/lib/hooks as plugins-kit, with its own `bootstrap.json` that adds `json_entries` (marketplace registration) and `plugins` (force-enable `plugins-kit:bootstrap`).
+
+### Team Deployment Flow
+
 1. Team member has `additionalKnownMarketplaces` pointing to update01 repo
 2. update01's bootstrap plugin runs on session start
-3. It installs the plugins-kit marketplace (via marketplace install operation)
-4. It installs `plugins-kit:bootstrap` (via plugin install operation)
+3. `json_entries` registers plugins-kit in `known_marketplaces.json`
+4. `plugins` ensures `plugins-kit:bootstrap` is enabled
 5. On next session, plugins-kit's bootstrap takes over normal plugin management
 
 ### Notes
@@ -134,6 +138,7 @@ This is required for the team deployment flow:
 - update01 is the "seed" — it exists only to bootstrap the real marketplace into existence
 - Once plugins-kit is installed, update01 becomes redundant but harmless
 - The `additionalKnownMarketplaces` setting is the entry point — it's the only thing a team member needs to configure manually
+- update01's engine/lib are copies (not symlinks) because it's a standalone repo pushed to its own remote
 
 ---
 

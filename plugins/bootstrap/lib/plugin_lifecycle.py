@@ -21,7 +21,7 @@ def check_plugin_registered(registry_path: str, plugin_ref: str) -> PluginCheckR
 
     Args:
         registry_path: Path to installed_plugins.json
-        plugin_ref: Plugin reference (e.g. "unreal-kit@plugins-kit")
+        plugin_ref: Plugin reference (e.g. "plugins-kit:unreal-kit")
 
     Returns:
         PluginCheckResult with pass/fail
@@ -56,7 +56,7 @@ def register_plugin(
 
     Args:
         registry_path: Path to installed_plugins.json
-        plugin_ref: Plugin reference (e.g. "unreal-kit@plugins-kit")
+        plugin_ref: Plugin reference (e.g. "plugins-kit:unreal-kit")
         install_path: Relative or absolute install path
         version: Plugin version string
 
