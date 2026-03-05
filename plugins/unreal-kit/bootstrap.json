@@ -1,0 +1,59 @@
+{
+  "tools": [
+    {
+      "name": "uv",
+      "install": {
+        "macos": "curl -LsSf https://astral.sh/uv/install.sh | sh",
+        "windows": "powershell -ExecutionPolicy ByPass -c \"irm https://astral.sh/uv/install.ps1 | iex\"",
+        "ubuntu": "curl -LsSf https://astral.sh/uv/install.sh | sh"
+      }
+    },
+    {
+      "name": "git",
+      "install": {
+        "macos": "brew install git",
+        "windows": "winget install --id Git.Git -e --source winget",
+        "ubuntu": "sudo apt install -y git"
+      }
+    }
+  ],
+  "path_entries": ["~/.local/bin"],
+  "venv": {
+    "check_imports": ["upyrc", "yaml"]
+  },
+  "config": {
+    "file": "config.yaml",
+    "defaults_source": "defaults/config.yaml",
+    "required_fields": {
+      "uproject": {
+        "user_msg": "Path to .uproject file",
+        "agent_msg": "Ask the user for their .uproject file path and write it to {config_path}"
+      },
+      "engine_dir": {
+        "user_msg": "Path to UE engine directory",
+        "agent_msg": "Ask the user for their UE engine directory and write it to {config_path}"
+      }
+    },
+    "autodetect": "custom_bootstrap.py autodetect"
+  },
+  "ini_settings": [
+    {
+      "file": "${uproject_dir}/Config/UserEngine.ini",
+      "section": "[/Script/PythonScriptPlugin.PythonScriptPluginSettings]",
+      "settings": {
+        "bRemoteExecution": "True",
+        "bIsDeveloperMode": "True"
+      }
+    }
+  ],
+  "pypi_packages": [
+    {
+      "package": "unreal-stub",
+      "extract_to": "${plugin_root}/skills/ue-python-api/stubs/unreal.py"
+    }
+  ],
+  "script": {
+    "path": "custom_bootstrap.py",
+    "entry_point": "bootstrap"
+  }
+}

@@ -310,7 +310,155 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
                 "plugin": plugin_name,
             })
 
+    # Variable resolution for subsequent phases
+    from var_resolve import build_variables, resolve_vars
+    config = _load_plugin_config(data_dir)
+    variables = build_variables(plugin_root, data_dir, config)
+
+    # Check INI settings
+    for ini_def in manifest.get("ini_settings", []):
+        ini_file = resolve_vars(ini_def["file"], variables)
+        if ini_file is None:
+            if log_success:
+                log_entries.append(f"{prefix}ini {ini_def['file']}: skipped (unresolved vars)")
+            continue
+
+        section = ini_def["section"]
+        # Ensure section has brackets for check/write
+        section_header = section if section.startswith("[") else f"[{section}]"
+
+        from ini_check import check_ini_setting, write_ini_setting
+        for key, expected in ini_def.get("settings", {}).items():
+            result = check_ini_setting(ini_file, section_header, key, expected)
+            if result.passed:
+                if log_success:
+                    log_entries.append(f"{prefix}ini {key}: ok")
+            else:
+                try:
+                    write_ini_setting(ini_file, section_header, key, expected)
+                    log_entries.append(f"{prefix}ini {key}: set to {expected}")
+                except OSError as e:
+                    log_entries.append(f"{prefix}ini {key}: FAILED - {e}")
+                    failures.append({
+                        "type": "ini",
+                        "file": ini_file,
+                        "key": key,
+                        "message": str(e),
+                        "plugin": plugin_name,
+                    })
+
+    # Check PyPI packages
+    for pypi_def in manifest.get("pypi_packages", []):
+        extract_to = resolve_vars(pypi_def["extract_to"], variables)
+        if extract_to is None:
+            if log_success:
+                log_entries.append(f"{prefix}pypi {pypi_def['package']}: skipped (unresolved vars)")
+            continue
+
+        from pypi_check import check_pypi_package, download_and_extract
+        result = check_pypi_package(pypi_def["package"], extract_to)
+        if result.passed:
+            if log_success:
+                log_entries.append(f"{prefix}pypi {result.package}: ok")
+        else:
+            result = download_and_extract(pypi_def["package"], extract_to)
+            if result.passed:
+                log_entries.append(f"{prefix}pypi {result.package}: {result.message}")
+            else:
+                log_entries.append(f"{prefix}pypi {result.package}: FAILED - {result.message}")
+                failures.append({
+                    "type": "pypi",
+                    "package": pypi_def["package"],
+                    "message": result.message,
+                    "plugin": plugin_name,
+                })
+
+    # Script phase
+    script_def = manifest.get("script")
+    if script_def:
+        script_failures = _run_script_phase(
+            script_def, plugin_root, data_dir, config, log_entries,
+            prefix=prefix, plugin_name=plugin_name,
+        )
+        failures.extend(script_failures)
+
     return failures
+
+
+def _load_plugin_config(data_dir):
+    """Load plugin config from data_dir if it exists. Returns dict or empty."""
+    try:
+        from config_check import load_yaml_config
+        import os
+        config_path = os.path.join(data_dir, "config.yaml")
+        if os.path.isfile(config_path):
+            return load_yaml_config(config_path)
+    except Exception:
+        pass
+    return {}
+
+
+def _run_script_phase(script_def, plugin_root, data_dir, config, log_entries, prefix="", plugin_name=""):
+    """Run a custom bootstrap script. Returns list of failures."""
+    import importlib.util
+
+    script_path = os.path.join(plugin_root, script_def["path"])
+    entry_point = script_def.get("entry_point", "bootstrap")
+
+    if not os.path.isfile(script_path):
+        log_entries.append(f"{prefix}script: skipped ({script_def['path']} not found)")
+        return []
+
+    # Build context object for the script
+    ctx = _ScriptContext(config, data_dir, plugin_root, log_entries, prefix, plugin_name)
+
+    try:
+        spec = importlib.util.spec_from_file_location("_bootstrap_script", script_path)
+        if spec is None or spec.loader is None:
+            log_entries.append(f"{prefix}script: FAILED - could not load {script_def['path']}")
+            return []
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        func = getattr(module, entry_point, None)
+        if func is None:
+            log_entries.append(f"{prefix}script: FAILED - {entry_point}() not found in {script_def['path']}")
+            return []
+
+        func(ctx)
+        return ctx.failures
+    except Exception as e:
+        log_entries.append(f"{prefix}script: FAILED - {e}")
+        return []
+
+
+class _ScriptContext:
+    """Context object passed to custom bootstrap scripts."""
+
+    def __init__(self, config, data_dir, plugin_root, log_entries, prefix, plugin_name):
+        self.config = dict(config) if config else {}
+        self.config_path = os.path.join(data_dir, "config.yaml")
+        self.data_dir = data_dir
+        self.plugin_root = plugin_root
+        self.failures = []
+        self._log_entries = log_entries
+        self._prefix = prefix
+        self._plugin_name = plugin_name
+
+    def save_config(self) -> None:
+        """Write config back to disk."""
+        from config_check import save_yaml_config
+        save_yaml_config(self.config_path, self.config)
+
+    def add_failure(self, failure_type: str, **kwargs) -> None:
+        """Register a failure for fix-all aggregation."""
+        failure = {"type": failure_type, "plugin": self._plugin_name}
+        failure.update(kwargs)
+        self.failures.append(failure)
+
+    def log(self, message: str) -> None:
+        """Add a log entry."""
+        self._log_entries.append(f"{self._prefix}{message}")
 
 
 def _read_new_log_entries(data_dir):
@@ -412,6 +560,12 @@ def emit_failure_response(failures, current_os, log_content):
             agent_lines.append(f"{i}. Clone {f['name']}{plugin_tag}: `{f['remediation_cmd']}`")
         elif f["type"] == "config":
             agent_lines.append(f"{i}. {f['agent_msg']}{plugin_tag}")
+        elif f["type"] == "ini":
+            agent_lines.append(f"{i}. Fix INI setting {f['key']} in {f['file']}{plugin_tag}: {f['message']}")
+        elif f["type"] == "pypi":
+            agent_lines.append(f"{i}. Download {f['package']} from PyPI{plugin_tag}: {f['message']}")
+        elif f["type"] == "script":
+            agent_lines.append(f"{i}. Script issue{plugin_tag}: {f.get('message', 'see log')}")
 
     agent_lines.append("\nAfter fixing, type 'fix-all' or restart Claude Code.")
     agent_msg = "\n".join(agent_lines)
