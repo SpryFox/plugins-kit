@@ -4,7 +4,7 @@ import json
 import os
 import shutil
 
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 
 
 def load_config(data_dir: str, defaults_dir: str) -> dict:
@@ -53,6 +53,12 @@ def migrate_config(config: dict) -> dict:
         migrated.setdefault("enabled_plugins", [])
         migrated.setdefault("log_level", "info")
         migrated["schema_version"] = 1
+
+    # Migration from v1 to v2: add log_success settings
+    if version < 2:
+        migrated.setdefault("log_success_shell", True)
+        migrated.setdefault("log_success_checks", True)
+        migrated["schema_version"] = 2
 
     return migrated
 

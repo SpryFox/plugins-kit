@@ -98,7 +98,7 @@ class TestEngineIntegration:
         assert "nonexistent_tool_xyz_abc" in response["hookSpecificOutput"]["additionalContext"]
 
     def test_config_migration_on_run(self, data_dir):
-        """Engine should migrate v0 config to v1 on first run."""
+        """Engine should migrate v0 config to current version on first run."""
         # Pre-create a v0 config
         os.makedirs(data_dir, exist_ok=True)
         v0_config = {"some_setting": True}
@@ -108,8 +108,10 @@ class TestEngineIntegration:
         result = run_engine(data_dir)
         assert result.returncode == 0
 
-        # Config should now be v1
+        # Config should now be current version
         with open(os.path.join(data_dir, "config.json")) as f:
             config = json.load(f)
-        assert config["schema_version"] == 1
+        assert config["schema_version"] == 2
         assert config["some_setting"] is True
+        assert config["log_success_shell"] is True
+        assert config["log_success_checks"] is True

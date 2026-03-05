@@ -53,6 +53,7 @@ def main():
         write_log(data_dir, ["bootstrap: cached"])
 
     current_os = detect_os()
+    log_success = config.get("log_success_checks", True)
     all_failures = []
 
     # Step 3: Self-bootstrap (own manifest)
@@ -61,7 +62,7 @@ def main():
             manifest = json.load(f)
 
         log_entries = []
-        failures = _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries)
+        failures = _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, log_success=log_success)
         write_log(data_dir, log_entries)
 
         if failures:
@@ -97,7 +98,7 @@ def main():
         log_entries = []
         failures = _process_manifest(
             plugin_manifest, current_os, plugin_data_dir, plugin_info.install_path, log_entries,
-            plugin_name=plugin_info.name,
+            plugin_name=plugin_info.name, log_success=log_success,
         )
         write_log(data_dir, [f"{plugin_info.name}: {e}" for e in log_entries])
 
@@ -114,7 +115,7 @@ def main():
         emit_success_response(log_content)
 
 
-def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, plugin_name="bootstrap"):
+def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, plugin_name="bootstrap", log_success=True):
     """Process a single plugin's bootstrap manifest. Returns list of failures."""
     from tool_check import check_tool
     from path_check import check_path_entry
@@ -131,7 +132,8 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
         result = check_tool(name, install_cmds, current_os)
 
         if result.passed:
-            log_entries.append(f"{prefix}{result.name}: ok - {result.message}")
+            if log_success:
+                log_entries.append(f"{prefix}{result.name}: ok - {result.message}")
             continue
 
         # Tool not found — attempt remediation if install command available
@@ -160,6 +162,8 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
     # Check path entries
     for path_entry in manifest.get("path_entries", []):
         result = check_path_entry(path_entry)
+        if result.passed and not log_success:
+            continue
         log_entries.append(f"{prefix}PATH {result.path}: {'ok' if result.passed else 'FAILED'} - {result.message}")
         if not result.passed:
             failures.append({
@@ -174,7 +178,8 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
     if venv_def:
         check_imports = venv_def.get("check_imports", [])
         result = check_venv(data_dir, plugin_root, check_imports)
-        log_entries.append(f"{prefix}venv: {'ok' if result.passed else 'FAILED'} - {result.message}")
+        if not result.passed or log_success:
+            log_entries.append(f"{prefix}venv: {'ok' if result.passed else 'FAILED'} - {result.message}")
         if not result.passed:
             failures.append({
                 "type": "venv",
@@ -191,7 +196,8 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
             dep_def["branch"],
             dep_def.get("sparse_paths"),
         )
-        log_entries.append(f"{prefix}git {result.repo_name}: {'ok' if result.passed else 'FAILED'} - {result.message}")
+        if not result.passed or log_success:
+            log_entries.append(f"{prefix}git {result.repo_name}: {'ok' if result.passed else 'FAILED'} - {result.message}")
         if not result.passed:
             failures.append({
                 "type": "git_dep",

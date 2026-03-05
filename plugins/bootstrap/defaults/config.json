@@ -1,5 +1,7 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "enabled_plugins": [],
-  "log_level": "info"
+  "log_level": "info",
+  "log_success_shell": true,
+  "log_success_checks": true
 }

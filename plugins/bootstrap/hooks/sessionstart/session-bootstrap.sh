@@ -4,7 +4,7 @@ set -euo pipefail
 # session-bootstrap.sh — Thin bash wrapper for the Python bootstrap engine.
 #
 # Resolves paths, guards for python3, then delegates to the engine.
-# Engine's stdout becomes the hook response (or no stdout = bare exit = success/cached).
+# Engine's stdout becomes the hook response (JSON with systemMessage).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -19,6 +19,17 @@ log_entry() {
     echo "[$ts] $msg" >> "$PLUGIN_DATA/bootstrap.log"
 }
 
+# --- Read log_success_shell from config (pre-Python, so use grep) ---
+LOG_SUCCESS_SHELL="true"
+CONFIG_FILE="$PLUGIN_DATA/config.json"
+if [ -f "$CONFIG_FILE" ]; then
+    # Extract value: grep for the key, strip to true/false
+    val=$(grep -o '"log_success_shell"[[:space:]]*:[[:space:]]*[a-z]*' "$CONFIG_FILE" 2>/dev/null | grep -o '[a-z]*$' || echo "true")
+    if [ "$val" = "false" ]; then
+        LOG_SUCCESS_SHELL="false"
+    fi
+fi
+
 # --- Find Python 3 ---
 # Validate each candidate by execution, not just PATH presence.
 # This handles Windows Store stubs (python3 in PATH but exits 126).
@@ -28,10 +39,16 @@ for candidate in python3 python; do
     if command -v "$candidate" &>/dev/null; then
         if "$candidate" -c "import sys; sys.exit(0 if sys.version_info[0] >= 3 else 1)" 2>/dev/null; then
             PYTHON="$candidate"
+            PYTHON_PATH="$(command -v "$candidate")"
             break
         fi
     fi
 done
+
+# Log python3 success if found and logging enabled
+if [ -n "$PYTHON" ] && [ "$LOG_SUCCESS_SHELL" = "true" ]; then
+    log_entry "python3: ok - found at $PYTHON_PATH"
+fi
 
 # --- Self-bootstrap Python via python-build-standalone ---
 # If no valid Python 3 is found, download a standalone build and install it

@@ -15,9 +15,13 @@ class TestLoadConfig:
         assert config["schema_version"] == CURRENT_SCHEMA_VERSION
 
     def test_loads_existing_config(self, data_dir, defaults_dir):
-        # Pre-create a config
+        # Pre-create a current-version config
         config_path = os.path.join(data_dir, "config.json")
-        existing = {"schema_version": 1, "custom_field": "keep_me", "enabled_plugins": [], "log_level": "info"}
+        existing = {
+            "schema_version": CURRENT_SCHEMA_VERSION,
+            "custom_field": "keep_me", "enabled_plugins": [], "log_level": "info",
+            "log_success_shell": True, "log_success_checks": True,
+        }
         with open(config_path, "w") as f:
             json.dump(existing, f)
 
@@ -26,18 +30,31 @@ class TestLoadConfig:
 
 
 class TestMigrateConfig:
-    def test_migrates_v0_to_v1(self):
+    def test_migrates_v0_to_current(self):
         v0 = {"some_setting": True}
         migrated = migrate_config(v0)
-        assert migrated["schema_version"] == 1
+        assert migrated["schema_version"] == CURRENT_SCHEMA_VERSION
         assert "enabled_plugins" in migrated
         assert "log_level" in migrated
+        assert "log_success_shell" in migrated
+        assert "log_success_checks" in migrated
         assert migrated["some_setting"] is True
 
-    def test_no_migration_on_current_version(self):
+    def test_migrates_v1_to_v2(self):
         v1 = {"schema_version": 1, "enabled_plugins": [], "log_level": "info"}
-        result = migrate_config(v1)
-        assert result is v1  # Same object — no copy needed
+        migrated = migrate_config(v1)
+        assert migrated["schema_version"] == 2
+        assert migrated["log_success_shell"] is True
+        assert migrated["log_success_checks"] is True
+
+    def test_no_migration_on_current_version(self):
+        current = {
+            "schema_version": CURRENT_SCHEMA_VERSION,
+            "enabled_plugins": [], "log_level": "info",
+            "log_success_shell": True, "log_success_checks": True,
+        }
+        result = migrate_config(current)
+        assert result is current  # Same object — no copy needed
 
 
 class TestSaveConfig:
