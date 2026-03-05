@@ -22,37 +22,17 @@ import sys
 
 
 def _resolve_paths():
-    """Derive plugin root and data dir from this script's location."""
+    """Derive plugin root, data dir, and bootstrap plugin root."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
     hooks_dir = os.path.dirname(script_dir)
     plugin_root = os.path.dirname(hooks_dir)
     plugin_data = os.path.join(
         os.path.expanduser("~"), ".claude", "plugins", "data", "test-plugin"
     )
-    return plugin_root, plugin_data
-
-
-def _find_git_bash():
-    """Find Git Bash on Windows (avoid WSL bash)."""
-    if sys.platform != "win32":
-        return "bash"
-
-    candidates = [
-        os.path.join(os.environ.get("PROGRAMFILES", ""), "Git", "usr", "bin", "bash.exe"),
-        os.path.join(os.environ.get("PROGRAMFILES", ""), "Git", "bin", "bash.exe"),
-        os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "Git", "usr", "bin", "bash.exe"),
-    ]
-    for candidate in candidates:
-        if os.path.isfile(candidate):
-            return candidate
-
-    bash_path = shutil.which("bash")
-    if bash_path:
-        normalized = os.path.normpath(bash_path).lower()
-        if "system32" not in normalized and "windowsapps" not in normalized:
-            return bash_path
-
-    return "bash"
+    # Bootstrap plugin is a sibling: marketplace/plugins/bootstrap
+    marketplace_root = os.path.dirname(os.path.dirname(plugin_root))
+    bootstrap_root = os.path.join(marketplace_root, "plugins", "bootstrap")
+    return plugin_root, plugin_data, bootstrap_root
 
 
 def _python_works(exe):
@@ -69,7 +49,7 @@ def _python_works(exe):
 
 def _find_python():
     """Find a working Python executable for running setup.py."""
-    _, plugin_data = _resolve_paths()
+    _, plugin_data, _ = _resolve_paths()
     venv_dir = os.path.join(plugin_data, ".venv")
 
     # Prefer venv Python (but verify it works)
@@ -90,16 +70,6 @@ def _find_python():
     return sys.executable
 
 
-def _run_bash_step(bash_exe, script_path, args):
-    """Run a bash step script and return (success, stdout)."""
-    result = subprocess.run(
-        [bash_exe, script_path] + args,
-        capture_output=True,
-        text=True,
-    )
-    return result.returncode == 0, result.stdout.strip()
-
-
 def _run_config_check(python_exe, setup_script, data_dir):
     """Run setup.py --check and return (success, stdout)."""
     result = subprocess.run(
@@ -110,27 +80,35 @@ def _run_config_check(python_exe, setup_script, data_dir):
     return result.returncode == 0, result.stdout.strip()
 
 
-def _format_system_tools_block(step_json):
-    """Build a markdown remediation message from check-system-tools.sh JSON."""
-    try:
-        data = json.loads(step_json)
-    except (json.JSONDecodeError, TypeError):
-        return "Bootstrap check failed (could not parse tool check output)."
+def _check_tools(manifest, current_os):
+    """Check tools from bootstrap.json, return list of failures."""
+    from tool_check import check_tool
 
-    context_msg = data.get("context_message", "")
-    if context_msg:
-        decoded = context_msg.replace("\\n", "\n").replace("\\t", "\t")
-        return (
-            "## Bootstrap: System Tool Failures\n\n"
-            "Fix these in order:\n\n"
-            f"{decoded}\n\n"
-            "'fix-all' means fix each failure in the order listed above. "
-            "After all fixes succeed, restart Claude Code so bootstrap can "
-            "verify the changes."
-        )
+    failures = []
+    for tool_def in manifest.get("tools", []):
+        name = tool_def["name"]
+        install_cmds = tool_def.get("install", {})
+        result = check_tool(name, install_cmds, current_os)
+        if not result.passed:
+            failures.append({
+                "name": result.name,
+                "message": result.message,
+                "install_cmd": result.install_cmd,
+            })
+    return failures
 
-    msg = data.get("message", "unknown error")
-    return f"## Bootstrap: System Tool Error\n\n{msg}"
+
+def _format_tool_failures(failures, current_os):
+    """Build a markdown remediation message from tool check failures."""
+    lines = ["## Bootstrap: System Tool Failures\n", "Fix these in order:\n"]
+    for i, f in enumerate(failures, 1):
+        cmd = f["install_cmd"] or "see documentation"
+        lines.append(f"{i}. **{f['name']}** — not found. Install: `{cmd}`")
+    lines.append(
+        "\nAfter all fixes succeed, restart Claude Code so bootstrap can "
+        "verify the changes."
+    )
+    return "\n".join(lines)
 
 
 def main():
@@ -146,22 +124,33 @@ def main():
     if input_data.get("stop_hook_active"):
         sys.exit(0)
 
-    plugin_root, plugin_data = _resolve_paths()
-    sessionstart_dir = os.path.join(plugin_root, "hooks", "sessionstart")
-    bash_exe = _find_git_bash()
+    plugin_root, plugin_data, bootstrap_root = _resolve_paths()
+
+    # Add bootstrap engine libs to path
+    sys.path.insert(0, os.path.join(bootstrap_root, "lib"))
+
+    from cache import check_cache
+    from platform_detect import detect_os
+
+    manifest_path = os.path.join(plugin_root, "bootstrap.json")
 
     # Step 1: Check validation cache
-    cache_script = os.path.join(sessionstart_dir, "validate-cache.sh")
-    cache_ok, _cache_out = _run_bash_step(bash_exe, cache_script, [plugin_root, plugin_data])
+    cache_ok = check_cache(plugin_data, [manifest_path])
 
     if not cache_ok:
-        # Cache miss — run system tool checks
-        tools_script = os.path.join(sessionstart_dir, "check-system-tools.sh")
-        tools_yaml = os.path.join(plugin_root, "system-tools.yaml")
-        tools_ok, tools_out = _run_bash_step(bash_exe, tools_script, [tools_yaml])
+        # Cache miss — run system tool checks from bootstrap.json
+        current_os = detect_os()
 
-        if not tools_ok:
-            reason = _format_system_tools_block(tools_out)
+        if os.path.isfile(manifest_path):
+            with open(manifest_path, "r") as f:
+                manifest = json.load(f)
+        else:
+            manifest = {}
+
+        failures = _check_tools(manifest, current_os)
+
+        if failures:
+            reason = _format_tool_failures(failures, current_os)
             print(json.dumps({"decision": "block", "reason": reason}))
             return
 
