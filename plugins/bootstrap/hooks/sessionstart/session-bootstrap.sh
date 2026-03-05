@@ -51,13 +51,15 @@ fi
 # --- Find Python 3 ---
 # Validate each candidate by execution, not just PATH presence.
 # This handles Windows Store stubs (python3 in PATH but exits 126).
+# Include ~/.local/bin explicitly — hook environment may not have it in PATH.
 
 PYTHON=""
-for candidate in python3 python; do
-    if command -v "$candidate" &>/dev/null; then
+LOCAL_BIN="${HOME}/.local/bin"
+for candidate in python3 python "${LOCAL_BIN}/python3" "${LOCAL_BIN}/python3.exe"; do
+    if [ -x "$candidate" ] || command -v "$candidate" &>/dev/null; then
         if "$candidate" -c "import sys; sys.exit(0 if sys.version_info[0] >= 3 else 1)" 2>/dev/null; then
             PYTHON="$candidate"
-            PYTHON_PATH="$(command -v "$candidate")"
+            PYTHON_PATH="$(command -v "$candidate" 2>/dev/null || echo "$candidate")"
             break
         fi
     fi
