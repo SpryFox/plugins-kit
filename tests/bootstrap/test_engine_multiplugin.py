@@ -76,7 +76,7 @@ class TestMultiPluginEngine:
         # Create data dir with config enabling the plugin
         data_dir = str(tmp_path / "data" / "bootstrap")
         os.makedirs(data_dir)
-        config = {"schema_version": 1, "enabled_plugins": ["my-test@kit"], "log_level": "info"}
+        config = {"schema_version": 3, "enabled_plugins": ["my-test@kit"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
@@ -114,7 +114,7 @@ class TestMultiPluginEngine:
 
         data_dir = str(tmp_path / "data" / "bootstrap")
         os.makedirs(data_dir)
-        config = {"schema_version": 1, "enabled_plugins": ["good-plugin@kit"], "log_level": "info"}
+        config = {"schema_version": 3, "enabled_plugins": ["good-plugin@kit"], "log_level": "info", "log_success_shell": False, "log_success_checks": True}
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
@@ -152,7 +152,7 @@ class TestMultiPluginEngine:
 
         data_dir = str(tmp_path / "data" / "bootstrap")
         os.makedirs(data_dir)
-        config = {"schema_version": 1, "enabled_plugins": ["cached-plugin@kit"], "log_level": "info"}
+        config = {"schema_version": 3, "enabled_plugins": ["cached-plugin@kit"], "log_level": "info", "log_success_shell": False, "log_success_checks": True}
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
@@ -192,7 +192,7 @@ class TestMultiPluginEngine:
 
         data_dir = str(tmp_path / "data" / "bootstrap")
         os.makedirs(data_dir)
-        config = {"schema_version": 1, "enabled_plugins": ["no-manifest@kit"], "log_level": "info"}
+        config = {"schema_version": 3, "enabled_plugins": ["no-manifest@kit"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
@@ -226,7 +226,7 @@ class TestMultiPluginEngine:
 
         data_dir = str(tmp_path / "data" / "bootstrap")
         os.makedirs(data_dir)
-        config = {"schema_version": 1, "enabled_plugins": ["venv-plugin@kit"], "log_level": "info"}
+        config = {"schema_version": 3, "enabled_plugins": ["venv-plugin@kit"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
@@ -260,7 +260,7 @@ class TestMultiPluginEngine:
 
         data_dir = str(tmp_path / "data" / "bootstrap")
         os.makedirs(data_dir)
-        config = {"schema_version": 1, "enabled_plugins": ["git-plugin@kit"], "log_level": "info"}
+        config = {"schema_version": 3, "enabled_plugins": ["git-plugin@kit"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 

@@ -23,30 +23,21 @@ def run_engine(data_dir, plugin_root=BOOTSTRAP_ROOT):
 
 
 class TestEngineIntegration:
-    def test_first_run_emits_log(self, data_dir):
-        """All tools in the real manifest (uv, git) should be present on dev machines."""
+    def test_first_run_silent_on_success(self, data_dir):
+        """With log_success disabled, successful runs produce no output."""
         result = run_engine(data_dir)
         assert result.returncode == 0
-        assert result.stdout.strip() != ""
-        response = json.loads(result.stdout)
-        assert response["continue"] is True
-        assert "bootstrap" in response["systemMessage"]
-        # Cache and log should be written
+        # No stdout when everything succeeds and success logging is off
+        assert result.stdout.strip() == ""
+        # Cache and log should still be written
         assert os.path.exists(os.path.join(data_dir, "bootstrap_cache.sha256"))
-        assert os.path.exists(os.path.join(data_dir, "bootstrap.log"))
 
-    def test_cached_run_emits_log(self, data_dir):
-        """Second run should hit cache — emits 'cached' in new log entries."""
+    def test_cached_run_silent(self, data_dir):
+        """Second run should hit cache — no output with success logging off."""
         run_engine(data_dir)  # First run populates cache
-        # Clear the display marker so second run's entries are "new"
-        marker_path = os.path.join(data_dir, "last_displayed_at")
-        if os.path.exists(marker_path):
-            os.remove(marker_path)
         result = run_engine(data_dir)  # Second run hits cache
         assert result.returncode == 0
-        response = json.loads(result.stdout)
-        assert response["continue"] is True
-        assert "cached" in response["systemMessage"]
+        assert result.stdout.strip() == ""
 
     def test_failure_emits_json(self, data_dir, tmp_path):
         """A manifest with a fake tool should produce JSON failure output."""
@@ -115,7 +106,7 @@ class TestEngineIntegration:
         # Config should now be current version
         with open(os.path.join(data_dir, "config.json")) as f:
             config = json.load(f)
-        assert config["schema_version"] == 2
+        assert config["schema_version"] == 3
         assert config["some_setting"] is True
-        assert config["log_success_shell"] is True
-        assert config["log_success_checks"] is True
+        assert config["log_success_shell"] is False
+        assert config["log_success_checks"] is False

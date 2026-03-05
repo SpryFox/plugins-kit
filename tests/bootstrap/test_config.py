@@ -20,7 +20,7 @@ class TestLoadConfig:
         existing = {
             "schema_version": CURRENT_SCHEMA_VERSION,
             "custom_field": "keep_me", "enabled_plugins": [], "log_level": "info",
-            "log_success_shell": True, "log_success_checks": True,
+            "log_success_shell": False, "log_success_checks": False,
         }
         with open(config_path, "w") as f:
             json.dump(existing, f)
@@ -40,18 +40,26 @@ class TestMigrateConfig:
         assert "log_success_checks" in migrated
         assert migrated["some_setting"] is True
 
-    def test_migrates_v1_to_v2(self):
+    def test_migrates_v1_to_v2_to_v3(self):
         v1 = {"schema_version": 1, "enabled_plugins": [], "log_level": "info"}
         migrated = migrate_config(v1)
-        assert migrated["schema_version"] == 2
-        assert migrated["log_success_shell"] is True
-        assert migrated["log_success_checks"] is True
+        assert migrated["schema_version"] == 3
+        assert migrated["log_success_shell"] is False
+        assert migrated["log_success_checks"] is False
+
+    def test_migrates_v2_to_v3(self):
+        v2 = {"schema_version": 2, "enabled_plugins": [], "log_level": "info",
+               "log_success_shell": True, "log_success_checks": True}
+        migrated = migrate_config(v2)
+        assert migrated["schema_version"] == 3
+        assert migrated["log_success_shell"] is False
+        assert migrated["log_success_checks"] is False
 
     def test_no_migration_on_current_version(self):
         current = {
             "schema_version": CURRENT_SCHEMA_VERSION,
             "enabled_plugins": [], "log_level": "info",
-            "log_success_shell": True, "log_success_checks": True,
+            "log_success_shell": False, "log_success_checks": False,
         }
         result = migrate_config(current)
         assert result is current  # Same object — no copy needed
