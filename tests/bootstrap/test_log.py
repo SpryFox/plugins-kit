@@ -3,7 +3,7 @@
 import os
 import re
 
-from log import LOG_FILENAME, MAX_LOG_LINES, write_log
+from log import LOG_FILENAME, MAX_LOG_LINES, write_log, write_session_header
 
 
 class TestWriteLog:
@@ -29,6 +29,28 @@ class TestWriteLog:
             line = f.readline()
         # ISO 8601 UTC: [2024-01-15T12:00:00Z]
         assert re.match(r"\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\]", line)
+
+    def test_session_header_written(self, data_dir):
+        write_session_header(data_dir)
+        log_path = os.path.join(data_dir, LOG_FILENAME)
+        with open(log_path) as f:
+            line = f.readline()
+        assert line.startswith("--- Session ")
+        assert line.strip().endswith(" ---")
+
+    def test_session_header_separates_runs(self, data_dir):
+        write_session_header(data_dir)
+        write_log(data_dir, ["entry one"])
+        write_session_header(data_dir)
+        write_log(data_dir, ["entry two"])
+        log_path = os.path.join(data_dir, LOG_FILENAME)
+        with open(log_path) as f:
+            lines = f.readlines()
+        assert len(lines) == 4
+        assert lines[0].startswith("--- Session ")
+        assert "entry one" in lines[1]
+        assert lines[2].startswith("--- Session ")
+        assert "entry two" in lines[3]
 
     def test_trims_at_max_lines(self, data_dir):
         # Write more than MAX_LOG_LINES

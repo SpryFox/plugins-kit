@@ -31,13 +31,16 @@ def main():
 
     from config import load_config
     from cache import check_cache, write_cache, compute_current_hash
-    from log import write_log
+    from log import write_log, write_session_header
     from tool_check import check_tool
     from path_check import check_path_entry
     from platform_detect import detect_os
     from plugin_resolve import list_enabled_plugins
     from venv_check import check_venv
     from git_dep_check import check_git_dep
+
+    # Write session separator (one line per engine run, helps reading multi-session logs)
+    write_session_header(data_dir)
 
     # Step 1: Load/migrate config
     defaults_dir = os.path.join(plugin_root, "defaults")

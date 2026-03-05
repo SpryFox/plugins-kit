@@ -100,9 +100,12 @@ From the user's perspective, there are three possible outcomes on session start:
 |--------------------|---------------|
 | Nothing | All checks passed (or cache hit) — environment is ready |
 | Nothing (first run after install) | Tool was missing, install ran silently, re-check passed — logged internally, no user-visible output |
+| Nothing (very first session, fresh machine) | Python was being bootstrapped; the engine runs fully on the next session. No `bootstrap.log` exists yet. |
 | Fix-all message | Something needs user action: install failed, no install command, missing config, or external app needs restart |
 
 **Healthy steady state**: The user sees nothing. Bootstrap is working correctly when it's invisible.
+
+**Verifying bootstrap ran**: Check `~/.claude/plugins/data/bootstrap/bootstrap.log`. Entries appear after the first successful engine run. No log file = engine hasn't completed a full session yet (normal on first run of a fresh machine).
 
 ## Execution Flow
 
