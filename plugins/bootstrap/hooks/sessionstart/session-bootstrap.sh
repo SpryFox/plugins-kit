@@ -51,11 +51,20 @@ fi
 # --- Find Python 3 ---
 # Validate each candidate by execution, not just PATH presence.
 # This handles Windows Store stubs (python3 in PATH but exits 126).
-# Include ~/.local/bin explicitly — hook environment may not have it in PATH.
+# Include the standalone install path directly — hard links in ~/.local/bin
+# can't find stdlib, so we check the original install location.
 
 PYTHON=""
-LOCAL_BIN="${HOME}/.local/bin"
-for candidate in python3 python "${LOCAL_BIN}/python3" "${LOCAL_BIN}/python3.exe"; do
+STANDALONE_DIR="${HOME}/.local/share/python-standalone"
+CANDIDATES=(python3 python)
+# Add standalone install paths (platform-dependent)
+if [ -x "${STANDALONE_DIR}/python/python.exe" ]; then
+    CANDIDATES+=("${STANDALONE_DIR}/python/python.exe")
+elif [ -x "${STANDALONE_DIR}/python/install/bin/python3" ]; then
+    CANDIDATES+=("${STANDALONE_DIR}/python/install/bin/python3")
+fi
+
+for candidate in "${CANDIDATES[@]}"; do
     if [ -x "$candidate" ] || command -v "$candidate" &>/dev/null; then
         if "$candidate" -c "import sys; sys.exit(0 if sys.version_info[0] >= 3 else 1)" 2>/dev/null; then
             PYTHON="$candidate"
