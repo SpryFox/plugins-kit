@@ -28,6 +28,10 @@ Create the bootstrap plugin itself with engine, default config, and logging.
 - The bootstrap plugin is always enabled (engine exception) — no user opt-in required
 - Self-update: when the bootstrap plugin's config schema changes, it migrates the installed config automatically
 
+### Discovered Deficiencies
+
+- **`tool_check.py` remediation not implemented**: The engine checks tools and reports failures but never runs the platform-specific install command. ARCHITECTURE.md specified "Run platform-specific install command" as the remediation for missing tools, and the auto-run phase was designed to "apply remediations silently." The remediation loop (run install → re-check → escalate only on failure) was never built. Needs: add remediation step to `tool_check.py` and update engine to attempt remediation before escalating to fix-all. Planned install strategy: prefer `curl | sh` (or `curl | powershell -`) for any tool that provides an installer script — works on all platforms including Windows Git Bash. Chocolatey is a fallback only for tools with no curl-installable installer; install Chocolatey lazily the first time it's needed, not preemptively.
+
 ---
 
 ## Milestone 2: Test Plugin Integration
