@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -uo pipefail
 
 # session-bootstrap.sh — Thin bash wrapper for the Python bootstrap engine.
 #
 # Resolves paths, guards for python3, then delegates to the engine.
 # Engine's stdout becomes the hook response (JSON with systemMessage).
+#
+# NOTE: We intentionally do NOT use set -e. With -e, any unexpected command
+# failure causes silent exit with no JSON output, and Claude Code shows nothing.
+# Instead, we handle errors explicitly and ensure JSON is always emitted.
+
+# Safety net: if the script exits without producing output, emit minimal JSON
+HOOK_OUTPUT_EMITTED=""
+trap '[ -z "$HOOK_OUTPUT_EMITTED" ] && echo "{\"continue\": true, \"suppressOutput\": false, \"systemMessage\": \"bootstrap: shell error\", \"hookSpecificOutput\": {\"hookEventName\": \"SessionStart\"}}"' EXIT
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -116,6 +124,7 @@ if [ -z "$PYTHON" ]; then
     else
         log_entry "python3: FAILED - unsupported platform for auto-install ($OS)"
         flush_log
+        HOOK_OUTPUT_EMITTED=1
         cat <<'EOF'
 {"continue": true, "suppressOutput": false, "systemMessage": "bootstrap -> python3 not found and platform not supported for auto-install. Install Python 3 manually.", "hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "bootstrap -> CRITICAL: python3 not found. Unsupported platform for auto-install. Install Python 3.x manually."}}
 EOF
@@ -132,6 +141,7 @@ EOF
     if ! curl -LsSf "$URL" | tar xz -C "$INSTALL_DIR" 2>/dev/null; then
         log_entry "python3: FAILED - download error"
         flush_log
+        HOOK_OUTPUT_EMITTED=1
         cat <<'EOF'
 {"continue": true, "suppressOutput": false, "systemMessage": "bootstrap -> python3 not found and auto-install failed (download error). Install Python 3 manually.", "hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "bootstrap -> CRITICAL: python3 not found. Auto-install download failed. Install Python 3.x manually."}}
 EOF
@@ -175,6 +185,7 @@ flush_log
 
 # --- Invoke Engine ---
 
+HOOK_OUTPUT_EMITTED=1
 exec "$PYTHON" "${PLUGIN_ROOT}/engine/bootstrap_engine.py" \
     --plugin-root "$PLUGIN_ROOT" \
     --data-dir "$PLUGIN_DATA" \
