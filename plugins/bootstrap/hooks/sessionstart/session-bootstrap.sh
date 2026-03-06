@@ -134,6 +134,25 @@ if [ -n "$PYTHON" ] && [ "$LOG_SUCCESS_SHELL" = "true" ]; then
     log_entry "python3: ok - found at $PYTHON_PATH"
 fi
 
+# Ensure ~/.local/bin symlink exists if Python was found at standalone path
+if [ -n "$PYTHON" ]; then
+    mkdir -p "${HOME}/.local/bin"
+    OS="$(uname -s)"
+    if [[ "$OS" == MINGW* ]] || [[ "$OS" == MSYS* ]]; then
+        if [ ! -e "${HOME}/.local/bin/python3.exe" ] && [ -x "${STANDALONE_DIR}/python/python.exe" ]; then
+            WIN_SRC="$(cygpath -w "${STANDALONE_DIR}/python/python.exe")"
+            WIN_DEST="$(cygpath -w "${HOME}/.local/bin/python3.exe")"
+            powershell.exe -Command "New-Item -ItemType HardLink -Path '$WIN_DEST' -Target '$WIN_SRC' -Force" > /dev/null
+            log_entry "python3: restored link to ~/.local/bin/python3.exe"
+        fi
+    else
+        if [ ! -e "${HOME}/.local/bin/python3" ] && [ -x "${STANDALONE_DIR}/python/install/bin/python3" ]; then
+            ln -sf "${STANDALONE_DIR}/python/install/bin/python3" "${HOME}/.local/bin/python3"
+            log_entry "python3: restored link to ~/.local/bin/python3"
+        fi
+    fi
+fi
+
 # --- Self-bootstrap Python via python-build-standalone ---
 # If no valid Python 3 is found, download a standalone build and install it
 # to the plugin data directory with a symlink in ~/.local/bin.
