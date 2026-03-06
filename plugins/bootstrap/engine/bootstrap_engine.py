@@ -21,7 +21,13 @@ def main():
     parser.add_argument("--plugin-root", required=True, help="Path to bootstrap plugin root")
     parser.add_argument("--data-dir", required=True, help="Path to bootstrap data directory")
     parser.add_argument("--hook-start-epoch", type=int, default=0, help="(unused, kept for backward compat)")
+    parser.add_argument("--verbose", action="store_true", help="Show all entries including ok/cached")
+    parser.add_argument("--console", action="store_true", help="Plain text output, no JSON/log writes")
     args = parser.parse_args()
+
+    # --console implies --verbose
+    if args.console:
+        args.verbose = True
 
     plugin_root = args.plugin_root
     data_dir = args.data_dir
@@ -50,7 +56,7 @@ def main():
     self_cached = check_cache(data_dir, [manifest_path])
 
     current_os = detect_os()
-    log_success = config.get("log_success_checks", False)
+    log_success = config.get("log_success_checks", False) or args.verbose
     all_failures = []
     # Two entry lists: actions always displayed, ok only if log_success
     all_action_entries = []
@@ -155,17 +161,36 @@ def main():
             write_cache(plugin_data_dir, [plugin_manifest_path])
 
     # Step 5: Read shell log entries BEFORE writing engine entries to the log
-    shell_content = _read_new_log_entries(data_dir)
+    if not args.console:
+        shell_content = _read_new_log_entries(data_dir)
+    else:
+        shell_content = ""  # Console mode: shell already printed its entries
 
     # Step 6: Write ALL engine entries to log file (for debugging)
+    # Skip in console mode — no file writes
     all_log_entries = all_action_entries + all_ok_entries + all_cached_entries
-    if all_log_entries:
+    if all_log_entries and not args.console:
         write_log_block(data_dir, "Engine", all_log_entries)
 
     # Step 7: Build display entries — actions always, ok only if log_success
     display_entries = list(all_action_entries)
     if log_success:
         display_entries.extend(all_ok_entries)
+    # --verbose also includes cached entries
+    if args.verbose:
+        display_entries.extend(all_cached_entries)
+
+    if args.console:
+        # Console mode: plain text to stdout, no JSON
+        import datetime
+        ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        for entry in display_entries:
+            print(f"[{ts}] {entry}")
+        if all_failures:
+            print(f"\n{bootstrap_label} -> {len(all_failures)} failure(s):")
+            for f in all_failures:
+                print(f"  - [{f['type']}] {f.get('name', f.get('message', ''))}")
+        return
 
     # Build final display: shell entries + engine header (if engine has entries) + engine entries
     parts = []

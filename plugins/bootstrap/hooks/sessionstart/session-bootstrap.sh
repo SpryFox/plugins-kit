@@ -16,6 +16,17 @@ HOOK_OUTPUT_EMITTED=""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# --- Parse flags ---
+FLAG_VERBOSE=""
+FLAG_CONSOLE=""
+ENGINE_FLAGS=()
+for arg in "$@"; do
+    case "$arg" in
+        --verbose) FLAG_VERBOSE=1; ENGINE_FLAGS+=(--verbose) ;;
+        --console) FLAG_CONSOLE=1; ENGINE_FLAGS+=(--console) ;;
+    esac
+done
+
 # Derive marketplace name from plugin root path.
 # Works for both dev layout (~/Dev/<marketplace>/plugins/bootstrap/)
 # and cache layout (~/.claude/plugins/cache/<marketplace>/bootstrap/<version>/).
@@ -24,7 +35,10 @@ BOOTSTRAP_LABEL="${MARKETPLACE_NAME}:bootstrap"
 PLUGIN_DATA="${HOME}/.claude/plugins/data/${MARKETPLACE_NAME}/bootstrap"
 
 # Set trap after BOOTSTRAP_LABEL is defined so variable expands correctly
-trap '[ -z "$HOOK_OUTPUT_EMITTED" ] && echo "{\"continue\": true, \"suppressOutput\": false, \"systemMessage\": \"'"${BOOTSTRAP_LABEL}"': shell error\", \"hookSpecificOutput\": {\"hookEventName\": \"SessionStart\"}}"' EXIT
+# In console mode, no JSON safety net needed — plain text output
+if [ -z "$FLAG_CONSOLE" ]; then
+    trap '[ -z "$HOOK_OUTPUT_EMITTED" ] && echo "{\"continue\": true, \"suppressOutput\": false, \"systemMessage\": \"'"${BOOTSTRAP_LABEL}"': shell error\", \"hookSpecificOutput\": {\"hookEventName\": \"SessionStart\"}}"' EXIT
+fi
 
 # --- Capture hook input from stdin and record start time ---
 HOOK_INPUT=$(cat)
@@ -39,6 +53,10 @@ log_entry() {
     local ts
     ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "unknown-time")"
     SHELL_LOG_ENTRIES+=("[$ts] $msg")
+    # In console mode, also print to stdout immediately
+    if [ -n "$FLAG_CONSOLE" ]; then
+        echo "[$ts] $msg"
+    fi
 }
 
 flush_log() {
@@ -66,6 +84,10 @@ if [ -f "$CONFIG_FILE" ]; then
     if [ "$val" = "true" ]; then
         LOG_SUCCESS_SHELL="true"
     fi
+fi
+# --verbose and --console override config to show all shell entries
+if [ -n "$FLAG_VERBOSE" ] || [ -n "$FLAG_CONSOLE" ]; then
+    LOG_SUCCESS_SHELL="true"
 fi
 
 # --- Ensure ~/.local/bin is at front of PATH ---
@@ -199,7 +221,10 @@ if [ "$LOG_SUCCESS_SHELL" = "true" ]; then
 fi
 
 # --- Flush shell log entries (if any) before handing off to engine ---
-flush_log
+# In console mode, skip file writes (entries were already printed to stdout)
+if [ -z "$FLAG_CONSOLE" ]; then
+    flush_log
+fi
 
 # --- Invoke Engine ---
 
@@ -207,4 +232,5 @@ HOOK_OUTPUT_EMITTED=1
 exec "$PYTHON" "${PLUGIN_ROOT}/engine/bootstrap_engine.py" \
     --plugin-root "$PLUGIN_ROOT" \
     --data-dir "$PLUGIN_DATA" \
-    --hook-start-epoch "$HOOK_START_EPOCH"
+    --hook-start-epoch "$HOOK_START_EPOCH" \
+    "${ENGINE_FLAGS[@]}"
