@@ -548,7 +548,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
             action_entries.append(f"{prefix}marketplace {mkt_name}: not found, adding")
             add_result = add_marketplace(source_url, mkt_name)
             if add_result.passed:
-                action_entries.append(f"{prefix}marketplace {mkt_name}: added via `claude plugin marketplace add {source_url}`")
+                action_entries.append(f"{prefix}marketplace {mkt_name}: added via `claude plugin marketplace add {source_url}` (modifies known_marketplaces.json)")
             else:
                 action_entries.append(f"{prefix}marketplace {mkt_name}: FAILED - {add_result.message}")
                 failures.append({
@@ -577,7 +577,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
             action_entries.append(f"{prefix}plugin {plugin_ref}: not installed, running `claude plugin install {cli_ref}`")
             inst = install_plugin(plugin_ref)
             if inst.passed:
-                action_entries.append(f"{prefix}plugin {plugin_ref}: installed")
+                action_entries.append(f"{prefix}plugin {plugin_ref}: installed (modifies settings.json)")
             else:
                 action_entries.append(f"{prefix}plugin {plugin_ref}: FAILED - {inst.message}")
                 failures.append({
@@ -596,7 +596,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
             # Disable the plugin in Claude Code
             dis_result = disable_plugin_in_claude(plugin_ref)
             if dis_result.passed:
-                action_entries.append(f"{prefix}plugin {plugin_ref}: disabled via `claude plugin disable {cli_ref}`")
+                action_entries.append(f"{prefix}plugin {plugin_ref}: disabled via `claude plugin disable {cli_ref}` (modifies settings.json)")
             else:
                 action_entries.append(f"{prefix}plugin {plugin_ref}: disable failed - {dis_result.message}")
                 failures.append({
