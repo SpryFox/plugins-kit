@@ -165,6 +165,20 @@ def _to_cli_ref(plugin_ref: str) -> str:
     return plugin_ref
 
 
+def check_plugin_enabled(plugin_ref: str) -> LifecycleResult:
+    """Check if a plugin is currently enabled in settings.json enabledPlugins."""
+    cli_ref = _to_cli_ref(plugin_ref)
+    settings_path = os.path.expanduser("~/.claude/settings.json")
+    try:
+        with open(settings_path, "r") as f:
+            data = json.load(f)
+        if data.get("enabledPlugins", {}).get(cli_ref) is True:
+            return LifecycleResult(passed=True, ref=plugin_ref, message="enabled")
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+    return LifecycleResult(passed=False, ref=plugin_ref, message="not enabled")
+
+
 def enable_plugin_in_claude(plugin_ref: str) -> LifecycleResult:
     """Enable a plugin in Claude Code via `claude plugin enable`."""
     cli_ref = _to_cli_ref(plugin_ref)

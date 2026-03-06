@@ -65,7 +65,15 @@ def main():
     # Detect marketplace name for log prefixes
     plugins_dir = os.path.dirname(plugin_root)
     marketplace_name = _detect_marketplace_name(plugins_dir)
-    bootstrap_label = f"{marketplace_name}:bootstrap" if marketplace_name else "bootstrap"
+    plugin_json_path = os.path.join(plugin_root, ".claude-plugin", "plugin.json")
+    version = ""
+    try:
+        with open(plugin_json_path, "r") as f:
+            version = json.load(f).get("version", "")
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        pass
+    version_suffix = f"@{version}" if version else ""
+    bootstrap_label = f"{marketplace_name}:bootstrap{version_suffix}" if marketplace_name else f"bootstrap{version_suffix}"
 
     # Step 3: Self-bootstrap (own manifest)
     # "cached" entries are log-file-only (not displayed) — they mean "nothing to check"
@@ -577,7 +585,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
             action_entries.append(f"{prefix}plugin {plugin_ref}: not installed, running `claude plugin install {cli_ref}`")
             inst = install_plugin(plugin_ref)
             if inst.passed:
-                action_entries.append(f"{prefix}plugin {plugin_ref}: installed (modifies settings.json)")
+                action_entries.append(f"{prefix}plugin {plugin_ref}: installed (added '{cli_ref}' to settings.json enabledPlugins)")
             else:
                 action_entries.append(f"{prefix}plugin {plugin_ref}: FAILED - {inst.message}")
                 failures.append({
@@ -588,23 +596,27 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                 })
                 continue
 
-        from marketplace_lifecycle import enable_plugin_in_claude, disable_plugin_in_claude
+        from marketplace_lifecycle import enable_plugin_in_claude, disable_plugin_in_claude, check_plugin_enabled
 
         if enabled:
             ok_entries.append(f"{prefix}plugin {plugin_ref}: ok")
         else:
-            # Disable the plugin in Claude Code
-            dis_result = disable_plugin_in_claude(plugin_ref)
-            if dis_result.passed:
-                action_entries.append(f"{prefix}plugin {plugin_ref}: disabled via `claude plugin disable {cli_ref}` (modifies settings.json)")
+            # Only disable if currently enabled (check before acting)
+            enabled_result = check_plugin_enabled(plugin_ref)
+            if not enabled_result.passed:
+                ok_entries.append(f"{prefix}plugin {plugin_ref}: already disabled")
             else:
-                action_entries.append(f"{prefix}plugin {plugin_ref}: disable failed - {dis_result.message}")
-                failures.append({
-                    "type": "plugin",
-                    "ref": plugin_ref,
-                    "message": dis_result.message,
-                    "plugin": plugin_name,
-                })
+                dis_result = disable_plugin_in_claude(plugin_ref)
+                if dis_result.passed:
+                    action_entries.append(f"{prefix}plugin {plugin_ref}: disabled via `claude plugin disable {cli_ref}` (removed '{cli_ref}' from settings.json enabledPlugins)")
+                else:
+                    action_entries.append(f"{prefix}plugin {plugin_ref}: disable failed - {dis_result.message}")
+                    failures.append({
+                        "type": "plugin",
+                        "ref": plugin_ref,
+                        "message": dis_result.message,
+                        "plugin": plugin_name,
+                    })
 
     # Script phase
     script_def = manifest.get("script")
