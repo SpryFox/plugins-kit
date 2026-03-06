@@ -20,5 +20,13 @@
   "path_entries": ["~/.local/bin"],
   "venv": {
     "check_imports": ["yaml"]
-  }
+  },
+  "json_entries": [
+    {
+      "reference": "known_marketplaces.json",
+      "target": "~/.claude/plugins/known_marketplaces.json",
+      "merge_fields": ["source", "autoUpdate"],
+      "preserve_fields": ["lastUpdated", "installLocation"]
+    }
+  ]
 }

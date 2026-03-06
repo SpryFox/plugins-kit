@@ -129,7 +129,7 @@ class TestCrossMarketplacePluginRefs:
             assert "plugins-kit:bootstrap" in msg
 
     def test_cross_marketplace_ref_not_in_global_registry_fails(self, tmp_path, monkeypatch):
-        """Cross-marketplace ref not found in global registry produces failure."""
+        """Cross-marketplace ref not found produces failure (install attempted)."""
         plugins_dir = tmp_path / "plugins"
         plugins_dir.mkdir()
         fake_root = make_fake_bootstrap_root(plugins_dir)
@@ -139,7 +139,7 @@ class TestCrossMarketplacePluginRefs:
         (plugins_dir / "installed_plugins.json").write_text(json.dumps(local_registry))
 
         # Global registry is empty
-        global_plugins_dir = tmp_path / "global" / "plugins"
+        global_plugins_dir = tmp_path / "global" / ".claude" / "plugins"
         global_plugins_dir.mkdir(parents=True)
         (global_plugins_dir / "installed_plugins.json").write_text(json.dumps({"plugins": {}}))
 
@@ -168,7 +168,7 @@ class TestCrossMarketplacePluginRefs:
         response = json.loads(result.stdout)
         ctx = response["hookSpecificOutput"]["additionalContext"]
         assert "plugins-kit:bootstrap" in ctx
-        assert "not registered" in ctx
+        assert "install" in ctx.lower()
 
 
 class TestDetectMarketplaceName:
