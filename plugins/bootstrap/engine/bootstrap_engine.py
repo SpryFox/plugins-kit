@@ -50,9 +50,11 @@ def main():
     self_cached = check_cache(data_dir, [manifest_path])
 
     current_os = detect_os()
-    log_success = config.get("log_success_checks", True)
+    log_success = config.get("log_success_checks", False)
     all_failures = []
-    all_log_entries = []
+    # Two entry lists: actions always displayed, ok only if log_success
+    all_action_entries = []
+    all_ok_entries = []
 
     # Detect marketplace name for log prefixes
     plugins_dir = os.path.dirname(plugin_root)
@@ -60,16 +62,19 @@ def main():
     bootstrap_label = f"{marketplace_name}:bootstrap" if marketplace_name else "bootstrap"
 
     # Step 3: Self-bootstrap (own manifest)
+    # "cached" entries are log-file-only (not displayed) — they mean "nothing to check"
+    all_cached_entries = []
     if self_cached:
-        if log_success:
-            all_log_entries.append(f"{bootstrap_label}: cached")
+        all_cached_entries.append(f"{bootstrap_label}: cached")
     else:
         with open(manifest_path, "r") as f:
             manifest = json.load(f)
 
-        log_entries = []
-        failures = _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, log_success=log_success)
-        all_log_entries.extend(log_entries)
+        action_entries = []
+        ok_entries = []
+        failures = _process_manifest(manifest, current_os, data_dir, plugin_root, action_entries, ok_entries)
+        all_action_entries.extend(action_entries)
+        all_ok_entries.extend(ok_entries)
 
         if failures:
             all_failures.extend(failures)
@@ -84,17 +89,18 @@ def main():
     if os.path.isfile(user_manifest_path):
         compute_current_hash(data_dir, [user_manifest_path])
         if check_cache(data_dir, [user_manifest_path]):
-            if log_success:
-                all_log_entries.append("user: cached")
+            all_cached_entries.append("user: cached")
         else:
             with open(user_manifest_path, "r") as f:
                 user_manifest = json.load(f)
-            log_entries = []
+            action_entries = []
+            ok_entries = []
             failures = _process_manifest(
-                user_manifest, current_os, data_dir, plugin_root, log_entries,
-                plugin_name="user", log_success=log_success,
+                user_manifest, current_os, data_dir, plugin_root, action_entries, ok_entries,
+                plugin_name="user",
             )
-            all_log_entries.extend(f"user: {e}" for e in log_entries)
+            all_action_entries.extend(f"user: {e}" for e in action_entries)
+            all_ok_entries.extend(f"user: {e}" for e in ok_entries)
             if failures:
                 all_failures.extend(failures)
             else:
@@ -103,8 +109,8 @@ def main():
     # Step 4: Process enabled plugins
     registry_path = os.path.join(plugins_dir, "installed_plugins.json")
 
-    enabled = list_enabled_plugins(config, registry_path, plugins_dir)
-    for plugin_info in enabled:
+    enabled_plugins = list_enabled_plugins(config, registry_path, plugins_dir)
+    for plugin_info in enabled_plugins:
         plugin_manifest_path = os.path.join(plugin_info.install_path, "bootstrap.json")
         if not os.path.isfile(plugin_manifest_path):
             continue
@@ -123,7 +129,7 @@ def main():
         if config_section:
             config_failures = _process_config(
                 config_section, plugin_data_dir, plugin_info.install_path,
-                all_log_entries, plugin_name=plugin_info.name,
+                all_action_entries, plugin_name=plugin_info.name,
             )
             if config_failures:
                 all_failures.extend(config_failures)
@@ -131,32 +137,56 @@ def main():
         # Cache gate for tools/venv/git_deps
         compute_current_hash(plugin_data_dir, [plugin_manifest_path])
         if check_cache(plugin_data_dir, [plugin_manifest_path]):
-            if log_success:
-                all_log_entries.append(f"{plugin_info.name}: cached")
+            all_cached_entries.append(f"{plugin_info.name}: cached")
             continue
 
-        log_entries = []
+        action_entries = []
+        ok_entries = []
         failures = _process_manifest(
-            plugin_manifest, current_os, plugin_data_dir, plugin_info.install_path, log_entries,
-            plugin_name=plugin_info.name, log_success=log_success,
+            plugin_manifest, current_os, plugin_data_dir, plugin_info.install_path,
+            action_entries, ok_entries, plugin_name=plugin_info.name,
         )
-        all_log_entries.extend(f"{plugin_info.name}: {e}" for e in log_entries)
+        all_action_entries.extend(f"{plugin_info.name}: {e}" for e in action_entries)
+        all_ok_entries.extend(f"{plugin_info.name}: {e}" for e in ok_entries)
 
         if failures:
             all_failures.extend(failures)
         else:
             write_cache(plugin_data_dir, [plugin_manifest_path])
 
-    # Step 5: Write log block (header + entries) only if we have entries
+    # Step 5: Read shell log entries BEFORE writing engine entries to the log
+    shell_content = _read_new_log_entries(data_dir)
+
+    # Step 6: Write ALL engine entries to log file (for debugging)
+    all_log_entries = all_action_entries + all_ok_entries + all_cached_entries
     if all_log_entries:
         write_log_block(data_dir, "Engine", all_log_entries)
 
-    # Step 7: Emit results — show new log entries to user (since last display)
-    log_content = _read_new_log_entries(data_dir)
+    # Step 7: Build display entries — actions always, ok only if log_success
+    display_entries = list(all_action_entries)
+    if log_success:
+        display_entries.extend(all_ok_entries)
+
+    # Build final display: shell entries + engine header (if engine has entries) + engine entries
+    parts = []
+    if shell_content:
+        parts.append(shell_content)
+    if display_entries:
+        import datetime
+        ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        parts.append(f"--- Engine {ts} ---")
+        for entry in display_entries:
+            parts.append(f"[{ts}] {entry}")
+    display_content = "\n".join(parts)
+
+    # Update the log display marker
+    _update_display_marker(data_dir)
+
+    # Step 8: Emit results
     if all_failures:
-        emit_failure_response(all_failures, current_os, log_content, label=bootstrap_label)
-    elif log_content:
-        emit_success_response(log_content, label=bootstrap_label)
+        emit_failure_response(all_failures, current_os, display_content, label=bootstrap_label)
+    elif display_content:
+        emit_success_response(display_content, label=bootstrap_label)
     # else: nothing to show — silent exit
 
 
@@ -242,8 +272,13 @@ def _process_config(config_section, plugin_data_dir, plugin_root, log_entries, p
     return failures
 
 
-def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, plugin_name="bootstrap", log_success=True):
-    """Process a single plugin's bootstrap manifest. Returns list of failures."""
+def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entries, ok_entries, plugin_name="bootstrap"):
+    """Process a single plugin's bootstrap manifest. Returns list of failures.
+
+    Entries are split into two lists:
+    - action_entries: actions performed, failures, conditions not met (always displayed)
+    - ok_entries: checks that passed (only displayed if log_success is true)
+    """
     from tool_check import check_tool
     from path_check import check_path_entry
     from venv_check import check_venv
@@ -259,24 +294,23 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
         result = check_tool(name, install_cmds, current_os)
 
         if result.passed:
-            if log_success:
-                log_entries.append(f"{prefix}{result.name}: ok - {result.message}")
+            ok_entries.append(f"{prefix}{result.name}: ok - {result.message}")
             continue
 
         # Tool not found — attempt remediation if install command available
         if result.install_cmd:
-            log_entries.append(f"{prefix}{result.name}: not found, attempting install")
+            action_entries.append(f"{prefix}{result.name}: not found, attempting install")
             from tool_check import run_install
             ok, _output = run_install(result.install_cmd)
             if ok:
                 recheck = check_tool(name, install_cmds, current_os)
                 if recheck.passed:
-                    log_entries.append(f"{prefix}{result.name}: installed - ran `{result.install_cmd}`, now {recheck.message}")
+                    action_entries.append(f"{prefix}{result.name}: installed - ran `{result.install_cmd}`, now {recheck.message}")
                     continue  # no failure to record
             # Install failed or tool still missing after install
-            log_entries.append(f"{prefix}{result.name}: FAILED - install attempted but still not found")
+            action_entries.append(f"{prefix}{result.name}: FAILED - install attempted but still not found")
         else:
-            log_entries.append(f"{prefix}{result.name}: FAILED - {result.message}")
+            action_entries.append(f"{prefix}{result.name}: FAILED - {result.message}")
 
         failures.append({
             "type": "tool",
@@ -290,11 +324,10 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
     for path_entry in manifest.get("path_entries", []):
         expanded = os.path.expanduser(path_entry)
         result = check_path_entry(path_entry)
-        if result.passed and not log_success:
-            pass  # still need to fall through to ensure PATH update
+        if result.passed:
+            ok_entries.append(f"{prefix}PATH {result.path}: ok - {result.message}")
         else:
-            log_entries.append(f"{prefix}PATH {result.path}: {'ok' if result.passed else 'FAILED'} - {result.message}")
-        if not result.passed:
+            action_entries.append(f"{prefix}PATH {result.path}: FAILED - {result.message}")
             failures.append({
                 "type": "path",
                 "path": result.path,
@@ -314,7 +347,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
 
         if not result.passed:
             # Attempt auto-remediation — run uv sync with venv in data dir
-            log_entries.append(f"{prefix}venv: not ready, attempting setup")
+            action_entries.append(f"{prefix}venv: not ready, attempting setup")
             import shutil
             import subprocess as _sp
             venv_path = os.path.join(data_dir, ".venv")
@@ -343,13 +376,14 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
                     # Re-check after remediation
                     result = check_venv(data_dir, plugin_root, check_imports)
                     if result.passed:
-                        log_entries.append(f"{prefix}venv: created")
+                        action_entries.append(f"{prefix}venv: created")
                 except (_sp.SubprocessError, OSError):
                     pass  # Fall through to failure handling
 
-        if not result.passed or log_success:
-            log_entries.append(f"{prefix}venv: {'ok' if result.passed else 'FAILED'} - {result.message}")
-        if not result.passed:
+        if result.passed:
+            ok_entries.append(f"{prefix}venv: ok - {result.message}")
+        else:
+            action_entries.append(f"{prefix}venv: FAILED - {result.message}")
             failures.append({
                 "type": "venv",
                 "message": result.message,
@@ -365,9 +399,10 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
             dep_def["branch"],
             dep_def.get("sparse_paths"),
         )
-        if not result.passed or log_success:
-            log_entries.append(f"{prefix}git {result.repo_name}: {'ok' if result.passed else 'FAILED'} - {result.message}")
-        if not result.passed:
+        if result.passed:
+            ok_entries.append(f"{prefix}git {result.repo_name}: ok - {result.message}")
+        else:
+            action_entries.append(f"{prefix}git {result.repo_name}: FAILED - {result.message}")
             failures.append({
                 "type": "git_dep",
                 "name": result.repo_name,
@@ -385,8 +420,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
     for ini_def in manifest.get("ini_settings", []):
         ini_file = resolve_vars(ini_def["file"], variables)
         if ini_file is None:
-            if log_success:
-                log_entries.append(f"{prefix}ini {ini_def['file']}: skipped (unresolved vars)")
+            ok_entries.append(f"{prefix}ini {ini_def['file']}: skipped (unresolved vars)")
             continue
 
         section = ini_def["section"]
@@ -397,14 +431,13 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
         for key, expected in ini_def.get("settings", {}).items():
             result = check_ini_setting(ini_file, section_header, key, expected)
             if result.passed:
-                if log_success:
-                    log_entries.append(f"{prefix}ini {key}: ok")
+                ok_entries.append(f"{prefix}ini {key}: ok")
             else:
                 try:
                     write_ini_setting(ini_file, section_header, key, expected)
-                    log_entries.append(f"{prefix}ini {key}: set to {expected}")
+                    action_entries.append(f"{prefix}ini {key}: set to {expected}")
                 except OSError as e:
-                    log_entries.append(f"{prefix}ini {key}: FAILED - {e}")
+                    action_entries.append(f"{prefix}ini {key}: FAILED - {e}")
                     failures.append({
                         "type": "ini",
                         "file": ini_file,
@@ -418,8 +451,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
         ref_path = resolve_vars(json_def.get("reference", ""), variables)
         target_path = resolve_vars(json_def.get("target", ""), variables)
         if ref_path is None or target_path is None:
-            if log_success:
-                log_entries.append(f"{prefix}json: skipped (unresolved vars)")
+            ok_entries.append(f"{prefix}json: skipped (unresolved vars)")
             continue
 
         # Resolve reference relative to plugin root if not absolute
@@ -434,14 +466,13 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
         from json_check import check_json_entries, merge_json_entries
         result = check_json_entries(ref_path, target_path, merge_fields, preserve_fields)
         if result.passed:
-            if log_success:
-                log_entries.append(f"{prefix}json {os.path.basename(target_path)}: ok")
+            ok_entries.append(f"{prefix}json {os.path.basename(target_path)}: ok")
         else:
             result = merge_json_entries(ref_path, target_path, merge_fields, preserve_fields)
             if result.passed:
-                log_entries.append(f"{prefix}json {os.path.basename(target_path)}: merged")
+                action_entries.append(f"{prefix}json {os.path.basename(target_path)}: merged")
             else:
-                log_entries.append(f"{prefix}json {os.path.basename(target_path)}: FAILED - {result.message}")
+                action_entries.append(f"{prefix}json {os.path.basename(target_path)}: FAILED - {result.message}")
                 failures.append({
                     "type": "json",
                     "target": target_path,
@@ -453,22 +484,20 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
     for pypi_def in manifest.get("pypi_packages", []):
         extract_to = resolve_vars(pypi_def["extract_to"], variables)
         if extract_to is None:
-            if log_success:
-                log_entries.append(f"{prefix}pypi {pypi_def['package']}: skipped (unresolved vars)")
+            ok_entries.append(f"{prefix}pypi {pypi_def['package']}: skipped (unresolved vars)")
             continue
 
         from pypi_check import check_pypi_package, download_and_extract
         result = check_pypi_package(pypi_def["package"], extract_to)
         if result.passed:
-            if log_success:
-                log_entries.append(f"{prefix}pypi {result.package}: ok")
+            ok_entries.append(f"{prefix}pypi {result.package}: ok")
         else:
             extract_pattern = pypi_def.get("extract_pattern")
             result = download_and_extract(pypi_def["package"], extract_to, extract_pattern)
             if result.passed:
-                log_entries.append(f"{prefix}pypi {result.package}: {result.message}")
+                action_entries.append(f"{prefix}pypi {result.package}: {result.message}")
             else:
-                log_entries.append(f"{prefix}pypi {result.package}: FAILED - {result.message}")
+                action_entries.append(f"{prefix}pypi {result.package}: FAILED - {result.message}")
                 failures.append({
                     "type": "pypi",
                     "package": pypi_def["package"],
@@ -487,16 +516,15 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
 
         mkt_result = check_marketplace_exists(mkt_name)
         if mkt_result.passed:
-            if log_success:
-                log_entries.append(f"{prefix}marketplace {mkt_name}: ok")
+            ok_entries.append(f"{prefix}marketplace {mkt_name}: ok")
         else:
             # Auto-add marketplace via CLI
-            log_entries.append(f"{prefix}marketplace {mkt_name}: not found, adding")
+            action_entries.append(f"{prefix}marketplace {mkt_name}: not found, adding")
             add_result = add_marketplace(source_url, mkt_name)
             if add_result.passed:
-                log_entries.append(f"{prefix}marketplace {mkt_name}: added")
+                action_entries.append(f"{prefix}marketplace {mkt_name}: added")
             else:
-                log_entries.append(f"{prefix}marketplace {mkt_name}: FAILED - {add_result.message}")
+                action_entries.append(f"{prefix}marketplace {mkt_name}: FAILED - {add_result.message}")
                 failures.append({
                     "type": "marketplace",
                     "name": mkt_name,
@@ -517,12 +545,12 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
         install_result = check_plugin_installed(plugin_ref)
         if not install_result.passed:
             # Auto-install via CLI
-            log_entries.append(f"{prefix}plugin {plugin_ref}: not installed, installing")
+            action_entries.append(f"{prefix}plugin {plugin_ref}: not installed, installing")
             inst = install_plugin(plugin_ref)
             if inst.passed:
-                log_entries.append(f"{prefix}plugin {plugin_ref}: installed")
+                action_entries.append(f"{prefix}plugin {plugin_ref}: installed")
             else:
-                log_entries.append(f"{prefix}plugin {plugin_ref}: FAILED - {inst.message}")
+                action_entries.append(f"{prefix}plugin {plugin_ref}: FAILED - {inst.message}")
                 failures.append({
                     "type": "plugin",
                     "ref": plugin_ref,
@@ -534,15 +562,14 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
         from marketplace_lifecycle import enable_plugin_in_claude, disable_plugin_in_claude
 
         if enabled:
-            if log_success:
-                log_entries.append(f"{prefix}plugin {plugin_ref}: ok")
+            ok_entries.append(f"{prefix}plugin {plugin_ref}: ok")
         else:
             # Disable the plugin in Claude Code
             dis_result = disable_plugin_in_claude(plugin_ref)
             if dis_result.passed:
-                log_entries.append(f"{prefix}plugin {plugin_ref}: disabled")
+                action_entries.append(f"{prefix}plugin {plugin_ref}: disabled")
             else:
-                log_entries.append(f"{prefix}plugin {plugin_ref}: disable failed - {dis_result.message}")
+                action_entries.append(f"{prefix}plugin {plugin_ref}: disable failed - {dis_result.message}")
                 failures.append({
                     "type": "plugin",
                     "ref": plugin_ref,
@@ -554,7 +581,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
     script_def = manifest.get("script")
     if script_def:
         script_failures = _run_script_phase(
-            script_def, plugin_root, data_dir, config, log_entries,
+            script_def, plugin_root, data_dir, config, action_entries,
             prefix=prefix, plugin_name=plugin_name,
         )
         failures.extend(script_failures)
@@ -662,7 +689,7 @@ def _read_new_log_entries(data_dir):
     """Read log entries since the last time we displayed them.
 
     Uses a 'last_displayed_at' file to track the timestamp of the last display.
-    After reading, updates the timestamp so the next call only shows new entries.
+    Does NOT update the marker — call _update_display_marker() after all entries are written.
     """
     from log import LOG_FILENAME
     log_file = os.path.join(data_dir, LOG_FILENAME)
@@ -685,8 +712,6 @@ def _read_new_log_entries(data_dir):
     # Filter to entries after the last-displayed timestamp
     new_lines = []
     for line in lines:
-        # Extract timestamp from lines like "[2026-03-05T18:47:24Z] ..."
-        # or include header lines like "--- Shell 2026-03-05T18:47:24Z ---"
         ts = _extract_timestamp(line)
         if ts and last_displayed and ts <= last_displayed:
             continue
@@ -695,7 +720,21 @@ def _read_new_log_entries(data_dir):
     if not new_lines:
         return ""
 
-    # Update the marker to the latest timestamp in the log
+    return "".join(new_lines).rstrip("\n")
+
+
+def _update_display_marker(data_dir):
+    """Update the display marker to the latest timestamp in the log file."""
+    from log import LOG_FILENAME
+    log_file = os.path.join(data_dir, LOG_FILENAME)
+    marker_file = os.path.join(data_dir, "last_displayed_at")
+
+    try:
+        with open(log_file, "r") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        return
+
     latest_ts = ""
     for line in reversed(lines):
         ts = _extract_timestamp(line)
@@ -706,8 +745,6 @@ def _read_new_log_entries(data_dir):
         os.makedirs(data_dir, exist_ok=True)
         with open(marker_file, "w") as f:
             f.write(latest_ts)
-
-    return "".join(new_lines).rstrip("\n")
 
 
 def _extract_timestamp(line):
