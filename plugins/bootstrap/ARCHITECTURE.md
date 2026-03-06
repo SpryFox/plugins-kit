@@ -29,7 +29,7 @@ A declarative configuration file covering automatable operations. The engine rea
 {
   "tools": [
     {"name": "git"},
-    {"name": "uv", "install": "curl -LsSf https://astral.sh/uv/install.sh | sh"}
+    {"name": "uv", "install": {"darwin": "curl -LsSf https://astral.sh/uv/install.sh | sh", "linux": "curl -LsSf https://astral.sh/uv/install.sh | sh", "windows": "powershell -c \"irm https://astral.sh/uv/install.ps1 | iex\""}}
   ],
   "path_entries": ["~/.local/bin"],
   "venv": {
@@ -64,9 +64,24 @@ A declarative configuration file covering automatable operations. The engine rea
       "extract_pattern": "*.py"
     }
   ],
+  "marketplaces": [
+    {"name": "plugins-kit", "source": "/path/to/plugins-kit"}
+  ],
   "plugins": [
     {"ref": "plugins-kit:unreal-kit", "enabled": true}
-  ]
+  ],
+  "config": {
+    "file": "config.yaml",
+    "defaults_source": "defaults/config.yaml",
+    "required_fields": {
+      "uproject_path": {"user_msg": "Set path to your .uproject file", "agent_msg": "Ask user for .uproject path and write it to config.yaml as uproject_path"}
+    },
+    "autodetect": {"script": "scripts/autodetect.py", "entry_point": "detect"}
+  },
+  "script": {
+    "path": "scripts/bootstrap.py",
+    "entry_point": "bootstrap"
+  }
 }
 ```
 
