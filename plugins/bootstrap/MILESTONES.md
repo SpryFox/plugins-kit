@@ -147,6 +147,58 @@ Make the update01 marketplace a self-contained seed that installs the plugins-ki
 
 ---
 
+## Milestone 6: Marketplace and Plugin Lifecycle Management
+
+The bootstrap engine can fully manage marketplaces and plugins — install, update, delete, and control auto-update — so `update01:bootstrap` can ensure `plugins-kit` is installed end-to-end in a single session.
+
+### Deliverables
+
+#### Marketplace Lifecycle
+
+- [ ] Install marketplace: clone repo to `~/.claude/plugins/marketplaces/<name>/`, register in `known_marketplaces.json`
+- [ ] Update marketplace: `git pull` to refresh marketplace repo
+- [ ] Delete marketplace: remove repo and `known_marketplaces.json` entry
+- [ ] Enable/disable auto-update per marketplace (toggle `autoUpdate` in `known_marketplaces.json`)
+- [ ] Time-throttled freshness check: `git ls-remote` vs local HEAD, skip if unchanged
+- [ ] `marketplace_lifecycle.py` lib module
+
+#### Plugin Lifecycle
+
+- [ ] Install plugin: copy from marketplace to plugin cache, register in `installed_plugins.json`
+- [ ] Update plugin: refresh cache from marketplace (compare `gitCommitSha`)
+- [ ] Delete plugin: remove from cache and registry
+- [ ] Enable/disable auto-update per plugin
+- [ ] Time-throttled freshness check for plugins
+- [ ] Extend `plugin_lifecycle.py` with install/update/delete
+
+#### Engine Integration
+
+- [ ] `marketplaces` manifest field: declare marketplace dependencies (install, ensure updated)
+- [ ] Extend `plugins` manifest field with install/update semantics (currently only checks registration)
+- [ ] Freshness checks use time-based throttling from `cache.py` (e.g. 16-hour cooldown for remote checks)
+
+#### update01:bootstrap End-to-End
+
+- [ ] `update01:bootstrap` ensures the plugins-kit marketplace is installed (clone + register)
+- [ ] `update01:bootstrap` ensures `plugins-kit:bootstrap` is installed (cache from marketplace + register + enable)
+- [ ] Full flow completes in a single session (no restart needed)
+
+#### Tests
+
+- [ ] Unit tests for marketplace lifecycle operations
+- [ ] Unit tests for plugin install/update/delete
+- [ ] Integration tests for engine marketplace and plugin manifest processing
+- [ ] Integration tests for time-throttled freshness checks
+- [ ] End-to-end test: update01 manifest installs marketplace and plugin
+
+### Notes
+
+- This resolves the M4 `plugins-kit:bootstrap: not registered` issue — the engine installs the plugin directly instead of waiting for Claude Code to sync on next restart
+- Time-throttled freshness uses `check_time_cache`/`write_time_cache` from M5 — primitives exist, need wiring into marketplace/plugin checks
+- `json_entries` handles marketplace registration in `known_marketplaces.json` but not the full lifecycle (clone, pull, delete)
+
+---
+
 ## Milestone 5: Capability Audit
 
 Audit all desired capabilities from the ARCHITECTURE.md operation tables against the bootstrap system's actual implementation to identify gaps.
