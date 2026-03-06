@@ -509,10 +509,6 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
             continue
 
         from marketplace_lifecycle import check_plugin_installed, install_plugin
-        from plugin_lifecycle import check_plugin_enabled
-        from plugin_resolve import parse_plugin_ref
-
-        config_path = os.path.join(os.path.dirname(data_dir), "bootstrap", "config.json")
 
         # Check if plugin is installed (global registry, handles both ref formats)
         install_result = check_plugin_installed(plugin_ref)
@@ -532,24 +528,24 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, log_entries, 
                 })
                 continue
 
+        from marketplace_lifecycle import enable_plugin_in_claude, disable_plugin_in_claude
+
         if enabled:
-            en_result = check_plugin_enabled(config_path, plugin_ref)
-            if en_result.passed:
-                if log_success:
-                    log_entries.append(f"{prefix}plugin {plugin_ref}: ok")
-            else:
-                from plugin_lifecycle import enable_plugin
-                enable_plugin(config_path, plugin_ref)
-                log_entries.append(f"{prefix}plugin {plugin_ref}: enabled")
+            if log_success:
+                log_entries.append(f"{prefix}plugin {plugin_ref}: ok")
         else:
-            en_result = check_plugin_enabled(config_path, plugin_ref)
-            if not en_result.passed:
-                if log_success:
-                    log_entries.append(f"{prefix}plugin {plugin_ref}: ok (disabled)")
-            else:
-                from plugin_lifecycle import disable_plugin
-                disable_plugin(config_path, plugin_ref)
+            # Disable the plugin in Claude Code
+            dis_result = disable_plugin_in_claude(plugin_ref)
+            if dis_result.passed:
                 log_entries.append(f"{prefix}plugin {plugin_ref}: disabled")
+            else:
+                log_entries.append(f"{prefix}plugin {plugin_ref}: disable failed - {dis_result.message}")
+                failures.append({
+                    "type": "plugin",
+                    "ref": plugin_ref,
+                    "message": dis_result.message,
+                    "plugin": plugin_name,
+                })
 
     # Script phase
     script_def = manifest.get("script")

@@ -155,3 +155,29 @@ def update_plugin(plugin_ref: str, scope: str = "user") -> LifecycleResult:
     if ok:
         return LifecycleResult(passed=True, ref=plugin_ref, message="updated")
     return LifecycleResult(passed=False, ref=plugin_ref, message=f"update failed: {stderr.strip()}")
+
+
+def _to_cli_ref(plugin_ref: str) -> str:
+    """Convert marketplace:plugin to plugin@marketplace format for CLI."""
+    if ":" in plugin_ref:
+        marketplace, plugin_name = plugin_ref.split(":", 1)
+        return f"{plugin_name}@{marketplace}"
+    return plugin_ref
+
+
+def enable_plugin_in_claude(plugin_ref: str) -> LifecycleResult:
+    """Enable a plugin in Claude Code via `claude plugin enable`."""
+    cli_ref = _to_cli_ref(plugin_ref)
+    ok, stdout, stderr = _run_claude(["plugin", "enable", cli_ref])
+    if ok:
+        return LifecycleResult(passed=True, ref=plugin_ref, message="enabled in Claude Code")
+    return LifecycleResult(passed=False, ref=plugin_ref, message=f"enable failed: {stderr.strip()}")
+
+
+def disable_plugin_in_claude(plugin_ref: str) -> LifecycleResult:
+    """Disable a plugin in Claude Code via `claude plugin disable`."""
+    cli_ref = _to_cli_ref(plugin_ref)
+    ok, stdout, stderr = _run_claude(["plugin", "disable", cli_ref])
+    if ok:
+        return LifecycleResult(passed=True, ref=plugin_ref, message="disabled in Claude Code")
+    return LifecycleResult(passed=False, ref=plugin_ref, message=f"disable failed: {stderr.strip()}")

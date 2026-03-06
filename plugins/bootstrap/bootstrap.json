@@ -28,5 +28,8 @@
       "merge_fields": ["source", "autoUpdate"],
       "preserve_fields": ["lastUpdated", "installLocation"]
     }
+  ],
+  "plugins": [
+    {"ref": "update01:bootstrap", "enabled": false}
   ]
 }
