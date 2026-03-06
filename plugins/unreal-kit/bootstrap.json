@@ -1,23 +1,4 @@
 {
-  "tools": [
-    {
-      "name": "uv",
-      "install": {
-        "macos": "curl -LsSf https://astral.sh/uv/install.sh | sh",
-        "windows": "powershell -ExecutionPolicy ByPass -c \"irm https://astral.sh/uv/install.ps1 | iex\"",
-        "ubuntu": "curl -LsSf https://astral.sh/uv/install.sh | sh"
-      }
-    },
-    {
-      "name": "git",
-      "install": {
-        "macos": "brew install git",
-        "windows": "winget install --id Git.Git -e --source winget",
-        "ubuntu": "sudo apt install -y git"
-      }
-    }
-  ],
-  "path_entries": ["~/.local/bin"],
   "venv": {
     "check_imports": ["upyrc", "yaml"]
   },
