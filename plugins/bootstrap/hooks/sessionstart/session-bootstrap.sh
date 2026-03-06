@@ -41,7 +41,12 @@ if [ -z "$FLAG_CONSOLE" ]; then
 fi
 
 # --- Capture hook input from stdin and record start time ---
-HOOK_INPUT=$(cat)
+# In console mode, skip stdin read (no hook JSON piped in)
+if [ -n "$FLAG_CONSOLE" ]; then
+    HOOK_INPUT=""
+else
+    HOOK_INPUT=$(cat)
+fi
 HOOK_START_EPOCH=$(date +%s 2>/dev/null || echo "0")
 
 # --- Logging ---
