@@ -8,6 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a **Claude Code plugin** — it extends Claude Code with skills, commands, and hooks via the `.claude-plugin/marketplace.json` manifest. Plugins are loaded either via `--plugin-dir` (development) or `enabledPlugins` in settings (production).
 
+**Related repository**: The **update01** marketplace (`~/Dev/update01`) is a separate deployment of the same bootstrap system. Changes to shared bootstrap code (engine, hooks, libs) must be applied to both repos.
+
 ## Architecture
 
 ```
