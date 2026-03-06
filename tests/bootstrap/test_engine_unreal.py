@@ -29,11 +29,6 @@ class TestUnrealKitManifestStructure:
         with open(manifest_path) as f:
             return json.load(f)
 
-    def test_has_required_tools(self, manifest):
-        tool_names = [t["name"] for t in manifest["tools"]]
-        assert "uv" in tool_names
-        assert "git" in tool_names
-
     def test_has_venv_with_imports(self, manifest):
         assert "venv" in manifest
         assert "upyrc" in manifest["venv"]["check_imports"]

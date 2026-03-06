@@ -120,10 +120,14 @@ def main():
             else:
                 write_cache(data_dir, [user_manifest_path])
 
-    # Step 4: Process enabled plugins
+    # Step 4: Process enabled plugins (auto-discovered via bootstrap.json presence)
     registry_path = os.path.join(plugins_dir, "installed_plugins.json")
 
-    enabled_plugins = list_enabled_plugins(config, registry_path, plugins_dir)
+    enabled_plugins, cache_changed = list_enabled_plugins(config, registry_path, plugins_dir)
+    if cache_changed:
+        from config import save_config
+        save_config(data_dir, config)
+
     for plugin_info in enabled_plugins:
         plugin_manifest_path = os.path.join(plugin_info.install_path, "bootstrap.json")
         if not os.path.isfile(plugin_manifest_path):

@@ -74,53 +74,104 @@ class TestResolvePlugin:
 
 
 class TestListEnabledPlugins:
-    def test_returns_resolved_plugins(self, tmp_path):
-        """Resolves all enabled plugins from config."""
+    def _make_plugin(self, tmp_path, ref, has_bootstrap=True):
+        """Create a minimal plugin directory at tmp_path/<name>."""
+        _, name = ref.split(":", 1)
+        plugin_dir = tmp_path / name
+        plugin_dir.mkdir()
+        if has_bootstrap:
+            (plugin_dir / "bootstrap.json").write_text("{}")
+        return plugin_dir
+
+    def _make_registry(self, tmp_path, plugins):
+        """Write installed_plugins.json with {ref: [{installPath, version}]}."""
         registry = {
             "plugins": {
-                "kit:a": [{"installPath": "./a", "version": "1.0.0"}],
-                "kit:b": [{"installPath": "./b", "version": "2.0.0"}],
+                ref: [{"installPath": f"./{name}", "version": "1.0.0"}]
+                for ref, name in plugins
             }
         }
-        reg_path = str(tmp_path / "installed_plugins.json")
-        with open(reg_path, "w") as f:
-            json.dump(registry, f)
+        reg_path = tmp_path / "installed_plugins.json"
+        reg_path.write_text(json.dumps(registry))
+        return str(reg_path)
 
-        config = {"enabled_plugins": ["kit:a", "kit:b"]}
-        results = list_enabled_plugins(config, reg_path, str(tmp_path))
+    def test_no_bootstrap_skips_plugin(self, tmp_path):
+        """Plugin in no_bootstrap is skipped without filesystem check."""
+        self._make_plugin(tmp_path, "kit:a")
+        reg_path = self._make_registry(tmp_path, [("kit:a", "a")])
+        config = {"no_bootstrap": ["kit:a"], "bootstrap_cache": []}
 
-        assert len(results) == 2
-        assert results[0].name == "a"
-        assert results[1].name == "b"
+        results, cache_changed = list_enabled_plugins(config, reg_path, str(tmp_path))
 
-    def test_skips_unresolvable(self, tmp_path):
-        """Unresolvable refs are silently skipped."""
-        registry = {"plugins": {"kit:a": [{"installPath": "./a", "version": "1.0.0"}]}}
-        reg_path = str(tmp_path / "installed_plugins.json")
-        with open(reg_path, "w") as f:
-            json.dump(registry, f)
+        assert results == []
+        assert not cache_changed
 
-        config = {"enabled_plugins": ["kit:a", "kit:missing"]}
-        results = list_enabled_plugins(config, reg_path, str(tmp_path))
+    def test_cached_plugin_with_bootstrap_json(self, tmp_path):
+        """Plugin in bootstrap_cache with bootstrap.json present is included."""
+        self._make_plugin(tmp_path, "kit:a")
+        reg_path = self._make_registry(tmp_path, [("kit:a", "a")])
+        config = {"no_bootstrap": [], "bootstrap_cache": ["kit:a"]}
+
+        results, cache_changed = list_enabled_plugins(config, reg_path, str(tmp_path))
 
         assert len(results) == 1
         assert results[0].name == "a"
+        assert not cache_changed
 
-    def test_empty_enabled_list(self, tmp_path):
-        """Empty enabled_plugins returns empty list."""
-        reg_path = str(tmp_path / "installed_plugins.json")
-        with open(reg_path, "w") as f:
-            json.dump({"plugins": {}}, f)
+    def test_cached_plugin_without_bootstrap_json(self, tmp_path):
+        """Plugin in bootstrap_cache with missing bootstrap.json is excluded and removed from cache."""
+        self._make_plugin(tmp_path, "kit:a", has_bootstrap=False)
+        reg_path = self._make_registry(tmp_path, [("kit:a", "a")])
+        config = {"no_bootstrap": [], "bootstrap_cache": ["kit:a"]}
 
-        config = {"enabled_plugins": []}
-        results = list_enabled_plugins(config, reg_path, str(tmp_path))
+        results, cache_changed = list_enabled_plugins(config, reg_path, str(tmp_path))
+
         assert results == []
+        assert cache_changed
+        assert "kit:a" not in config["bootstrap_cache"]
 
-    def test_missing_enabled_key(self, tmp_path):
-        """Config without enabled_plugins key returns empty list."""
-        reg_path = str(tmp_path / "installed_plugins.json")
-        with open(reg_path, "w") as f:
-            json.dump({"plugins": {}}, f)
+    def test_uncached_plugin_with_bootstrap_json(self, tmp_path):
+        """Plugin not in cache with bootstrap.json is included and added to cache."""
+        self._make_plugin(tmp_path, "kit:a")
+        reg_path = self._make_registry(tmp_path, [("kit:a", "a")])
+        config = {"no_bootstrap": [], "bootstrap_cache": []}
 
-        results = list_enabled_plugins({}, reg_path, str(tmp_path))
+        results, cache_changed = list_enabled_plugins(config, reg_path, str(tmp_path))
+
+        assert len(results) == 1
+        assert results[0].name == "a"
+        assert cache_changed
+        assert "kit:a" in config["bootstrap_cache"]
+
+    def test_uncached_plugin_without_bootstrap_json(self, tmp_path):
+        """Plugin not in cache without bootstrap.json is excluded; cache unchanged."""
+        self._make_plugin(tmp_path, "kit:a", has_bootstrap=False)
+        reg_path = self._make_registry(tmp_path, [("kit:a", "a")])
+        config = {"no_bootstrap": [], "bootstrap_cache": []}
+
+        results, cache_changed = list_enabled_plugins(config, reg_path, str(tmp_path))
+
         assert results == []
+        assert not cache_changed
+        assert config["bootstrap_cache"] == []
+
+    def test_stale_cache_entry_purged(self, tmp_path):
+        """Cache entry for plugin no longer in registry is purged."""
+        reg_path = self._make_registry(tmp_path, [])  # empty registry
+        config = {"no_bootstrap": [], "bootstrap_cache": ["kit:gone"]}
+
+        results, cache_changed = list_enabled_plugins(config, reg_path, str(tmp_path))
+
+        assert results == []
+        assert cache_changed
+        assert config["bootstrap_cache"] == []
+
+    def test_empty_registry(self, tmp_path):
+        """Empty registry returns empty results."""
+        reg_path = self._make_registry(tmp_path, [])
+        config = {"no_bootstrap": [], "bootstrap_cache": []}
+
+        results, cache_changed = list_enabled_plugins(config, reg_path, str(tmp_path))
+
+        assert results == []
+        assert not cache_changed

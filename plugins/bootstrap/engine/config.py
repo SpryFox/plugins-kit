@@ -4,7 +4,7 @@ import json
 import os
 import shutil
 
-CURRENT_SCHEMA_VERSION = 3
+CURRENT_SCHEMA_VERSION = 4
 
 
 def load_config(data_dir: str, defaults_dir: str) -> dict:
@@ -64,6 +64,13 @@ def migrate_config(config: dict) -> dict:
         migrated["log_success_shell"] = False
         migrated["log_success_checks"] = False
         migrated["schema_version"] = 3
+
+    # Migration from v3 to v4: replace enabled_plugins with auto-discovery fields
+    if version < 4:
+        migrated.pop("enabled_plugins", None)
+        migrated.setdefault("no_bootstrap", [])
+        migrated.setdefault("bootstrap_cache", [])
+        migrated["schema_version"] = 4
 
     return migrated
 

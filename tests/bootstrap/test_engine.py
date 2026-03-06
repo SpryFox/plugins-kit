@@ -120,7 +120,7 @@ class TestEngineIntegration:
         # Config should now be current version
         with open(os.path.join(data_dir, "config.json")) as f:
             config = json.load(f)
-        assert config["schema_version"] == 3
+        assert config["schema_version"] == 4
         assert config["some_setting"] is True
         assert config["log_success_shell"] is False
         assert config["log_success_checks"] is False

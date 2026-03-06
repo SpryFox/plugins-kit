@@ -34,26 +34,41 @@ class TestMigrateConfig:
         v0 = {"some_setting": True}
         migrated = migrate_config(v0)
         assert migrated["schema_version"] == CURRENT_SCHEMA_VERSION
-        assert "enabled_plugins" in migrated
-        assert "log_level" in migrated
+        assert "enabled_plugins" not in migrated
+        assert "no_bootstrap" in migrated
+        assert "bootstrap_cache" in migrated
         assert "log_success_shell" in migrated
         assert "log_success_checks" in migrated
         assert migrated["some_setting"] is True
 
-    def test_migrates_v1_to_v2_to_v3(self):
+    def test_migrates_v1_to_current(self):
         v1 = {"schema_version": 1, "enabled_plugins": [], "log_level": "info"}
         migrated = migrate_config(v1)
-        assert migrated["schema_version"] == 3
+        assert migrated["schema_version"] == CURRENT_SCHEMA_VERSION
+        assert "enabled_plugins" not in migrated
+        assert migrated["no_bootstrap"] == []
+        assert migrated["bootstrap_cache"] == []
         assert migrated["log_success_shell"] is False
         assert migrated["log_success_checks"] is False
 
-    def test_migrates_v2_to_v3(self):
+    def test_migrates_v2_to_current(self):
         v2 = {"schema_version": 2, "enabled_plugins": [], "log_level": "info",
                "log_success_shell": True, "log_success_checks": True}
         migrated = migrate_config(v2)
-        assert migrated["schema_version"] == 3
+        assert migrated["schema_version"] == CURRENT_SCHEMA_VERSION
+        assert "enabled_plugins" not in migrated
+        assert migrated["no_bootstrap"] == []
+        assert migrated["bootstrap_cache"] == []
         assert migrated["log_success_shell"] is False
         assert migrated["log_success_checks"] is False
+
+    def test_migrates_v3_to_current(self):
+        v3 = {"schema_version": 3, "enabled_plugins": ["kit:a"], "log_success_shell": False, "log_success_checks": False}
+        migrated = migrate_config(v3)
+        assert migrated["schema_version"] == CURRENT_SCHEMA_VERSION
+        assert "enabled_plugins" not in migrated
+        assert migrated["no_bootstrap"] == []
+        assert migrated["bootstrap_cache"] == []
 
     def test_no_migration_on_current_version(self):
         current = {

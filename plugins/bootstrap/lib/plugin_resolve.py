@@ -61,21 +61,72 @@ def resolve_plugin(registry_path: str, plugin_ref: str, base_dir: str) -> Option
     return PluginInfo(name=name, install_path=install_path, version=version)
 
 
-def list_enabled_plugins(config: dict, registry_path: str, base_dir: str) -> List[PluginInfo]:
-    """Resolve all enabled plugins from config.
+def list_enabled_plugins(config: dict, registry_path: str, base_dir: str):
+    """Auto-discover plugins that have bootstrap.json.
+
+    Uses no_bootstrap for opt-out and bootstrap_cache to avoid repeated filesystem scans.
 
     Args:
-        config: Bootstrap config dict (with "enabled_plugins" list)
+        config: Bootstrap config dict (with "no_bootstrap" and "bootstrap_cache" lists)
         registry_path: Path to installed_plugins.json
         base_dir: Base directory for resolving relative paths
 
     Returns:
-        List of resolved PluginInfo objects (skips unresolvable refs)
+        Tuple of (List[PluginInfo], cache_changed: bool)
     """
-    enabled = config.get("enabled_plugins", [])
+    try:
+        with open(registry_path, "r") as f:
+            registry = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return [], False
+
+    plugins = registry.get("plugins", {})
+    no_bootstrap = config.get("no_bootstrap", [])
+    bootstrap_cache = config.setdefault("bootstrap_cache", [])
+
+    cache_changed = False
     results = []
-    for ref in enabled:
-        info = resolve_plugin(registry_path, ref, base_dir)
-        if info is not None:
-            results.append(info)
-    return results
+
+    # Purge stale cache entries for plugins no longer in the registry (uninstalled)
+    current_refs = set(plugins.keys())
+    stale = [ref for ref in bootstrap_cache if ref not in current_refs]
+    for ref in stale:
+        bootstrap_cache.remove(ref)
+        cache_changed = True
+
+    for ref, entries in plugins.items():
+        if not entries or not isinstance(entries, list):
+            continue
+
+        # Skip plugins opted out of bootstrapping
+        if ref in no_bootstrap:
+            continue
+
+        # Resolve install path
+        entry = entries[0]
+        install_path = entry.get("installPath", "")
+        version = entry.get("version", "0.0.0")
+        if install_path.startswith("./") or install_path.startswith("../"):
+            install_path = os.path.normpath(os.path.join(base_dir, install_path))
+        else:
+            install_path = os.path.normpath(install_path)
+
+        _, name = parse_plugin_ref(ref)
+        plugin_info = PluginInfo(name=name, install_path=install_path, version=version)
+        bootstrap_json = os.path.join(install_path, "bootstrap.json")
+
+        if ref in bootstrap_cache:
+            # Cached: verify bootstrap.json still exists (plugin may have been updated)
+            if os.path.isfile(bootstrap_json):
+                results.append(plugin_info)
+            else:
+                bootstrap_cache.remove(ref)
+                cache_changed = True
+        else:
+            # Not cached: check filesystem
+            if os.path.isfile(bootstrap_json):
+                bootstrap_cache.append(ref)
+                cache_changed = True
+                results.append(plugin_info)
+
+    return results, cache_changed

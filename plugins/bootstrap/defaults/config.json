@@ -1,6 +1,7 @@
 {
-  "schema_version": 3,
-  "enabled_plugins": [],
+  "schema_version": 4,
+  "no_bootstrap": [],
+  "bootstrap_cache": [],
   "log_success_shell": false,
   "log_success_checks": false
 }

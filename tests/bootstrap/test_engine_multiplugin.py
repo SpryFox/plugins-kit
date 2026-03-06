@@ -252,7 +252,7 @@ class TestMultiPluginEngine:
         git_plugin_dir = plugins_dir / "git-plugin"
         git_plugin_dir.mkdir()
         (git_plugin_dir / "bootstrap.json").write_text(json.dumps({
-            "git_deps": [{"url": "https://github.com/octocat/Hello-World", "branch": "master"}],
+            "git_deps": [{"url": "https://invalid.example.invalid/nonexistent/repo", "branch": "main"}],
         }))
 
         registry = {"plugins": {"kit:git-plugin": [{"installPath": "./git-plugin", "version": "1.0.0"}]}}
@@ -269,5 +269,5 @@ class TestMultiPluginEngine:
         assert result.returncode == 0
         response = json.loads(result.stdout)
         ctx = response["hookSpecificOutput"]["additionalContext"]
-        assert "Hello-World" in ctx
+        assert "invalid.example.invalid" in ctx
         assert "[git-plugin]" in ctx
