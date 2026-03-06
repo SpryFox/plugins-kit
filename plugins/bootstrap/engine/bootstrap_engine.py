@@ -372,7 +372,8 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
 
         if not result.passed:
             # Attempt auto-remediation — run uv sync with venv in data dir
-            action_entries.append(f"{prefix}venv: not ready, attempting setup")
+            uv_cmd = f"uv sync --project {plugin_root}"
+            action_entries.append(f"{prefix}venv: not ready, running `{uv_cmd}`")
             import shutil
             import subprocess as _sp
             venv_path = os.path.join(data_dir, ".venv")
@@ -547,7 +548,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
             action_entries.append(f"{prefix}marketplace {mkt_name}: not found, adding")
             add_result = add_marketplace(source_url, mkt_name)
             if add_result.passed:
-                action_entries.append(f"{prefix}marketplace {mkt_name}: added")
+                action_entries.append(f"{prefix}marketplace {mkt_name}: added via `claude plugin marketplace add {source_url}`")
             else:
                 action_entries.append(f"{prefix}marketplace {mkt_name}: FAILED - {add_result.message}")
                 failures.append({
@@ -566,11 +567,14 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
 
         from marketplace_lifecycle import check_plugin_installed, install_plugin
 
+        # Compute CLI ref for logging (marketplace:plugin → plugin@marketplace)
+        cli_ref = f"{plugin_ref.split(':', 1)[1]}@{plugin_ref.split(':', 1)[0]}" if ":" in plugin_ref else plugin_ref
+
         # Check if plugin is installed (global registry, handles both ref formats)
         install_result = check_plugin_installed(plugin_ref)
         if not install_result.passed:
             # Auto-install via CLI
-            action_entries.append(f"{prefix}plugin {plugin_ref}: not installed, installing")
+            action_entries.append(f"{prefix}plugin {plugin_ref}: not installed, running `claude plugin install {cli_ref}`")
             inst = install_plugin(plugin_ref)
             if inst.passed:
                 action_entries.append(f"{prefix}plugin {plugin_ref}: installed")
@@ -592,7 +596,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
             # Disable the plugin in Claude Code
             dis_result = disable_plugin_in_claude(plugin_ref)
             if dis_result.passed:
-                action_entries.append(f"{prefix}plugin {plugin_ref}: disabled")
+                action_entries.append(f"{prefix}plugin {plugin_ref}: disabled via `claude plugin disable {cli_ref}`")
             else:
                 action_entries.append(f"{prefix}plugin {plugin_ref}: disable failed - {dis_result.message}")
                 failures.append({
