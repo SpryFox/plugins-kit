@@ -11,9 +11,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), os.pardir, os.pardir,
 
 from marketplace_lifecycle import (
     LifecycleResult,
+    ScopeCheckResult,
     _version_greater,
     check_marketplace_exists,
     check_plugin_installed,
+    check_plugin_scope,
     update_marketplace,
 )
 
@@ -297,3 +299,151 @@ class TestBootstrapFalseSkipsStep4:
                     no_bootstrap.append(cli_ref)
 
         assert len(config["no_bootstrap"]) == 0
+
+
+class TestCheckPluginScope:
+    """Tests for check_plugin_scope — detecting scope mismatches."""
+
+    def _write_installed(self, tmp_path, monkeypatch, plugins_data):
+        ip = tmp_path / ".claude" / "plugins" / "installed_plugins.json"
+        ip.parent.mkdir(parents=True, exist_ok=True)
+        ip.write_text(json.dumps({"version": 2, "plugins": plugins_data}))
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+
+    def test_scope_matches(self, tmp_path, monkeypatch):
+        self._write_installed(tmp_path, monkeypatch, {
+            "bootstrap@plugins-kit": [{"scope": "user", "version": "0.5.4"}]
+        })
+        result = check_plugin_scope("plugins-kit:bootstrap", "user")
+        assert result.matches is True
+        assert result.installed_scope == "user"
+
+    def test_scope_mismatch_project_vs_user(self, tmp_path, monkeypatch):
+        self._write_installed(tmp_path, monkeypatch, {
+            "bootstrap@plugins-kit": [{"scope": "project", "version": "0.5.4"}]
+        })
+        result = check_plugin_scope("plugins-kit:bootstrap", "user")
+        assert result.matches is False
+        assert result.installed_scope == "project"
+        assert "want user" in result.message
+
+    def test_scope_mismatch_user_vs_project(self, tmp_path, monkeypatch):
+        self._write_installed(tmp_path, monkeypatch, {
+            "bootstrap@plugins-kit": [{"scope": "user", "version": "0.5.4"}]
+        })
+        result = check_plugin_scope("plugins-kit:bootstrap", "project")
+        assert result.matches is False
+        assert result.installed_scope == "user"
+        assert "want project" in result.message
+
+    def test_not_installed_returns_matches(self, tmp_path, monkeypatch):
+        """Not installed → matches=True (nothing to fix)."""
+        self._write_installed(tmp_path, monkeypatch, {})
+        result = check_plugin_scope("plugins-kit:bootstrap", "user")
+        assert result.matches is True
+        assert result.installed_scope == ""
+
+    def test_no_file(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        result = check_plugin_scope("plugins-kit:bootstrap", "user")
+        assert result.matches is True
+
+
+class TestScopeRemediation:
+    """Tests for scope mismatch remediation in the engine."""
+
+    @staticmethod
+    def _setup_engine_path():
+        bootstrap_root = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, "plugins", "bootstrap")
+        )
+        engine_dir = os.path.join(bootstrap_root, "engine")
+        lib_dir = os.path.join(bootstrap_root, "lib")
+        for d in (engine_dir, lib_dir):
+            if d not in sys.path:
+                sys.path.insert(0, d)
+
+    def test_scope_mismatch_triggers_reinstall(self, tmp_path, monkeypatch):
+        """Plugin at wrong scope gets uninstalled and reinstalled at correct scope."""
+        self._setup_engine_path()
+
+        # installed_plugins.json with project scope
+        ip = tmp_path / ".claude" / "plugins" / "installed_plugins.json"
+        ip.parent.mkdir(parents=True)
+        ip.write_text(json.dumps({
+            "version": 2,
+            "plugins": {
+                "bootstrap@plugins-kit": [{"scope": "project", "version": "0.5.4", "installPath": "/cache"}]
+            }
+        }))
+        # settings.json with plugin enabled
+        settings = tmp_path / ".claude" / "settings.json"
+        settings.write_text(json.dumps({"enabledPlugins": {"bootstrap@plugins-kit": True}}))
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+
+        manifest = {
+            "plugins": [
+                {"ref": "plugins-kit:bootstrap", "enabled": True, "scope": "user"}
+            ]
+        }
+
+        from bootstrap_engine import _process_manifest
+        action_entries = []
+        ok_entries = []
+
+        with patch("marketplace_lifecycle.uninstall_plugin",
+                    return_value=LifecycleResult(passed=True, ref="plugins-kit:bootstrap", message="uninstalled")) as mock_uninst, \
+             patch("marketplace_lifecycle.install_plugin",
+                    return_value=LifecycleResult(passed=True, ref="plugins-kit:bootstrap", message="installed")) as mock_inst, \
+             patch("marketplace_lifecycle.check_plugin_version") as mock_ver:
+            mock_ver.return_value = type("R", (), {"up_to_date": True})()
+            _process_manifest(
+                manifest, "windows", str(tmp_path / "data"), str(tmp_path / "root"),
+                action_entries, ok_entries, plugin_name="test",
+            )
+            mock_uninst.assert_called_once_with("plugins-kit:bootstrap", scope="project")
+            mock_inst.assert_called_once_with("plugins-kit:bootstrap", scope="user")
+
+        assert any("scope mismatch" in e for e in action_entries)
+        assert any("reinstalled at user scope" in e for e in action_entries)
+
+    def test_correct_scope_no_reinstall(self, tmp_path, monkeypatch):
+        """Plugin at correct scope does not trigger reinstall."""
+        self._setup_engine_path()
+
+        ip = tmp_path / ".claude" / "plugins" / "installed_plugins.json"
+        ip.parent.mkdir(parents=True)
+        ip.write_text(json.dumps({
+            "version": 2,
+            "plugins": {
+                "bootstrap@plugins-kit": [{"scope": "user", "version": "0.5.4", "installPath": "/cache"}]
+            }
+        }))
+        settings = tmp_path / ".claude" / "settings.json"
+        settings.write_text(json.dumps({"enabledPlugins": {"bootstrap@plugins-kit": True}}))
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+
+        manifest = {
+            "plugins": [
+                {"ref": "plugins-kit:bootstrap", "enabled": True, "scope": "user"}
+            ]
+        }
+
+        from bootstrap_engine import _process_manifest
+        action_entries = []
+        ok_entries = []
+
+        with patch("marketplace_lifecycle.uninstall_plugin") as mock_uninst, \
+             patch("marketplace_lifecycle.check_plugin_version") as mock_ver:
+            mock_ver.return_value = type("R", (), {"up_to_date": True})()
+            _process_manifest(
+                manifest, "windows", str(tmp_path / "data"), str(tmp_path / "root"),
+                action_entries, ok_entries, plugin_name="test",
+            )
+            mock_uninst.assert_not_called()
+
+        assert not any("scope mismatch" in e for e in action_entries)

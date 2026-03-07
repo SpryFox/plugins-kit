@@ -30,6 +30,6 @@
     }
   ],
   "plugins": [
-    {"ref": "plugins-kit:bootstrap", "enabled": true, "bootstrap": false}
+    {"ref": "plugins-kit:bootstrap", "enabled": true, "bootstrap": false, "scope": "user"}
   ]
 }

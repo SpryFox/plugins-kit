@@ -188,9 +188,10 @@ Library boundaries follow Robert C. Martin's [package cohesion principles](https
 
 | Condition | Check Method | Remediation |
 |-----------|-------------|-------------|
-| Plugin not installed | Check installed plugins registry | Install plugin |
+| Plugin not installed | Check installed plugins registry | Install plugin at declared scope |
 | Plugin installed but unwanted | Check installed plugins registry | Uninstall plugin |
-| Plugin out of date | `git ls-remote` vs cached commit SHA | Update plugin |
+| Plugin out of date | `git ls-remote` vs cached commit SHA | Update plugin at declared scope |
+| Plugin at wrong scope | Compare installed scope vs declared `scope` in manifest | Uninstall from current scope, reinstall at declared scope |
 
 ## Manual Operations (Blocking Conditions)
 

@@ -121,6 +121,53 @@ def check_plugin_installed(plugin_ref: str) -> LifecycleResult:
     return LifecycleResult(passed=False, ref=plugin_ref, message="not installed")
 
 
+class ScopeCheckResult(NamedTuple):
+    matches: bool
+    ref: str
+    installed_scope: str  # empty if not installed
+    message: str
+
+
+def check_plugin_scope(plugin_ref: str, desired_scope: str) -> ScopeCheckResult:
+    """Check if a plugin is installed at the desired scope.
+
+    Args:
+        plugin_ref: Plugin reference in marketplace:plugin format
+        desired_scope: Desired scope (user, project, local)
+
+    Returns:
+        ScopeCheckResult with matches=True if installed scope equals desired scope.
+    """
+    cli_ref = _to_cli_ref(plugin_ref)
+    ip_path = os.path.expanduser("~/.claude/plugins/installed_plugins.json")
+    try:
+        with open(ip_path, "r") as f:
+            data = json.load(f)
+        plugins = data.get("plugins", {})
+        # Try both ref formats
+        entries = plugins.get(cli_ref) or plugins.get(plugin_ref) or []
+        if entries:
+            installed_scope = entries[0].get("scope", "")
+            if installed_scope == desired_scope:
+                return ScopeCheckResult(
+                    matches=True, ref=plugin_ref,
+                    installed_scope=installed_scope,
+                    message=f"scope {installed_scope} (correct)",
+                )
+            return ScopeCheckResult(
+                matches=False, ref=plugin_ref,
+                installed_scope=installed_scope,
+                message=f"installed at {installed_scope}, want {desired_scope}",
+            )
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        pass
+    return ScopeCheckResult(
+        matches=True, ref=plugin_ref,
+        installed_scope="",
+        message="not installed (skipping scope check)",
+    )
+
+
 def install_plugin(plugin_ref: str, scope: str = "user") -> LifecycleResult:
     """Install a plugin via `claude plugin install`.
 
@@ -141,7 +188,7 @@ def install_plugin(plugin_ref: str, scope: str = "user") -> LifecycleResult:
     return LifecycleResult(passed=False, ref=plugin_ref, message=f"install failed: {stderr.strip()}")
 
 
-def uninstall_plugin(plugin_ref: str) -> LifecycleResult:
+def uninstall_plugin(plugin_ref: str, scope: str = "user") -> LifecycleResult:
     """Uninstall a plugin via `claude plugin uninstall`."""
     if ":" in plugin_ref:
         marketplace, plugin_name = plugin_ref.split(":", 1)
@@ -149,7 +196,7 @@ def uninstall_plugin(plugin_ref: str) -> LifecycleResult:
     else:
         cli_ref = plugin_ref
 
-    ok, stdout, stderr = _run_claude(["plugin", "uninstall", cli_ref])
+    ok, stdout, stderr = _run_claude(["plugin", "uninstall", cli_ref, "--scope", scope])
     if ok:
         return LifecycleResult(passed=True, ref=plugin_ref, message="uninstalled")
     return LifecycleResult(passed=False, ref=plugin_ref, message=f"uninstall failed: {stderr.strip()}")

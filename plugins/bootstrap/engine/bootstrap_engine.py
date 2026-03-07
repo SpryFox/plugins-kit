@@ -529,6 +529,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
         plugin_ref = plugin_def.get("ref", "")
         enabled = plugin_def.get("enabled", True)
         skip_bootstrap = plugin_def.get("bootstrap") is False
+        desired_scope = plugin_def.get("scope", "user")
         if not plugin_ref:
             continue
 
@@ -541,8 +542,8 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
         install_result = check_plugin_installed(plugin_ref)
         if not install_result.passed:
             # Auto-install via CLI
-            action_entries.append(f"{prefix}plugin {plugin_ref}: not installed, running `claude plugin install {cli_ref}`")
-            inst = install_plugin(plugin_ref)
+            action_entries.append(f"{prefix}plugin {plugin_ref}: not installed, running `claude plugin install {cli_ref} --scope {desired_scope}`")
+            inst = install_plugin(plugin_ref, scope=desired_scope)
             if inst.passed:
                 action_entries.append(f"{prefix}plugin {plugin_ref}: installed (added '{cli_ref}' to settings.json enabledPlugins)")
             else:
@@ -555,7 +556,36 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                 })
                 continue
 
-        from marketplace_lifecycle import enable_plugin_in_claude, disable_plugin_in_claude, check_plugin_enabled, check_plugin_version, update_plugin
+        from marketplace_lifecycle import enable_plugin_in_claude, disable_plugin_in_claude, check_plugin_enabled, check_plugin_version, update_plugin, check_plugin_scope, uninstall_plugin
+
+        # Check scope mismatch (only for already-installed plugins)
+        if install_result.passed:
+            scope_result = check_plugin_scope(plugin_ref, desired_scope)
+            if not scope_result.matches and scope_result.installed_scope:
+                action_entries.append(f"{prefix}plugin {plugin_ref}: scope mismatch ({scope_result.message}), reinstalling at {desired_scope} scope")
+                uninst = uninstall_plugin(plugin_ref, scope=scope_result.installed_scope)
+                if uninst.passed:
+                    reinst = install_plugin(plugin_ref, scope=desired_scope)
+                    if reinst.passed:
+                        action_entries.append(f"{prefix}plugin {plugin_ref}: reinstalled at {desired_scope} scope")
+                    else:
+                        action_entries.append(f"{prefix}plugin {plugin_ref}: reinstall failed - {reinst.message}")
+                        failures.append({
+                            "type": "plugin",
+                            "ref": plugin_ref,
+                            "message": f"scope reinstall failed: {reinst.message}",
+                            "plugin": plugin_name,
+                        })
+                        continue
+                else:
+                    action_entries.append(f"{prefix}plugin {plugin_ref}: uninstall from {scope_result.installed_scope} failed - {uninst.message}")
+                    failures.append({
+                        "type": "plugin",
+                        "ref": plugin_ref,
+                        "message": f"scope uninstall failed: {uninst.message}",
+                        "plugin": plugin_name,
+                    })
+                    continue
 
         if enabled:
             # Check if version is up to date (only for already-installed plugins)
@@ -563,7 +593,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                 ver_result = check_plugin_version(plugin_ref)
                 if not ver_result.up_to_date:
                     action_entries.append(f"{prefix}plugin {plugin_ref}: outdated ({ver_result.message}), running `claude plugin update {cli_ref}`")
-                    upd_result = update_plugin(plugin_ref)
+                    upd_result = update_plugin(plugin_ref, scope=desired_scope)
                     if upd_result.passed:
                         action_entries.append(f"{prefix}plugin {plugin_ref}: updated to {ver_result.latest_version}")
                     else:
