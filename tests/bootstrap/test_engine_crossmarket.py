@@ -13,12 +13,13 @@ BOOTSTRAP_ROOT = os.path.normpath(
 ENGINE_SCRIPT = os.path.join(BOOTSTRAP_ROOT, "engine", "bootstrap_engine.py")
 
 
-def run_engine(data_dir, plugin_root=BOOTSTRAP_ROOT):
+def run_engine(data_dir, plugin_root=BOOTSTRAP_ROOT, env=None):
     """Run the bootstrap engine as a subprocess."""
     return subprocess.run(
         [sys.executable, ENGINE_SCRIPT, "--plugin-root", plugin_root, "--data-dir", data_dir],
         capture_output=True,
         text=True,
+        env=env,
     )
 
 
@@ -44,6 +45,14 @@ def make_fake_bootstrap_root(plugins_dir, manifest=None):
         manifest = {}
     (fake_root / "bootstrap.json").write_text(json.dumps(manifest))
     return str(fake_root)
+
+
+def _env_with_home(home_dir):
+    """Build a subprocess env dict with HOME/USERPROFILE overridden."""
+    env = dict(os.environ)
+    env["HOME"] = str(home_dir)
+    env["USERPROFILE"] = str(home_dir)
+    return env
 
 
 class TestCrossMarketplacePluginRefs:
@@ -86,8 +95,7 @@ class TestCrossMarketplacePluginRefs:
             # Plugin found — should either log ok or enable it
             assert "my-plugin" in msg
 
-    @pytest.mark.skipif(sys.platform == "win32", reason="monkeypatch HOME doesn't propagate to subprocess on Windows")
-    def test_cross_marketplace_uses_global_registry(self, tmp_path, monkeypatch):
+    def test_cross_marketplace_uses_global_registry(self, tmp_path):
         """Plugin ref with different marketplace resolves from global registry."""
         plugins_dir = tmp_path / "plugins"
         plugins_dir.mkdir()
@@ -98,7 +106,8 @@ class TestCrossMarketplacePluginRefs:
         (plugins_dir / "installed_plugins.json").write_text(json.dumps(local_registry))
 
         # Global registry has the cross-marketplace plugin
-        global_plugins_dir = tmp_path / "global" / "plugins"
+        global_home = tmp_path / "global"
+        global_plugins_dir = global_home / ".claude" / "plugins"
         global_plugins_dir.mkdir(parents=True)
         global_registry = {
             "plugins": {
@@ -126,11 +135,8 @@ class TestCrossMarketplacePluginRefs:
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
-        # Monkey-patch home directory so global registry resolves to our test dir
-        monkeypatch.setenv("HOME", str(tmp_path / "global"))
-        monkeypatch.setenv("USERPROFILE", str(tmp_path / "global"))
-
-        result = run_engine(data_dir, plugin_root=fake_root)
+        # Pass env directly to subprocess so HOME override propagates
+        result = run_engine(data_dir, plugin_root=fake_root, env=_env_with_home(global_home))
         assert result.returncode == 0
 
         # The engine should have used the global registry and found the plugin
@@ -140,8 +146,7 @@ class TestCrossMarketplacePluginRefs:
             # Should reference the cross-marketplace plugin
             assert "plugins-kit:bootstrap" in msg
 
-    @pytest.mark.skipif(sys.platform == "win32", reason="monkeypatch HOME doesn't propagate to subprocess on Windows")
-    def test_cross_marketplace_ref_not_in_global_registry_fails(self, tmp_path, monkeypatch):
+    def test_cross_marketplace_ref_not_in_global_registry_fails(self, tmp_path):
         """Cross-marketplace ref not found produces failure (install attempted)."""
         plugins_dir = tmp_path / "plugins"
         plugins_dir.mkdir()
@@ -152,7 +157,8 @@ class TestCrossMarketplacePluginRefs:
         (plugins_dir / "installed_plugins.json").write_text(json.dumps(local_registry))
 
         # Global registry is empty
-        global_plugins_dir = tmp_path / "global" / ".claude" / "plugins"
+        global_home = tmp_path / "global"
+        global_plugins_dir = global_home / ".claude" / "plugins"
         global_plugins_dir.mkdir(parents=True)
         (global_plugins_dir / "installed_plugins.json").write_text(json.dumps({"plugins": {}}))
 
@@ -171,10 +177,8 @@ class TestCrossMarketplacePluginRefs:
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
-        monkeypatch.setenv("HOME", str(tmp_path / "global"))
-        monkeypatch.setenv("USERPROFILE", str(tmp_path / "global"))
-
-        result = run_engine(data_dir, plugin_root=fake_root)
+        # Pass env directly to subprocess so HOME override propagates
+        result = run_engine(data_dir, plugin_root=fake_root, env=_env_with_home(global_home))
         assert result.returncode == 0
 
         # Should emit failure for missing cross-marketplace plugin
