@@ -9,5 +9,9 @@
       }
     }
   ],
-  "path_entries": ["~/.local/bin"]
+  "path_entries": ["~/.local/bin"],
+  "project_venv": {
+    "extras": ["dev"],
+    "check_imports": ["pytest"]
+  }
 }

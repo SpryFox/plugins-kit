@@ -118,6 +118,15 @@ def main():
         if failures:
             all_failures.extend(failures)
 
+    # Step 3d: Process project_venv from layered manifest (needs --project-dir)
+    project_venv_def = layered_manifest.get("project_venv") if layered_manifest else None
+    if project_venv_def and args.project_dir:
+        pv_action, pv_ok, pv_failures = _process_project_venv(
+            project_venv_def, args.project_dir)
+        bootstrap_action_entries.extend(f"config: {e}" for e in pv_action)
+        bootstrap_ok_entries.extend(f"config: {e}" for e in pv_ok)
+        all_failures.extend(pv_failures)
+
     # Add bootstrap's own section to display
     display_sections.append((bootstrap_label, list(bootstrap_action_entries), list(bootstrap_ok_entries)))
 
@@ -410,6 +419,79 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
             })
 
     return failures
+
+
+def _process_project_venv(venv_def, project_dir):
+    """Process project_venv: ensure the project's own .venv is ready.
+
+    Unlike the plugin venv (which lives in data_dir), this targets
+    <project_dir>/.venv using the project's own pyproject.toml.
+
+    Args:
+        venv_def: Dict with optional 'extras' (list) and 'check_imports' (list).
+        project_dir: Absolute path to the project root.
+
+    Returns:
+        (action_entries, ok_entries, failures) tuple.
+    """
+    from venv_check import check_venv
+
+    action_entries = []
+    ok_entries = []
+    failures = []
+
+    extras = venv_def.get("extras", [])
+    check_imports = venv_def.get("check_imports", [])
+
+    # project_dir serves as both data_dir (.venv location) and plugin_root (pyproject.toml location)
+    result = check_venv(project_dir, project_dir, check_imports)
+
+    if not result.passed:
+        extra_flags = " ".join(f"--extra {e}" for e in extras)
+        uv_cmd = f"uv sync --project {project_dir}"
+        if extra_flags:
+            uv_cmd += f" {extra_flags}"
+        action_entries.append(f"project_venv: not ready, running `{uv_cmd}`")
+
+        import shutil
+        import subprocess as _sp
+
+        local_bin = os.path.expanduser("~/.local/bin")
+        uv_bin = shutil.which("uv")
+        if not uv_bin:
+            for name in ("uv", "uv.exe", "uv.EXE"):
+                candidate = os.path.join(local_bin, name)
+                if os.path.isfile(candidate):
+                    uv_bin = candidate
+                    break
+
+        if uv_bin:
+            cmd = [uv_bin, "sync", "--project", project_dir]
+            for e in extras:
+                cmd.extend(["--extra", e])
+            env = dict(os.environ)
+            if local_bin not in env.get("PATH", ""):
+                env["PATH"] = local_bin + os.pathsep + env.get("PATH", "")
+            try:
+                _sp.run(cmd, env=env, capture_output=True, timeout=120)
+                result = check_venv(project_dir, project_dir, check_imports)
+                if result.passed:
+                    action_entries.append("project_venv: created")
+            except (_sp.SubprocessError, OSError):
+                pass
+
+    if result.passed:
+        ok_entries.append(f"project_venv: ok - {result.message}")
+    else:
+        action_entries.append(f"project_venv: FAILED - {result.message}")
+        failures.append({
+            "type": "project_venv",
+            "message": result.message,
+            "remediation_cmd": result.remediation_cmd,
+            "plugin": "config",
+        })
+
+    return action_entries, ok_entries, failures
 
 
 def _process_config(config_section, plugin_data_dir, plugin_root, action_entries, ok_entries=None, plugin_name=""):

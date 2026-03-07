@@ -84,6 +84,10 @@ A declarative configuration file covering automatable operations. The engine rea
   "plugins": [
     {"ref": "plugins-kit:unreal-kit", "enabled": true}
   ],
+  "project_venv": {
+    "extras": ["dev"],
+    "check_imports": ["pytest"]
+  },
   "config": {
     "file": "config.yaml",
     "defaults_source": "defaults/config.yaml",
@@ -188,6 +192,7 @@ Library boundaries follow Robert C. Martin's [package cohesion principles](https
 | Condition | Check Method | Remediation |
 |-----------|-------------|-------------|
 | Python venv missing or broken | Check dir → binary → interpreter runs → packages importable | `uv sync` from `pyproject.toml` |
+| Project venv missing or broken | Same checks against `<project_dir>/.venv` | `uv sync --project <project_dir> [--extra ...]` |
 | PyPI package missing | Check extracted file exists locally | Download from PyPI and extract |
 | Git dependency not cloned or out of date | Check dir exists + `git ls-remote` vs local `rev-parse HEAD` | `git clone` or `git pull` |
 
@@ -242,7 +247,7 @@ The bootstrap engine supports a 4-layer `bootstrap.json` model — following the
 ### Merge Semantics
 
 - **Arrays** (plugins, marketplaces, tools, etc.): Unioned by identity key (`ref` for plugins, `name` for marketplaces/tools). When the same identity appears in multiple layers, higher-priority layer's fields win.
-- **Objects** (venv, config, etc.): Deep-merged, higher priority wins for conflicting keys.
+- **Objects** (venv, config, project_venv, etc.): Deep-merged, higher priority wins for conflicting keys.
 - **path_entries**: Simple string list union (deduplicated, order preserved).
 - **Scalars**: Higher priority wins.
 

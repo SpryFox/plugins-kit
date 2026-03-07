@@ -275,6 +275,109 @@ class TestLayeredManifests:
         assert "nonexistent_user_base_xyz" in context
         assert "nonexistent_user_local_xyz" in context
 
+    def test_project_venv_creates_venv(self, data_dir, tmp_path):
+        """project_venv with check_imports runs uv sync when venv is missing."""
+        fake_root = make_minimal_root(tmp_path)
+        fake_home = str(tmp_path / "fakehome")
+        claude_dir = os.path.join(fake_home, ".claude")
+        os.makedirs(claude_dir)
+
+        # Create a minimal project with pyproject.toml
+        project_dir = str(tmp_path / "project")
+        os.makedirs(project_dir)
+        # Write a minimal pyproject.toml so uv sync can work
+        pyproject = os.path.join(project_dir, "pyproject.toml")
+        with open(pyproject, "w") as f:
+            f.write('[project]\nname = "test-proj"\nversion = "0.1.0"\nrequires-python = ">=3.10"\n'
+                    'dependencies = []\n\n[project.optional-dependencies]\ndev = ["pytest"]\n')
+
+        # User-level bootstrap with project_venv
+        manifest = {"project_venv": {"extras": ["dev"], "check_imports": ["pytest"]}}
+        with open(os.path.join(claude_dir, "bootstrap.json"), "w") as f:
+            json.dump(manifest, f)
+
+        config_path = os.path.join(data_dir, "config.json")
+        with open(config_path, "w") as f:
+            json.dump({"schema_version": 5, "log_success_checks": True}, f)
+
+        result = run_engine(
+            data_dir, plugin_root=fake_root, project_dir=project_dir,
+            env_override={"HOME": fake_home},
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() != ""
+        response = json.loads(result.stdout)
+        msg = response.get("systemMessage", "")
+        # Should show project_venv activity (either created or ok)
+        assert "project_venv" in msg
+
+    def test_project_venv_skipped_without_project_dir(self, data_dir, tmp_path):
+        """project_venv is silently skipped when --project-dir is not provided."""
+        fake_root = make_minimal_root(tmp_path)
+        fake_home = str(tmp_path / "fakehome")
+        claude_dir = os.path.join(fake_home, ".claude")
+        os.makedirs(claude_dir)
+
+        # User-level bootstrap with project_venv but no --project-dir
+        manifest = {"project_venv": {"extras": ["dev"], "check_imports": ["pytest"]}}
+        with open(os.path.join(claude_dir, "bootstrap.json"), "w") as f:
+            json.dump(manifest, f)
+
+        config_path = os.path.join(data_dir, "config.json")
+        with open(config_path, "w") as f:
+            json.dump({"schema_version": 5, "log_success_checks": True}, f)
+
+        # No --project-dir
+        result = run_engine(data_dir, plugin_root=fake_root, env_override={"HOME": fake_home})
+        assert result.returncode == 0
+        # project_venv should not appear in output (silently skipped)
+        if result.stdout.strip():
+            response = json.loads(result.stdout)
+            msg = response.get("systemMessage", "")
+            assert "project_venv" not in msg
+
+    def test_project_venv_already_ok(self, data_dir, tmp_path):
+        """project_venv with existing working venv reports ok."""
+        fake_root = make_minimal_root(tmp_path)
+        fake_home = str(tmp_path / "fakehome")
+        claude_dir = os.path.join(fake_home, ".claude")
+        os.makedirs(claude_dir)
+
+        # Create a project with a pre-existing venv
+        project_dir = str(tmp_path / "project")
+        os.makedirs(project_dir)
+        pyproject = os.path.join(project_dir, "pyproject.toml")
+        with open(pyproject, "w") as f:
+            f.write('[project]\nname = "test-proj"\nversion = "0.1.0"\nrequires-python = ">=3.10"\n'
+                    'dependencies = []\n\n[project.optional-dependencies]\ndev = []\n')
+
+        # Pre-create venv using uv sync so it already exists
+        env = dict(os.environ)
+        env["HOME"] = fake_home
+        subprocess.run(
+            [sys.executable, "-m", "uv", "sync", "--project", project_dir],
+            capture_output=True, env=env,
+        )
+
+        # project_venv with no check_imports (just needs venv + python)
+        manifest = {"project_venv": {"extras": [], "check_imports": []}}
+        with open(os.path.join(claude_dir, "bootstrap.json"), "w") as f:
+            json.dump(manifest, f)
+
+        config_path = os.path.join(data_dir, "config.json")
+        with open(config_path, "w") as f:
+            json.dump({"schema_version": 5, "log_success_checks": True}, f)
+
+        result = run_engine(
+            data_dir, plugin_root=fake_root, project_dir=project_dir,
+            env_override={"HOME": fake_home},
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() != ""
+        response = json.loads(result.stdout)
+        msg = response.get("systemMessage", "")
+        assert "project_venv: ok" in msg
+
     def test_priority_project_local_wins(self, data_dir, tmp_path):
         """Project-local bootstrap.local.json has highest priority for field overrides."""
         fake_root = make_minimal_root(tmp_path)

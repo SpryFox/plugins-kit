@@ -192,6 +192,33 @@ class TestInputsNotMutated:
         assert override == override_copy
 
 
+class TestProjectVenvMerge:
+    def test_project_venv_deep_merge(self):
+        """project_venv from two layers is deep-merged (override wins for conflicts)."""
+        base = {"project_venv": {"extras": ["dev"], "check_imports": ["pytest"]}}
+        override = {"project_venv": {"extras": ["docs"], "check_imports": ["sphinx"]}}
+        result = merge_manifests(base, override)
+        # Override wins for conflicting keys (both are scalar lists under a dict)
+        assert result["project_venv"]["extras"] == ["docs"]
+        assert result["project_venv"]["check_imports"] == ["sphinx"]
+
+    def test_project_venv_additive_keys(self):
+        """project_venv keys from base are preserved when override adds new keys."""
+        base = {"project_venv": {"extras": ["dev"]}}
+        override = {"project_venv": {"check_imports": ["pytest"]}}
+        result = merge_manifests(base, override)
+        assert result["project_venv"]["extras"] == ["dev"]
+        assert result["project_venv"]["check_imports"] == ["pytest"]
+
+    def test_project_venv_only_in_one_layer(self):
+        """project_venv in only one layer is passed through."""
+        base = {"tools": [{"name": "git"}]}
+        override = {"project_venv": {"extras": ["dev"]}}
+        result = merge_manifests(base, override)
+        assert result["project_venv"] == {"extras": ["dev"]}
+        assert result["tools"] == [{"name": "git"}]
+
+
 class TestMultiLayerMerge:
     def test_three_layer_merge(self):
         """Simulates user → user.local → project merge."""
