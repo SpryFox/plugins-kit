@@ -63,15 +63,15 @@ plugins-kit/                          # Marketplace root
 | `plugins/bootstrap/engine/config.py` | Config loading, migration, persistence |
 | `plugins/bootstrap/hooks/sessionstart/session-bootstrap.sh` | SessionStart hook (bash wrapper for engine) |
 | `plugins/bootstrap/bootstrap.json` | Bootstrap plugin's own manifest |
-| `plugins/bootstrap/ARCHITECTURE.md` | Bootstrap system architecture |
-| `plugins/bootstrap/MILESTONES.md` | Development milestones and progress |
+| `plugins/bootstrap/skills/bootstrap/references/engine-internals.md` | Bootstrap engine internals |
+| `docs/planning/bootstrap/MILESTONES.md` | Development milestones and progress |
 | `plugins/test-plugin/bootstrap.json` | Test plugin's bootstrap manifest |
 | `plugins/test-plugin/scripts/setup.py` | Test plugin config setup |
 | `tests/bootstrap/` | All bootstrap tests (mirrors lib/ structure) |
 
 ### Key Design Decisions
 
-- **Bootstrapping**: Two-layer system — session bootstrap (bash SessionStart hook, manifest-driven) ensures system tools, venv, and git deps; script bootstrap (Python, runs inside UE Editor) handles UE-side packages at runtime. See [docs/bootstrapping-architecture.md](docs/bootstrapping-architecture.md) for full details.
+- **Bootstrapping**: Two-layer system — session bootstrap (bash SessionStart hook, manifest-driven) ensures system tools, venv, and git deps; script bootstrap (Python, runs inside UE Editor) handles UE-side packages at runtime. See [engine-internals.md](plugins/bootstrap/skills/bootstrap/references/engine-internals.md) for engine details and [script-bootstrap.md](plugins/unreal-kit/skills/ue-python-api/references/script-bootstrap.md) for UE-side bootstrapping.
 - **Config resolution order**: CLI args > project config (`~/.claude/plugins/data/unreal-kit/config.yaml`) > skill config (`ue_runner_config.yaml`) > hardcoded defaults
 - **Auto-detection execution**: `ue_runner.py` tries remote execution (UDP via upyrc) first, falls back to headless commandlet if editor isn't running
 
@@ -143,7 +143,7 @@ Only run the full suite (`uv run --extra dev pytest -v`) when explicitly asked o
 
 **Never manually sync the cache** — do not copy files directly into the plugin cache. Always commit and push, then let Claude Code refresh the cache on restart.
 
-**Keep architecture docs current** — when modifying bootstrap behavior, update `plugins/bootstrap/ARCHITECTURE.md` and `docs/bootstrapping-architecture.md` to reflect the changes. These are the source of truth for how the system works.
+**Keep architecture docs current** — when modifying bootstrap behavior, update the bootstrap skill references (`plugins/bootstrap/skills/bootstrap/references/`) to reflect the changes. These are the source of truth for how the system works.
 
 **Plan non-trivial tasks**: Before implementing any non-trivial task:
 1. Enter plan mode (EnterPlanMode)
@@ -160,6 +160,13 @@ Only run the full suite (`uv run --extra dev pytest -v`) when explicitly asked o
 - **ADP (Acyclic Dependencies Principle)** — Skills don't circularly depend on each other. The dependency graph is a DAG.
 
 If no existing skill fits, create a stub skill with a description that explains why it exists. The document lives as a reference within the skill and is progressively disclosed (loaded only when the skill is invoked, not upfront).
+
+**Reference file design** (within a skill): Apply the same cohesion principles to reference files. Each reference should serve a single audience and change for a single reason. Validate with:
+
+- **CRP test**: "If I load this reference, do I plausibly need all of it?" If a reference mixes engine internals with manifest schema, split it.
+- **CCP test**: "When X changes, how many references need updating?" If more than one, the boundary is wrong.
+
+See `plugins/bootstrap/skills/bootstrap/` for the gold standard — 4 references split by audience (engine developers, manifest authors, debuggers, plugin authors) with clean change boundaries.
 
 ## Plugin System
 

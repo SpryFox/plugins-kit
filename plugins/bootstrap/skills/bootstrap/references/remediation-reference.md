@@ -1,0 +1,67 @@
+# Remediation Reference
+
+Detailed check methods and remediation actions for all condition categories the bootstrap engine can handle. For a summary table, see the SKILL.md "Remediable Condition Categories" section.
+
+## Configuration Conditions
+
+| Condition | Check Method | Remediation |
+|-----------|-------------|-------------|
+| Directory not in PATH | Read shell RC files or query OS environment variable | Modify persistent PATH configuration (platform-specific) |
+| JSON file lacks expected entries | Compare reference entries against target file | Merge missing entries into target JSON |
+| Application config setting not enabled | Read config/ini file for setting value | Write setting to config/ini file |
+
+## Tool Conditions
+
+| Condition | Check Method | Remediation |
+|-----------|-------------|-------------|
+| CLI tool not installed | `shutil.which(name)` | Run platform-specific install command -> re-check -> escalate to fix-all only if still missing |
+
+## Library / Data Conditions
+
+| Condition | Check Method | Remediation |
+|-----------|-------------|-------------|
+| Python venv missing or broken | Check dir -> binary -> interpreter runs -> packages importable | `uv sync` from `pyproject.toml` |
+| Project venv missing or broken | Same checks against `<project_dir>/.venv` | `uv sync --project <project_dir> [--extra ...]` |
+| PyPI package missing | Check extracted file exists locally | Download from PyPI and extract |
+| Git dependency not cloned or out of date | Check dir exists + `git ls-remote` vs local `rev-parse HEAD` | `git clone` or `git pull` |
+
+## Marketplace Conditions
+
+| Condition | Check Method | Remediation |
+|-----------|-------------|-------------|
+| Marketplace not registered | Check `known_marketplaces.json` for `installLocation` | `claude plugin marketplace add <url>` |
+| Marketplace stale (`alwaysUpdate`) | Always (no check — unconditional on every session) | `claude plugin marketplace update <name>` |
+
+## Plugin Conditions
+
+| Condition | Check Method | Remediation |
+|-----------|-------------|-------------|
+| Plugin not installed | Check installed plugins registry | Install plugin at declared scope |
+| Plugin installed but unwanted | Check installed plugins registry | Uninstall plugin |
+| Plugin out of date | `git ls-remote` vs cached commit SHA | Update plugin at declared scope |
+| Plugin at wrong scope | Compare installed scope vs declared `scope` in manifest | Uninstall from current scope, reinstall at declared scope |
+
+## Manual Operations (Blocking Conditions)
+
+All manual operations represent a blocking condition where auto-configuration cannot complete without user intervention. These generate fix-all directives via the messaging protocol.
+
+| Condition | Check Method | Remediation |
+|-----------|-------------|-------------|
+| Config information missing and can't be auto-detected | Check config file for required fields | Ask user for information, write to config file |
+| External app requires config change and/or restart | Modification applied that requires restart | User restarts external application, types `fixed` |
+| Claude Code requires config change and/or restart | Modification applied that requires restart | User restarts Claude Code |
+
+## User Experience Outcomes
+
+From the user's perspective, there are three possible outcomes on session start:
+
+| What the user sees | What happened |
+|--------------------|---------------|
+| Nothing | All checks passed (or cache hit) — environment is ready |
+| Nothing (first run after install) | Tool was missing, install ran silently, re-check passed — logged internally, no user-visible output |
+| Nothing (very first session, fresh machine) | Python was being bootstrapped; the engine runs fully on the next session. No `bootstrap.log` exists yet. |
+| Fix-all message | Something needs user action: install failed, no install command, missing config, or external app needs restart |
+
+**Healthy steady state**: The user sees nothing. Bootstrap is working correctly when it's invisible.
+
+**Verifying bootstrap ran**: Check `~/.claude/plugins/data/bootstrap/bootstrap.log`. Entries appear after the first successful engine run. No log file = engine hasn't completed a full session yet (normal on first run of a fresh machine).

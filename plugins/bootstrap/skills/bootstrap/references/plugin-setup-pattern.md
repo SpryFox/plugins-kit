@@ -1,4 +1,4 @@
-# Claude-Driven Setup Pattern
+# Plugin Setup Pattern
 
 A standard mechanism for plugins that need user-specific configuration (API keys, preferences, paths). Instead of prompting during bootstrap, the pattern detects missing config and emits context that guides Claude through an interactive setup flow.
 
@@ -90,7 +90,7 @@ python setup.py --init-defaults --data-dir <data-dir> --source <plugin-root>/def
 3. Copy `check-config.sh` to `hooks/sessionstart/`
 4. Source it in your `session-bootstrap.sh` and add Step 5
 5. Add config check to your Stop hook
-6. Create a setup skill that runs `--describe` → collect → `--apply` → `--check`
+6. Create a setup skill that runs `--describe` -> collect -> `--apply` -> `--check`
 
 ## Reference Implementation
 

@@ -37,7 +37,7 @@ UnrealEditor-Cmd.exe project.uproject -ExecutePythonScript="C:/path/to/script.py
 
 Scripts running inside UE use a separate Python environment from the host. Third-party packages are installed into UE's embedded Python via **unreal-pip**.
 
-The `ensure_dependencies()` function in `lib/bootstrap.py` reads `requirements.yaml`, checks what's installed, and uses unreal-pip for anything missing. For internals, see `references/third-party-tools.md`.
+The `ensure_dependencies()` function in `lib/bootstrap.py` reads `requirements.yaml`, checks what's installed, and uses unreal-pip for anything missing. For the bootstrapping flow, see `references/script-bootstrap.md`. For the unreal-pip API, see `references/unreal-pip.md`.
 
 ## API Stubs
 

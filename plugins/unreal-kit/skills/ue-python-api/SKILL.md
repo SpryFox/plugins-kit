@@ -151,7 +151,7 @@ packages:
 ```
 
 `ensure_dependencies()` reads the file, checks what's installed, uses unreal-pip for anything missing.
-For internals, see `references/third-party-tools.md`.
+For bootstrapping internals, see `references/script-bootstrap.md`. For the unreal-pip API, see `references/unreal-pip.md`.
 
 ## Conditional Loading
 
@@ -169,8 +169,12 @@ Read these references when you need deeper patterns:
   Keywords: AnimSequence, AnimMontage, AnimBlueprint, emote set, skeleton
 - **Script execution modes** → `references/script-execution.md`
   Keywords: startup scripts, commandlet, editor utility widget, slow task progress, batch
-- **Third-party tools** → `references/third-party-tools.md`
-  Keywords: unreal-pip, upyrc, remote control, package management, external scripting
+- **unreal-pip** → `references/unreal-pip.md`
+  Keywords: unreal-pip, package manager, UE packages, site-packages, pip install, bootstrap pattern
+- **upyrc** → `references/upyrc.md`
+  Keywords: upyrc, remote execution, UDP multicast, remote control, send script to editor
+- **Script bootstrap internals** → `references/script-bootstrap.md`
+  Keywords: two dependency sets, UE-side packages, host-side venv, stdlib constraint, ensure_dependencies internals, interaction flow
 
 ## Searching Stubs
 
