@@ -9,6 +9,7 @@ class PluginInfo(NamedTuple):
     name: str
     install_path: str  # Absolute path
     version: str
+    marketplace: str = ""
 
 
 def parse_plugin_ref(plugin_ref: str) -> tuple:
@@ -55,10 +56,10 @@ def resolve_plugin(registry_path: str, plugin_ref: str, base_dir: str) -> Option
     else:
         install_path = os.path.normpath(install_path)
 
-    # Extract plugin name from ref (part after :)
-    _, name = parse_plugin_ref(plugin_ref)
+    # Extract plugin name and marketplace from ref
+    marketplace, name = parse_plugin_ref(plugin_ref)
 
-    return PluginInfo(name=name, install_path=install_path, version=version)
+    return PluginInfo(name=name, install_path=install_path, version=version, marketplace=marketplace)
 
 
 def list_enabled_plugins(config: dict, registry_path: str, base_dir: str):
@@ -111,8 +112,8 @@ def list_enabled_plugins(config: dict, registry_path: str, base_dir: str):
         else:
             install_path = os.path.normpath(install_path)
 
-        _, name = parse_plugin_ref(ref)
-        plugin_info = PluginInfo(name=name, install_path=install_path, version=version)
+        marketplace, name = parse_plugin_ref(ref)
+        plugin_info = PluginInfo(name=name, install_path=install_path, version=version, marketplace=marketplace)
         bootstrap_json = os.path.join(install_path, "bootstrap.json")
 
         if ref in bootstrap_cache:

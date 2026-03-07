@@ -58,9 +58,8 @@ def main():
     # Bootstrap's own entries (self-bootstrap + user) — written to bootstrap's log
     bootstrap_action_entries = []
     bootstrap_ok_entries = []
-    # All entries including plugins — used for hook display only
-    all_action_entries = []
-    all_ok_entries = []
+    # Display sections: list of (header, action_entries, ok_entries)
+    display_sections = []
 
     # Detect plugins directory (where installed_plugins.json lives)
     # Dev layout: ~/Dev/<marketplace>/plugins/bootstrap → one up
@@ -92,8 +91,6 @@ def main():
     failures = _process_manifest(manifest, current_os, data_dir, plugin_root, action_entries, ok_entries)
     bootstrap_action_entries.extend(action_entries)
     bootstrap_ok_entries.extend(ok_entries)
-    all_action_entries.extend(action_entries)
-    all_ok_entries.extend(ok_entries)
 
     if failures:
         all_failures.extend(failures)
@@ -116,10 +113,11 @@ def main():
         prefixed_ok = [f"user: {e}" for e in ok_entries]
         bootstrap_action_entries.extend(prefixed_action)
         bootstrap_ok_entries.extend(prefixed_ok)
-        all_action_entries.extend(prefixed_action)
-        all_ok_entries.extend(prefixed_ok)
         if failures:
             all_failures.extend(failures)
+
+    # Add bootstrap's own section to display
+    display_sections.append((bootstrap_label, list(bootstrap_action_entries), list(bootstrap_ok_entries)))
 
     # Step 4: Process enabled plugins (auto-discovered via bootstrap.json presence)
     registry_path = os.path.join(plugins_dir, "installed_plugins.json")
@@ -175,9 +173,9 @@ def main():
         if plugin_log_entries and not args.console:
             write_log_block(plugin_data_dir, plugin_label, plugin_log_entries)
 
-        # Feed into display entries (prefixed with plugin name)
-        all_action_entries.extend(f"{plugin_info.name}: {e}" for e in plugin_action_entries)
-        all_ok_entries.extend(f"{plugin_info.name}: {e}" for e in plugin_ok_entries)
+        # Add plugin section to display
+        plugin_display_header = f"{plugin_info.marketplace}:{plugin_info.name}@{plugin_info.version}" if plugin_info.marketplace else plugin_label
+        display_sections.append((plugin_display_header, list(plugin_action_entries), list(plugin_ok_entries)))
 
     # Step 5: Read shell log entries BEFORE writing engine entries to the log
     if not args.console:
@@ -191,28 +189,32 @@ def main():
     if bootstrap_log_entries and not args.console:
         write_log_block(data_dir, bootstrap_label, bootstrap_log_entries)
 
-    # Step 7: Build display entries — actions always, ok only if log_success
-    display_entries = list(all_action_entries)
-    if log_success:
-        display_entries.extend(all_ok_entries)
+    # Step 7: Build display from sections — actions always, ok only if log_success
+    # Each section with entries gets a header line
+    display_lines = []
+    for header, actions, oks in display_sections:
+        section_entries = list(actions)
+        if log_success:
+            section_entries.extend(oks)
+        if section_entries:
+            display_lines.append(f"--- {header} ---")
+            display_lines.extend(section_entries)
 
     if args.console:
         # Console mode: plain text to stdout, no JSON
-        for entry in display_entries:
-            print(entry)
+        for line in display_lines:
+            print(line)
         if all_failures:
             print(f"\n{bootstrap_label} -> {len(all_failures)} failure(s):")
             for f in all_failures:
                 print(f"  - [{f['type']}] {f.get('name', f.get('message', ''))}")
         return
 
-    # Build final display: shell entries + engine entries
+    # Build final display: shell entries + section entries
     parts = []
     if shell_content:
         parts.append(shell_content)
-    if display_entries:
-        for entry in display_entries:
-            parts.append(entry)
+    parts.extend(display_lines)
     display_content = "\n".join(parts)
 
     # Update the log display marker
