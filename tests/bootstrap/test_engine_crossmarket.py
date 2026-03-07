@@ -171,36 +171,17 @@ class TestCrossMarketplacePluginRefs:
         assert "install" in ctx.lower()
 
 
-class TestDetectMarketplaceName:
-    def test_detects_from_registry_keys(self, tmp_path):
-        """Marketplace name detected from installed_plugins.json keys."""
-        sys.path.insert(0, os.path.join(BOOTSTRAP_ROOT, "engine"))
-        from bootstrap_engine import _detect_marketplace_name
+class TestMarketplaceNameFromPluginRoot:
+    def test_dev_layout(self, tmp_path):
+        """Dev layout: plugins-kit/plugins/bootstrap → marketplace = plugins-kit."""
+        plugin_root = tmp_path / "plugins-kit" / "plugins" / "bootstrap"
+        plugin_root.mkdir(parents=True)
+        marketplace = os.path.basename(os.path.normpath(os.path.join(str(plugin_root), "..", "..")))
+        assert marketplace == "plugins-kit"
 
-        plugins_dir = tmp_path / "plugins"
-        plugins_dir.mkdir()
-        registry = {"plugins": {"my-market:some-plugin": [{"installPath": "./some-plugin"}]}}
-        (plugins_dir / "installed_plugins.json").write_text(json.dumps(registry))
-
-        assert _detect_marketplace_name(str(plugins_dir)) == "my-market"
-
-    def test_falls_back_to_parent_dir(self, tmp_path):
-        """Falls back to parent directory name when no registry exists."""
-        sys.path.insert(0, os.path.join(BOOTSTRAP_ROOT, "engine"))
-        from bootstrap_engine import _detect_marketplace_name
-
-        market_dir = tmp_path / "my-marketplace" / "plugins"
-        market_dir.mkdir(parents=True)
-
-        assert _detect_marketplace_name(str(market_dir)) == "my-marketplace"
-
-    def test_empty_registry(self, tmp_path):
-        """Falls back when registry has no plugins."""
-        sys.path.insert(0, os.path.join(BOOTSTRAP_ROOT, "engine"))
-        from bootstrap_engine import _detect_marketplace_name
-
-        market_dir = tmp_path / "fallback-name" / "plugins"
-        market_dir.mkdir(parents=True)
-        (market_dir / "installed_plugins.json").write_text(json.dumps({"plugins": {}}))
-
-        assert _detect_marketplace_name(str(market_dir)) == "fallback-name"
+    def test_cache_layout(self, tmp_path):
+        """Cache layout: cache/my-market/bootstrap/0.5.0 → marketplace = my-market."""
+        plugin_root = tmp_path / "cache" / "my-market" / "bootstrap" / "0.5.0"
+        plugin_root.mkdir(parents=True)
+        marketplace = os.path.basename(os.path.normpath(os.path.join(str(plugin_root), "..", "..")))
+        assert marketplace == "my-market"

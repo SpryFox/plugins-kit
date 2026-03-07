@@ -23,13 +23,14 @@ class TestWriteLogBlock:
         assert "first" in lines[1]
         assert "second" in lines[2]
 
-    def test_entries_have_timestamps(self, data_dir):
+    def test_entries_are_plain_text(self, data_dir):
         write_log_block(data_dir, "Engine", ["timestamped"])
         log_path = os.path.join(data_dir, LOG_FILENAME)
         with open(log_path) as f:
             lines = f.readlines()
-        # Second line is the entry (first is header)
-        assert re.match(r"\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\]", lines[1])
+        # Entry lines are plain text (no timestamp prefix); header has the timestamp
+        assert lines[1].strip() == "timestamped"
+        assert re.match(r"--- Engine \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z ---", lines[0])
 
     def test_separate_blocks_have_separate_headers(self, data_dir):
         write_log_block(data_dir, "Shell", ["entry one"])
