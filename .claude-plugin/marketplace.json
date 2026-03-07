@@ -9,7 +9,7 @@
     {
       "name": "unreal-kit",
       "description": "Unreal Engine Python API automation: asset inspection, reference graph traversal, script execution, and data extraction",
-      "version": "0.1.5",
+      "version": "0.2.1",
       "author": {
         "name": "Christina"
       },
@@ -40,7 +40,7 @@
     {
       "name": "bootstrap",
       "description": "Centralized bootstrap engine for Claude Code plugins",
-      "version": "0.5.1",
+      "version": "0.5.2",
       "author": {
         "name": "Christina"
       },
@@ -50,7 +50,7 @@
     {
       "name": "local-review-kit",
       "description": "Interactive local code review of Perforce changelists in Claude Code",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "author": {
         "name": "Christina"
       },
