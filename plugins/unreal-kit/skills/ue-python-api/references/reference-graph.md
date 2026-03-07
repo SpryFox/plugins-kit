@@ -1,36 +1,5 @@
 # Reference Graph Patterns
 
-## Scripts
-
-### Dialog Reference Graph Explorer
-
-**Location**: `<project>/tmp/bin/01_dialog_reference_graph.py`
-
-Finds all dialog-related UE assets using two strategies then traces their reference graphs. Designed for the Spirit Crossing project.
-
-**Discovery strategies:**
-1. **Class search** — finds assets by UE type (`NPCDialogEmoteSet`, `SpiritDialogEmoteSet`, `DialogueScreen`, `DialogueMenu`)
-2. **Keyword scan** — finds assets by path/name containing dialog terms (`Dialogue`, `Narrative`, `Conversation`, `EmoteSet`, `DialogueCast`)
-
-**Graph traversal:** From discovered seeds, traces dependencies and referencers up to `MAX_DEPTH=3` levels. Uses boundary patterns to stop at non-dialog assets (textures, meshes, audio, VFX) and magnet patterns to always follow dialog-related references even across boundaries.
-
-**Output**: `<ProjectDir>/Saved/PythonOutput/dialog_reference_graph.yaml` containing:
-- `stats` — seed count, graph size, depth sufficiency
-- `seeds` — all discovered dialog assets with class and discovery source
-- `graph` — full reference graph (dependencies + referencers per node)
-- `discovered` — non-seed, non-boundary assets found via traversal
-- `by_class` — assets grouped by UE class
-- `depth_frontier` — nodes at max depth with unexplored connections
-
-**Run**:
-```
-ue-runner.cmd C:/dev/dialog-experiments/tmp/bin/01_dialog_reference_graph.py
-```
-
-**Dependencies**: `bootstrap.py` (from skill lib/), `pyyaml`, `unreal` module
-
----
-
 ## Concepts
 
 - **Dependencies**: Assets that a given asset references (what it needs to load)

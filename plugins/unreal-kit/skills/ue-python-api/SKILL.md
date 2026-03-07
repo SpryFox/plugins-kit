@@ -1,84 +1,41 @@
 ---
 _schema_version: 1
 name: ue-python-api
-description: Write and understand Unreal Engine Python editor scripts for asset inspection, reference graph traversal, and data extraction
+description: Enables reading, writing, and understanding unreal data and communicating with the unreal editor by reading/writing/creating/executing python scripts that use the unreal python api
 ---
 
 # Unreal Engine Python API
 
 ## Purpose
 
-Write Python scripts for UE Editor automation: asset inspection, reference graph traversal,
-property reading, and data extraction. Claude writes scripts; user runs them in UE Editor
-and shares output for analysis.
+Write and run Python scripts for UE Editor automation: asset inspection, reference graph traversal,
+property reading, and data extraction. Scripts work with or without the Editor open.
+
+> **This is a generic, public MIT-licensed plugin.** All patterns, examples, and documentation must be engine-generic. Do not add project-specific asset paths, class names, workflows, or code patterns.
 
 ## Workflow
 
-1. Claude writes a `.py` script using patterns below
-2. User runs it in UE Editor (Output Log → Python, or `py "C:/path/to/script.py"`)
-3. User shares the printed output back to Claude
-4. Claude analyzes results and writes follow-up scripts as needed
+1. Write a `.py` script using patterns below
+2. Run it via the terminal runner (see [Running Scripts](#running-scripts))
+3. Analyze results and write follow-up scripts as needed
 
 ## Key Facts
 
-- **Editor-only**: UE Python is for Editor automation, NOT runtime gameplay
-- **Module**: `import unreal` — mirrors C++/Blueprint API
-- **Required plugins**: "Python Editor Script Plugin" + "Editor Scripting Utilities"
-- **Setup**: Run `bin/setup.cmd` once per machine — see `references/project-setup.md`
-- **Stubs**: `<Project>/Intermediate/PythonStub/unreal.py` (enable Developer Mode in Editor Preferences → Plugins → Python)
-- **Local stubs**: Run `scripts/setup-stubs.py` to download searchable API stubs to `stubs/`
-- **Dependencies**: Managed via unreal-pip. See [Dependencies](#dependencies) below
+- **Module**: `import unreal` to access UE classes and functions (e.g. `UEditorAssetLibrary` in C++ becomes `unreal.EditorAssetLibrary` in Python)
+- **Stubs**: Searchable API stubs at `stubs/unreal.py`
+- **UE-side dependencies**: Managed via unreal-pip. See [Dependencies](#dependencies) below
 
 ## Running Scripts
 
-### Terminal Runner (recommended)
-
-Run UE Python scripts from the terminal — auto-detects whether UE Editor is running:
-
-| Editor running? | Method | Speed |
-|-----------------|--------|-------|
-| Yes | Remote execution via `upyrc` (UDP multicast) | ~seconds |
-| No | Headless commandlet (`UnrealEditor-Cmd.exe`) | ~30-120s |
-
 ```bash
-# Windows — use the .cmd wrapper (handles Python + deps via uv):
-# ${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api = plugin install path + /skills/ue-python-api
-${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/ue-runner.cmd script.py
-${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/ue-runner.cmd script.py --mode remote
-${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/ue-runner.cmd script.py --mode commandlet
-${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/ue-runner.cmd script.py --copy-output ./results/
-
-# Or with Python directly (if python + deps are on PATH):
 python ${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/ue_runner.py script.py
+python ${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/ue_runner.py script.py --copy-output ./results/
 ```
 
-**Setup (run once per machine):**
-```bash
-${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/setup.cmd
-```
-Auto-discovers your UE project, configures paths, enables remote execution and developer mode,
-and downloads API stubs. No user input required. See `references/project-setup.md` for details.
-
-**Interactive setup** (alternative — prompts before each change):
-```bash
-${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/ue-runner.cmd --setup
-```
+The runner auto-detects whether the Editor is open and picks the best execution method.
 
 **Output detection:** Scripts that write YAML to `<Project>/Saved/PythonOutput/` will have their
 output automatically detected and reported. Use `--copy-output` to pull results to a local directory.
-
-### Manual methods
-
-```
-# Output Log (switch dropdown to Python)
-py "C:/path/to/script.py"
-
-# Startup scripts (auto-run on editor load)
-# Place .py files in <Project>/Content/Python/
-
-# Commandline (headless)
-UnrealEditor-Cmd.exe project.uproject -ExecutePythonScript="C:/path/to/script.py"
-```
 
 ## Essential Classes
 
@@ -94,63 +51,67 @@ UnrealEditor-Cmd.exe project.uproject -ExecutePythonScript="C:/path/to/script.py
 
 ## Core Patterns
 
-### Load and Inspect Asset
+**Output**: `unreal.log()` writes to the Editor's Output Log but is NOT captured by the terminal runner.
+To get results back, write to a YAML file in `<Project>/Saved/PythonOutput/` — the runner auto-detects these.
+All patterns below use the YAML output approach.
+
+### Script Template
 ```python
+import sys, os
+sys.path.insert(0, '${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/lib')
+from bootstrap import ensure_dependencies
+ensure_dependencies()
+
+import yaml
 import unreal
 
+results = {}
+# ... collect data ...
+
+out_path = os.path.join(str(unreal.Paths.project_dir()), 'Saved', 'PythonOutput', 'results.yaml')
+os.makedirs(os.path.dirname(out_path), exist_ok=True)
+with open(out_path, 'w') as f:
+    yaml.dump(results, f, default_flow_style=False, sort_keys=False)
+```
+
+### Load and Inspect Asset
+```python
 asset = unreal.EditorAssetLibrary.load_asset('/Game/Path/To/Asset')
-unreal.log(f"Class: {asset.get_class().get_name()}")
-# List all readable properties
-for prop in dir(asset):
-    if not prop.startswith('_'):
-        try:
-            val = asset.get_editor_property(prop)
-            unreal.log(f"  {prop} = {val}")
-        except:
-            pass
+results['class'] = asset.get_class().get_name()
+
+# get_editor_property reads UPROPERTY fields by name.
+# Use the stubs or UE docs to find property names for a given class.
+results['some_property'] = str(asset.get_editor_property('some_property_name'))
 ```
 
-### Reference Graph — What Does This Asset Depend On?
+### Reference Graph — Dependencies and Referencers
 ```python
 registry = unreal.AssetRegistryHelpers.get_asset_registry()
-deps = registry.get_dependencies(
-    '/Game/Path/To/Asset',
-    unreal.AssetRegistryDependencyOptions(
-        include_soft_package_references=True,
-        include_hard_package_references=True,
-        include_searchable_names=False,
-        include_soft_management_references=False
-    ))
-for d in deps:
-    unreal.log(f"Depends on: {d}")
-```
+dep_options = unreal.AssetRegistryDependencyOptions(
+    include_soft_package_references=True,
+    include_hard_package_references=True,
+    include_searchable_names=False,
+    include_soft_management_references=False
+)
 
-### Reference Graph — What References This Asset?
-```python
-registry = unreal.AssetRegistryHelpers.get_asset_registry()
-refs = registry.get_referencers(
-    '/Game/Path/To/Asset',
-    unreal.AssetRegistryDependencyOptions(
-        include_soft_package_references=True,
-        include_hard_package_references=True,
-        include_searchable_names=False,
-        include_soft_management_references=False
-    ))
-for r in refs:
-    unreal.log(f"Referenced by: {r}")
+deps = registry.get_dependencies('/Game/Path/To/Asset', dep_options)
+results['dependencies'] = [str(d) for d in deps]
+
+refs = registry.get_referencers('/Game/Path/To/Asset', dep_options)
+results['referencers'] = [str(r) for r in refs]
 ```
 
 ### List Assets by Path or Class
 ```python
 # All assets under a path
-assets = unreal.EditorAssetLibrary.list_assets('/Game/Content/Path', recursive=True)
+assets = unreal.EditorAssetLibrary.list_assets('/Game/Path', recursive=True)
+results['assets'] = [str(a) for a in assets]
 
 # Filter by class using asset registry
 registry = unreal.AssetRegistryHelpers.get_asset_registry()
-ar_filter = unreal.ARFilter(class_names=['DataTable'], package_paths=['/Game/Data'])
+ar_filter = unreal.ARFilter(class_names=['DataTable'], package_paths=['/Game'])
 found = registry.get_assets(ar_filter)
-for asset_data in found:
-    unreal.log(f"{asset_data.asset_name} at {asset_data.package_name}")
+results['datatables'] = [str(ad.package_name) for ad in found]
 ```
 
 ### Read/Write Properties
@@ -164,38 +125,15 @@ unreal.EditorAssetLibrary.save_loaded_asset(asset)
 ### TMap / TArray Properties
 ```python
 # TMap properties return as dict, TArray as list
-emote_map = asset.get_editor_property('emote_map')
-for key, value in emote_map.items():
-    unreal.log(f"  {key}: {value}")
-```
-
-### Output to File (YAML)
-```python
-import sys, os
-# ${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api resolves to the plugin's ue-python-api skill directory
-sys.path.insert(0, '${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/lib')
-from bootstrap import ensure_dependencies
-ensure_dependencies()
-
-import yaml
-import unreal
-
-results = {}
-# ... collect data ...
-out_path = os.path.join(str(unreal.Paths.project_dir()), 'Saved', 'PythonOutput', 'results.yaml')
-os.makedirs(os.path.dirname(out_path), exist_ok=True)
-with open(out_path, 'w') as f:
-    yaml.dump(results, f, default_flow_style=False, sort_keys=False)
-unreal.log(f"Wrote results to {out_path}")
+map_prop = asset.get_editor_property('some_map_property')
+results['map_data'] = {str(k): str(v) for k, v in map_prop.items()}
 ```
 
 ## Dependencies
 
-Two separate dependency sets — one for scripts running inside UE, one for the terminal runner:
-
 ### UE-side dependencies (`requirements.yaml`)
 
-Managed via **unreal-pip**, installed into UE's embedded Python. Scripts use a bootstrap pattern:
+Scripts running inside UE may need third-party packages. Use the bootstrap pattern:
 
 ```python
 import sys
@@ -215,28 +153,20 @@ packages:
 `ensure_dependencies()` reads the file, checks what's installed, uses unreal-pip for anything missing.
 For internals, see `references/third-party-tools.md`.
 
-### Host-side dependencies (`host-requirements.txt`)
-
-For the terminal runner (`ue_runner.py`), installed into your system Python:
-
-```bash
-pip install -r ${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/host-requirements.txt
-```
-
-Contains: `upyrc` (remote execution), `pyyaml` (config loading).
-
 ## Conditional Loading
 
 Read these references when you need deeper patterns:
 
-- **Project setup** → `references/project-setup.md`
-  Keywords: setup, install, Python not found, setup-status.yaml missing, config validation error, stubs not found
+- **Architecture** → `references/architecture.md`
+  Keywords: required plugins, execution modes, remote vs commandlet, stubs, how it works
+- **Bootstrapped setup** → `references/bootstrapped-setup.md`
+  Keywords: setup, config, ini settings, venv, host deps, stubs, troubleshooting
 - **Asset inspection deep dive** → `references/asset-inspection.md`
   Keywords: struct properties, nested objects, class hierarchy, Blueprint inspection, soft references
 - **Reference graph traversal** → `references/reference-graph.md`
   Keywords: dependency chain, full graph walk, circular references, asset audit
 - **Animation and emote patterns** → `references/animation-patterns.md`
-  Keywords: AnimSequence, AnimMontage, AnimBlueprint, NPCEmoteSet, skeleton
+  Keywords: AnimSequence, AnimMontage, AnimBlueprint, emote set, skeleton
 - **Script execution modes** → `references/script-execution.md`
   Keywords: startup scripts, commandlet, editor utility widget, slow task progress, batch
 - **Third-party tools** → `references/third-party-tools.md`
@@ -244,7 +174,7 @@ Read these references when you need deeper patterns:
 
 ## Searching Stubs
 
-After running `scripts/setup-stubs.py`, search the stubs file for API methods:
+Search the stubs file for API methods:
 ```
 # Find methods related to "dependency"
 grep -i "def.*depend" stubs/unreal.py

@@ -117,14 +117,14 @@ def inspect_anim_blueprint(asset_path):
     unreal.log(f"Total animation dependencies: {len(anim_deps)}")
 ```
 
-## Inspect TMap-Based Emote Sets
+## Inspect TMap-Based Animation Sets
 
-Spirit Crossing uses TMap<FName, UAnimSequence*> or similar for emote sets.
+Many projects use TMap<FName, UAnimSequence*> or similar for animation/emote sets.
 This pattern reads any DataAsset with TMap properties:
 
 ```python
-def inspect_emote_set(asset_path):
-    """Inspect an NPCEmoteSet or similar DataAsset with animation TMap."""
+def inspect_animation_set(asset_path):
+    """Inspect a DataAsset with TMap animation properties."""
     asset = unreal.EditorAssetLibrary.load_asset(asset_path)
     if not asset:
         unreal.log_error(f"Failed to load: {asset_path}")
@@ -199,13 +199,13 @@ def map_skeleton_animations(skeleton_path):
 
 ## Find All Animations for a Character
 
-Useful when an NPC's animations span multiple directories:
+Useful when a character's animations span multiple directories:
 
 ```python
 def find_character_animations(character_name, search_paths=None):
     """Find all animations mentioning a character name."""
     if search_paths is None:
-        search_paths = ['/Game/Art/Characters', '/Game/Content']
+        search_paths = ['/Game']
 
     registry = unreal.AssetRegistryHelpers.get_asset_registry()
     results = []
