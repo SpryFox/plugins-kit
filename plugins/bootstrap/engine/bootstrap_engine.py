@@ -465,101 +465,8 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                     "plugin": plugin_name,
                 })
 
-    # Variable resolution for subsequent phases
-    from var_resolve import build_variables, resolve_vars
-    config = _load_plugin_config(data_dir)
-    variables = build_variables(plugin_root, data_dir, config)
-
-    # Check INI settings
-    for ini_def in manifest.get("ini_settings", []):
-        ini_file = resolve_vars(ini_def["file"], variables)
-        if ini_file is None:
-            ok_entries.append(f"{prefix}ini {ini_def['file']}: skipped (unresolved vars)")
-            continue
-
-        section = ini_def["section"]
-        # Ensure section has brackets for check/write
-        section_header = section if section.startswith("[") else f"[{section}]"
-
-        from ini_check import check_ini_setting, write_ini_setting
-        for key, expected in ini_def.get("settings", {}).items():
-            result = check_ini_setting(ini_file, section_header, key, expected)
-            if result.passed:
-                ok_entries.append(f"{prefix}ini {key}: ok")
-            else:
-                try:
-                    write_ini_setting(ini_file, section_header, key, expected)
-                    action_entries.append(f"{prefix}ini {key}: set to {expected}")
-                except OSError as e:
-                    action_entries.append(f"{prefix}ini {key}: FAILED - {e}")
-                    failures.append({
-                        "type": "ini",
-                        "file": ini_file,
-                        "key": key,
-                        "message": str(e),
-                        "plugin": plugin_name,
-                    })
-
-    # Check JSON entries
-    for json_def in manifest.get("json_entries", []):
-        ref_path = resolve_vars(json_def.get("reference", ""), variables)
-        target_path = resolve_vars(json_def.get("target", ""), variables)
-        if ref_path is None or target_path is None:
-            ok_entries.append(f"{prefix}json: skipped (unresolved vars)")
-            continue
-
-        # Resolve reference relative to plugin root if not absolute
-        if not os.path.isabs(ref_path):
-            ref_path = os.path.join(plugin_root, ref_path)
-        # Expand ~ in target path
-        target_path = os.path.expanduser(target_path)
-
-        merge_fields = json_def.get("merge_fields", [])
-        preserve_fields = json_def.get("preserve_fields", [])
-
-        from json_check import check_json_entries, merge_json_entries
-        result = check_json_entries(ref_path, target_path, merge_fields, preserve_fields)
-        if result.passed:
-            ok_entries.append(f"{prefix}json {os.path.basename(target_path)}: ok")
-        else:
-            result = merge_json_entries(ref_path, target_path, merge_fields, preserve_fields)
-            if result.passed:
-                action_entries.append(f"{prefix}json {os.path.basename(target_path)}: merged")
-            else:
-                action_entries.append(f"{prefix}json {os.path.basename(target_path)}: FAILED - {result.message}")
-                failures.append({
-                    "type": "json",
-                    "target": target_path,
-                    "message": result.message,
-                    "plugin": plugin_name,
-                })
-
-    # Check PyPI packages
-    for pypi_def in manifest.get("pypi_packages", []):
-        extract_to = resolve_vars(pypi_def["extract_to"], variables)
-        if extract_to is None:
-            ok_entries.append(f"{prefix}pypi {pypi_def['package']}: skipped (unresolved vars)")
-            continue
-
-        from pypi_check import check_pypi_package, download_and_extract
-        result = check_pypi_package(pypi_def["package"], extract_to)
-        if result.passed:
-            ok_entries.append(f"{prefix}pypi {result.package}: ok")
-        else:
-            extract_pattern = pypi_def.get("extract_pattern")
-            result = download_and_extract(pypi_def["package"], extract_to, extract_pattern)
-            if result.passed:
-                action_entries.append(f"{prefix}pypi {result.package}: {result.message}")
-            else:
-                action_entries.append(f"{prefix}pypi {result.package}: FAILED - {result.message}")
-                failures.append({
-                    "type": "pypi",
-                    "package": pypi_def["package"],
-                    "message": result.message,
-                    "plugin": plugin_name,
-                })
-
-    # Check marketplace entries
+    # Check marketplace entries (before json_entries — marketplaces must be cloned
+    # before we merge fields like autoUpdate into known_marketplaces.json)
     for mkt_def in manifest.get("marketplaces", []):
         mkt_name = mkt_def.get("name", "")
         source_url = mkt_def.get("source", "")
@@ -664,6 +571,100 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                         "message": dis_result.message,
                         "plugin": plugin_name,
                     })
+
+    # Variable resolution for subsequent phases
+    from var_resolve import build_variables, resolve_vars
+    config = _load_plugin_config(data_dir)
+    variables = build_variables(plugin_root, data_dir, config)
+
+    # Check INI settings
+    for ini_def in manifest.get("ini_settings", []):
+        ini_file = resolve_vars(ini_def["file"], variables)
+        if ini_file is None:
+            ok_entries.append(f"{prefix}ini {ini_def['file']}: skipped (unresolved vars)")
+            continue
+
+        section = ini_def["section"]
+        # Ensure section has brackets for check/write
+        section_header = section if section.startswith("[") else f"[{section}]"
+
+        from ini_check import check_ini_setting, write_ini_setting
+        for key, expected in ini_def.get("settings", {}).items():
+            result = check_ini_setting(ini_file, section_header, key, expected)
+            if result.passed:
+                ok_entries.append(f"{prefix}ini {key}: ok")
+            else:
+                try:
+                    write_ini_setting(ini_file, section_header, key, expected)
+                    action_entries.append(f"{prefix}ini {key}: set to {expected}")
+                except OSError as e:
+                    action_entries.append(f"{prefix}ini {key}: FAILED - {e}")
+                    failures.append({
+                        "type": "ini",
+                        "file": ini_file,
+                        "key": key,
+                        "message": str(e),
+                        "plugin": plugin_name,
+                    })
+
+    # Check JSON entries (after marketplaces — so known_marketplaces.json has valid entries)
+    for json_def in manifest.get("json_entries", []):
+        ref_path = resolve_vars(json_def.get("reference", ""), variables)
+        target_path = resolve_vars(json_def.get("target", ""), variables)
+        if ref_path is None or target_path is None:
+            ok_entries.append(f"{prefix}json: skipped (unresolved vars)")
+            continue
+
+        # Resolve reference relative to plugin root if not absolute
+        if not os.path.isabs(ref_path):
+            ref_path = os.path.join(plugin_root, ref_path)
+        # Expand ~ in target path
+        target_path = os.path.expanduser(target_path)
+
+        merge_fields = json_def.get("merge_fields", [])
+        preserve_fields = json_def.get("preserve_fields", [])
+
+        from json_check import check_json_entries, merge_json_entries
+        result = check_json_entries(ref_path, target_path, merge_fields, preserve_fields)
+        if result.passed:
+            ok_entries.append(f"{prefix}json {os.path.basename(target_path)}: ok")
+        else:
+            result = merge_json_entries(ref_path, target_path, merge_fields, preserve_fields)
+            if result.passed:
+                action_entries.append(f"{prefix}json {os.path.basename(target_path)}: merged")
+            else:
+                action_entries.append(f"{prefix}json {os.path.basename(target_path)}: FAILED - {result.message}")
+                failures.append({
+                    "type": "json",
+                    "target": target_path,
+                    "message": result.message,
+                    "plugin": plugin_name,
+                })
+
+    # Check PyPI packages
+    for pypi_def in manifest.get("pypi_packages", []):
+        extract_to = resolve_vars(pypi_def["extract_to"], variables)
+        if extract_to is None:
+            ok_entries.append(f"{prefix}pypi {pypi_def['package']}: skipped (unresolved vars)")
+            continue
+
+        from pypi_check import check_pypi_package, download_and_extract
+        result = check_pypi_package(pypi_def["package"], extract_to)
+        if result.passed:
+            ok_entries.append(f"{prefix}pypi {result.package}: ok")
+        else:
+            extract_pattern = pypi_def.get("extract_pattern")
+            result = download_and_extract(pypi_def["package"], extract_to, extract_pattern)
+            if result.passed:
+                action_entries.append(f"{prefix}pypi {result.package}: {result.message}")
+            else:
+                action_entries.append(f"{prefix}pypi {result.package}: FAILED - {result.message}")
+                failures.append({
+                    "type": "pypi",
+                    "package": pypi_def["package"],
+                    "message": result.message,
+                    "plugin": plugin_name,
+                })
 
     # Script phase
     script_def = manifest.get("script")
