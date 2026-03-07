@@ -311,3 +311,35 @@ class TestMultiPluginEngine:
         ctx = response["hookSpecificOutput"]["additionalContext"]
         assert "invalid.example.invalid" in ctx
         assert "[git-plugin]" in ctx
+
+    def test_cache_layout_finds_registry(self, tmp_path):
+        """Registry found when bootstrap is nested deep (cache layout)."""
+        # Simulate cache layout: plugins/cache/mkt/bootstrap/0.5.0/
+        cache_dir = tmp_path / "plugins" / "cache" / "mymkt" / "bootstrap" / "0.5.0"
+        cache_dir.mkdir(parents=True)
+        (cache_dir / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
+        (cache_dir / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
+        (cache_dir / "defaults").symlink_to(os.path.join(BOOTSTRAP_ROOT, "defaults"))
+        (cache_dir / "bootstrap.json").write_text(json.dumps({"tools": [], "path_entries": []}))
+
+        # Plugin at cache/mymkt/deep-plugin/1.0.0/
+        deep_plugin_dir = tmp_path / "plugins" / "cache" / "mymkt" / "deep-plugin" / "1.0.0"
+        deep_plugin_dir.mkdir(parents=True)
+        (deep_plugin_dir / "bootstrap.json").write_text(json.dumps({
+            "tools": [{"name": "git", "install": {"macos": "brew install git"}}],
+        }))
+
+        # Registry at plugins/installed_plugins.json (two levels above cache/mymkt/)
+        registry = {"plugins": {"mymkt:deep-plugin": [{"installPath": str(deep_plugin_dir), "version": "1.0.0"}]}}
+        (tmp_path / "plugins" / "installed_plugins.json").write_text(json.dumps(registry))
+
+        data_dir = str(tmp_path / "data" / "bootstrap")
+        os.makedirs(data_dir)
+        config = {"schema_version": 3, "enabled_plugins": ["mymkt:deep-plugin"], "log_level": "info", "log_success_shell": False, "log_success_checks": True}
+        with open(os.path.join(data_dir, "config.json"), "w") as f:
+            json.dump(config, f)
+
+        result = run_engine(data_dir, plugin_root=str(cache_dir))
+        assert result.returncode == 0
+        response = json.loads(result.stdout)
+        assert "deep-plugin" in response["systemMessage"]

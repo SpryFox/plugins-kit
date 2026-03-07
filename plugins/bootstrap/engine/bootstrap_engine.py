@@ -62,8 +62,10 @@ def main():
     all_action_entries = []
     all_ok_entries = []
 
-    # Detect marketplace name for log prefixes
-    plugins_dir = os.path.dirname(plugin_root)
+    # Detect plugins directory (where installed_plugins.json lives)
+    # Dev layout: ~/Dev/<marketplace>/plugins/bootstrap → one up
+    # Cache layout: ~/.claude/plugins/cache/<marketplace>/bootstrap/<ver> → walk up to ~/.claude/plugins/
+    plugins_dir = _find_plugins_dir(plugin_root)
     marketplace_name = _detect_marketplace_name(plugins_dir)
     plugin_json_path = os.path.join(plugin_root, ".claude-plugin", "plugin.json")
     version = ""
@@ -680,6 +682,28 @@ def _load_plugin_config(data_dir):
     except Exception:
         pass
     return {}
+
+
+def _find_plugins_dir(plugin_root):
+    """Find the directory containing installed_plugins.json by walking up from plugin_root.
+
+    Works for both layouts:
+    - Dev: ~/Dev/<marketplace>/plugins/bootstrap → finds at ../installed_plugins.json
+    - Cache: ~/.claude/plugins/cache/<mkt>/bootstrap/<ver> → finds at ~/.claude/plugins/installed_plugins.json
+
+    Falls back to os.path.dirname(plugin_root) if not found (original behavior).
+    """
+    d = os.path.dirname(plugin_root)
+    for _ in range(10):  # safety limit
+        candidate = os.path.join(d, "installed_plugins.json")
+        if os.path.isfile(candidate):
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            break
+        d = parent
+    # Fallback: immediate parent (original behavior)
+    return os.path.dirname(plugin_root)
 
 
 def _detect_marketplace_name(plugins_dir):
