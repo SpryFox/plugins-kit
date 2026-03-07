@@ -55,7 +55,10 @@ def main():
     current_os = detect_os()
     log_success = config.get("log_success_checks", False) or args.verbose
     all_failures = []
-    # Two entry lists: actions always displayed, ok only if log_success
+    # Bootstrap's own entries (self-bootstrap + user) — written to bootstrap's log
+    bootstrap_action_entries = []
+    bootstrap_ok_entries = []
+    # All entries including plugins — used for hook display only
     all_action_entries = []
     all_ok_entries = []
 
@@ -79,6 +82,8 @@ def main():
     action_entries = []
     ok_entries = []
     failures = _process_manifest(manifest, current_os, data_dir, plugin_root, action_entries, ok_entries)
+    bootstrap_action_entries.extend(action_entries)
+    bootstrap_ok_entries.extend(ok_entries)
     all_action_entries.extend(action_entries)
     all_ok_entries.extend(ok_entries)
 
@@ -99,8 +104,12 @@ def main():
             user_manifest, current_os, data_dir, plugin_root, action_entries, ok_entries,
             plugin_name="user",
         )
-        all_action_entries.extend(f"user: {e}" for e in action_entries)
-        all_ok_entries.extend(f"user: {e}" for e in ok_entries)
+        prefixed_action = [f"user: {e}" for e in action_entries]
+        prefixed_ok = [f"user: {e}" for e in ok_entries]
+        bootstrap_action_entries.extend(prefixed_action)
+        bootstrap_ok_entries.extend(prefixed_ok)
+        all_action_entries.extend(prefixed_action)
+        all_ok_entries.extend(prefixed_ok)
         if failures:
             all_failures.extend(failures)
 
@@ -126,12 +135,16 @@ def main():
         with open(plugin_manifest_path, "r") as f:
             plugin_manifest = json.load(f)
 
+        # Per-plugin entry lists (written to plugin's own log)
+        plugin_action_entries = []
+        plugin_ok_entries = []
+
         # Config phase
         config_section = plugin_manifest.get("config")
         if config_section:
             config_failures = _process_config(
                 config_section, plugin_data_dir, plugin_info.install_path,
-                all_action_entries, plugin_name=plugin_info.name,
+                plugin_action_entries, plugin_name=plugin_info.name,
             )
             if config_failures:
                 all_failures.extend(config_failures)
@@ -142,11 +155,21 @@ def main():
             plugin_manifest, current_os, plugin_data_dir, plugin_info.install_path,
             action_entries, ok_entries, plugin_name=plugin_info.name,
         )
-        all_action_entries.extend(f"{plugin_info.name}: {e}" for e in action_entries)
-        all_ok_entries.extend(f"{plugin_info.name}: {e}" for e in ok_entries)
+        plugin_action_entries.extend(action_entries)
+        plugin_ok_entries.extend(ok_entries)
 
         if failures:
             all_failures.extend(failures)
+
+        # Write plugin's log entries to its own data dir
+        plugin_label = f"{plugin_info.name}@{plugin_info.version}" if plugin_info.version else plugin_info.name
+        plugin_log_entries = plugin_action_entries + plugin_ok_entries
+        if plugin_log_entries and not args.console:
+            write_log_block(plugin_data_dir, plugin_label, plugin_log_entries)
+
+        # Feed into display entries (prefixed with plugin name)
+        all_action_entries.extend(f"{plugin_info.name}: {e}" for e in plugin_action_entries)
+        all_ok_entries.extend(f"{plugin_info.name}: {e}" for e in plugin_ok_entries)
 
     # Step 5: Read shell log entries BEFORE writing engine entries to the log
     if not args.console:
@@ -154,11 +177,11 @@ def main():
     else:
         shell_content = ""  # Console mode: shell already printed its entries
 
-    # Step 6: Write ALL engine entries to log file (for debugging)
+    # Step 6: Write bootstrap's own entries to its log (plugin entries already written to their own dirs)
     # Skip in console mode — no file writes
-    all_log_entries = all_action_entries + all_ok_entries
-    if all_log_entries and not args.console:
-        write_log_block(data_dir, "Engine", all_log_entries)
+    bootstrap_log_entries = bootstrap_action_entries + bootstrap_ok_entries
+    if bootstrap_log_entries and not args.console:
+        write_log_block(data_dir, bootstrap_label, bootstrap_log_entries)
 
     # Step 7: Build display entries — actions always, ok only if log_success
     display_entries = list(all_action_entries)

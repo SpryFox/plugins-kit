@@ -125,6 +125,56 @@ class TestMultiPluginEngine:
         assert response["continue"] is True
         assert "good-plugin" in response["systemMessage"]
 
+    def test_plugin_log_written_to_own_data_dir(self, tmp_path):
+        """Plugin log entries are written to plugin's own data dir, not bootstrap's."""
+        plugins_dir = tmp_path / "plugins"
+        plugins_dir.mkdir()
+
+        fake_root = plugins_dir / "bootstrap"
+        fake_root.mkdir()
+        (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
+        (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
+        (fake_root / "defaults").symlink_to(os.path.join(BOOTSTRAP_ROOT, "defaults"))
+        (fake_root / "bootstrap.json").write_text(json.dumps({"tools": [], "path_entries": []}))
+
+        test_plugin_dir = plugins_dir / "logged-plugin"
+        test_plugin_dir.mkdir()
+        (test_plugin_dir / "bootstrap.json").write_text(json.dumps({
+            "tools": [{"name": "git", "install": {"macos": "brew install git"}}],
+        }))
+
+        registry = {"plugins": {"kit:logged-plugin": [{"installPath": "./logged-plugin", "version": "2.3.0"}]}}
+        (plugins_dir / "installed_plugins.json").write_text(json.dumps(registry))
+
+        data_dir = str(tmp_path / "data" / "bootstrap")
+        os.makedirs(data_dir)
+        config = {"schema_version": 3, "enabled_plugins": ["kit:logged-plugin"], "log_level": "info", "log_success_shell": False, "log_success_checks": True}
+        with open(os.path.join(data_dir, "config.json"), "w") as f:
+            json.dump(config, f)
+
+        result = run_engine(data_dir, plugin_root=str(fake_root))
+        assert result.returncode == 0
+
+        # Plugin log should be in plugin's own data dir with version in header
+        plugin_data_dir = os.path.join(str(tmp_path / "data"), "logged-plugin")
+        plugin_log = os.path.join(plugin_data_dir, "bootstrap.log")
+        assert os.path.exists(plugin_log)
+        with open(plugin_log) as f:
+            content = f.read()
+        assert "logged-plugin@2.3.0" in content
+        assert "git" in content
+
+        # Bootstrap's own log should NOT contain plugin entries
+        bootstrap_log = os.path.join(data_dir, "bootstrap.log")
+        if os.path.exists(bootstrap_log):
+            with open(bootstrap_log) as f:
+                bootstrap_content = f.read()
+            assert "logged-plugin" not in bootstrap_content
+
+        # But the hook response should still show plugin entries to the user
+        response = json.loads(result.stdout)
+        assert "logged-plugin" in response["systemMessage"]
+
     def test_second_run_reruns_checks(self, tmp_path):
         """Second run re-runs all checks — no cache gate."""
         plugins_dir = tmp_path / "plugins"
