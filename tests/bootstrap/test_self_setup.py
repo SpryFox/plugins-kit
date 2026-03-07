@@ -27,7 +27,7 @@ class TestProcessSelfSetup:
         assert ok_entries == []
 
     def test_tool_found(self, tmp_path):
-        """Tool that exists (git) produces ok entry."""
+        """Tool that exists (git) produces ok entry with prefix."""
         self_setup = {
             "tools": [{"name": "git", "install": {"macos": "brew install git"}}],
         }
@@ -35,10 +35,10 @@ class TestProcessSelfSetup:
         ok_entries = []
         failures = _process_self_setup(self_setup, "windows", str(tmp_path), str(tmp_path), action_entries, ok_entries)
         assert failures == []
-        assert any("git" in e and "ok" in e for e in ok_entries)
+        assert any("[bootstrap-setup]" in e and "git" in e and "ok" in e for e in ok_entries)
 
     def test_tool_missing(self, tmp_path):
-        """Missing tool produces failure."""
+        """Missing tool produces failure with prefix."""
         self_setup = {
             "tools": [{"name": "nonexistent_tool_xyz_self_setup"}],
         }
@@ -49,6 +49,7 @@ class TestProcessSelfSetup:
         assert failures[0]["type"] == "tool"
         assert failures[0]["name"] == "nonexistent_tool_xyz_self_setup"
         assert failures[0]["plugin"] == "bootstrap"
+        assert any("[bootstrap-setup]" in e for e in action_entries)
 
     def test_path_entry_added_to_env(self, tmp_path, monkeypatch):
         """Path entries are added to the current process PATH."""
@@ -89,3 +90,6 @@ class TestProcessSelfSetup:
         # No marketplace or plugin processing — only tool check
         assert all("marketplace" not in e for e in action_entries)
         assert all("plugin" not in e for e in action_entries)
+        # All entries should have the prefix
+        for e in action_entries + ok_entries:
+            assert e.startswith("[bootstrap-setup] ")

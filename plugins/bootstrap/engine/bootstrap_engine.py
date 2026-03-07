@@ -260,6 +260,7 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
     from venv_check import check_venv
 
     failures = []
+    p = "[bootstrap-setup] "
 
     # Check tools
     for tool_def in self_setup.get("tools", []):
@@ -268,21 +269,21 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
         result = check_tool(name, install_cmds, current_os)
 
         if result.passed:
-            ok_entries.append(f"{result.name}: ok - {result.message}")
+            ok_entries.append(f"{p}{result.name}: ok - {result.message}")
             continue
 
         if result.install_cmd:
-            action_entries.append(f"{result.name}: not found, attempting install")
+            action_entries.append(f"{p}{result.name}: not found, attempting install")
             from tool_check import run_install
             ok, _output = run_install(result.install_cmd)
             if ok:
                 recheck = check_tool(name, install_cmds, current_os)
                 if recheck.passed:
-                    action_entries.append(f"{result.name}: installed - ran `{result.install_cmd}`, now {recheck.message}")
+                    action_entries.append(f"{p}{result.name}: installed - ran `{result.install_cmd}`, now {recheck.message}")
                     continue
-            action_entries.append(f"{result.name}: FAILED - install attempted but still not found")
+            action_entries.append(f"{p}{result.name}: FAILED - install attempted but still not found")
         else:
-            action_entries.append(f"{result.name}: FAILED - {result.message}")
+            action_entries.append(f"{p}{result.name}: FAILED - {result.message}")
 
         failures.append({
             "type": "tool",
@@ -297,11 +298,11 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
         expanded = os.path.expanduser(path_entry)
         result = check_path_entry(path_entry)
         if result.passed:
-            ok_entries.append(f"PATH {result.path}: ok - {result.message}")
+            ok_entries.append(f"{p}PATH {result.path}: ok - {result.message}")
         else:
             from path_check import add_path_to_shell_config
             ok, msg = add_path_to_shell_config(path_entry)
-            action_entries.append(f"PATH {result.path}: not in PATH, added to shell config - {msg}")
+            action_entries.append(f"{p}PATH {result.path}: not in PATH, added to shell config - {msg}")
         current_path = os.environ.get("PATH", "")
         if os.path.normpath(expanded) not in [os.path.normpath(d) for d in current_path.split(os.pathsep)]:
             os.environ["PATH"] = expanded + os.pathsep + current_path
@@ -314,7 +315,7 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
 
         if not result.passed:
             uv_cmd = f"uv sync --project {plugin_root}"
-            action_entries.append(f"venv: not ready, running `{uv_cmd}`")
+            action_entries.append(f"{p}venv: not ready, running `{uv_cmd}`")
             import shutil
             import subprocess as _sp
             venv_path = os.path.join(data_dir, ".venv")
@@ -339,14 +340,14 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
                     )
                     result = check_venv(data_dir, plugin_root, check_imports)
                     if result.passed:
-                        action_entries.append("venv: created")
+                        action_entries.append(f"{p}venv: created")
                 except (_sp.SubprocessError, OSError):
                     pass
 
         if result.passed:
-            ok_entries.append(f"venv: ok - {result.message}")
+            ok_entries.append(f"{p}venv: ok - {result.message}")
         else:
-            action_entries.append(f"venv: FAILED - {result.message}")
+            action_entries.append(f"{p}venv: FAILED - {result.message}")
             failures.append({
                 "type": "venv",
                 "message": result.message,
