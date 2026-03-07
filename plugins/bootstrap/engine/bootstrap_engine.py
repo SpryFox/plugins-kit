@@ -206,14 +206,11 @@ def main():
                 print(f"  - [{f['type']}] {f.get('name', f.get('message', ''))}")
         return
 
-    # Build final display: shell entries + engine header (if engine has entries) + engine entries
+    # Build final display: shell entries + engine entries
     parts = []
     if shell_content:
         parts.append(shell_content)
     if display_entries:
-        import datetime
-        ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        parts.append(f"--- Engine {ts} ---")
         for entry in display_entries:
             parts.append(entry)
     display_content = "\n".join(parts)
