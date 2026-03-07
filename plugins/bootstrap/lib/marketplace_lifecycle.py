@@ -177,6 +177,19 @@ def _to_cli_ref(plugin_ref: str) -> str:
     return plugin_ref
 
 
+def _version_greater(a: str, b: str) -> bool:
+    """Return True if version a > version b using simple numeric tuple comparison."""
+    def _parse(v: str):
+        parts = []
+        for p in v.split("."):
+            try:
+                parts.append(int(p))
+            except ValueError:
+                parts.append(0)
+        return tuple(parts)
+    return _parse(a) > _parse(b)
+
+
 def check_plugin_version(plugin_ref: str) -> VersionCheckResult:
     """Check if the installed plugin version matches the latest marketplace version.
 
@@ -243,6 +256,14 @@ def check_plugin_version(plugin_ref: str) -> VersionCheckResult:
             up_to_date=True, ref=plugin_ref,
             installed_version=installed_version, latest_version=latest_version,
             message=f"version {installed_version} (current)",
+        )
+
+    # Compare versions directionally — only outdated if latest > installed
+    if not _version_greater(latest_version, installed_version):
+        return VersionCheckResult(
+            up_to_date=True, ref=plugin_ref,
+            installed_version=installed_version, latest_version=latest_version,
+            message=f"version {installed_version} (newer than marketplace {latest_version})",
         )
 
     return VersionCheckResult(

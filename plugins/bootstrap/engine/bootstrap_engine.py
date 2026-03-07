@@ -119,6 +119,22 @@ def main():
     # Add bootstrap's own section to display
     display_sections.append((bootstrap_label, list(bootstrap_action_entries), list(bootstrap_ok_entries)))
 
+    # Step 3d: Populate no_bootstrap from manifest plugins with bootstrap: false
+    # This prevents step 4 from re-running bootstrap for plugins that only need
+    # install/enable/version management (handled in _process_manifest's plugins phase).
+    no_bootstrap = config.setdefault("no_bootstrap", [])
+    for plugin_def in manifest.get("plugins", []):
+        plugin_ref = plugin_def.get("ref", "")
+        if plugin_ref and plugin_def.get("bootstrap") is False:
+            # Convert to CLI format (plugin@marketplace) to match installed_plugins.json keys
+            if ":" in plugin_ref:
+                mkt, pname = plugin_ref.split(":", 1)
+                cli_ref = f"{pname}@{mkt}"
+            else:
+                cli_ref = plugin_ref
+            if cli_ref not in no_bootstrap:
+                no_bootstrap.append(cli_ref)
+
     # Step 4: Process enabled plugins (auto-discovered via bootstrap.json presence)
     registry_path = os.path.join(plugins_dir, "installed_plugins.json")
 
@@ -512,6 +528,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
     for plugin_def in manifest.get("plugins", []):
         plugin_ref = plugin_def.get("ref", "")
         enabled = plugin_def.get("enabled", True)
+        skip_bootstrap = plugin_def.get("bootstrap") is False
         if not plugin_ref:
             continue
 

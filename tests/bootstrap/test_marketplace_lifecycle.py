@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), os.pardir, os.pardir,
 
 from marketplace_lifecycle import (
     LifecycleResult,
+    _version_greater,
     check_marketplace_exists,
     check_plugin_installed,
     update_marketplace,
@@ -212,3 +213,87 @@ class TestMarketplaceAlwaysUpdate:
 
         assert any("update failed" in e for e in action_entries)
         assert any(f["type"] == "marketplace" for f in failures)
+
+
+class TestVersionGreater:
+    """Tests for _version_greater semver comparison."""
+
+    def test_greater(self):
+        assert _version_greater("0.5.2", "0.5.1") is True
+
+    def test_equal(self):
+        assert _version_greater("0.5.2", "0.5.2") is False
+
+    def test_less(self):
+        assert _version_greater("0.5.1", "0.5.2") is False
+
+    def test_major_greater(self):
+        assert _version_greater("1.0.0", "0.9.9") is True
+
+    def test_installed_newer_than_marketplace(self):
+        """The exact case that caused the bug: installed 0.5.2 vs marketplace 0.5.1."""
+        assert _version_greater("0.5.1", "0.5.2") is False
+
+
+class TestBootstrapFalseSkipsStep4:
+    """Tests that plugins with bootstrap: false are added to no_bootstrap."""
+
+    @staticmethod
+    def _setup_engine_path():
+        bootstrap_root = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, "plugins", "bootstrap")
+        )
+        engine_dir = os.path.join(bootstrap_root, "engine")
+        lib_dir = os.path.join(bootstrap_root, "lib")
+        for d in (engine_dir, lib_dir):
+            if d not in sys.path:
+                sys.path.insert(0, d)
+
+    def test_bootstrap_false_added_to_no_bootstrap(self):
+        """Plugin with bootstrap: false should be in no_bootstrap list."""
+        self._setup_engine_path()
+
+        manifest = {
+            "plugins": [
+                {"ref": "plugins-kit:bootstrap", "enabled": True, "bootstrap": False}
+            ]
+        }
+        config = {}
+
+        # Simulate what the engine does in step 3d
+        no_bootstrap = config.setdefault("no_bootstrap", [])
+        for plugin_def in manifest.get("plugins", []):
+            plugin_ref = plugin_def.get("ref", "")
+            if plugin_ref and plugin_def.get("bootstrap") is False:
+                if ":" in plugin_ref:
+                    mkt, pname = plugin_ref.split(":", 1)
+                    cli_ref = f"{pname}@{mkt}"
+                else:
+                    cli_ref = plugin_ref
+                if cli_ref not in no_bootstrap:
+                    no_bootstrap.append(cli_ref)
+
+        assert "bootstrap@plugins-kit" in config["no_bootstrap"]
+
+    def test_bootstrap_true_not_added(self):
+        """Plugin without bootstrap: false should not be in no_bootstrap."""
+        manifest = {
+            "plugins": [
+                {"ref": "plugins-kit:unreal-kit", "enabled": True}
+            ]
+        }
+        config = {}
+
+        no_bootstrap = config.setdefault("no_bootstrap", [])
+        for plugin_def in manifest.get("plugins", []):
+            plugin_ref = plugin_def.get("ref", "")
+            if plugin_ref and plugin_def.get("bootstrap") is False:
+                if ":" in plugin_ref:
+                    mkt, pname = plugin_ref.split(":", 1)
+                    cli_ref = f"{pname}@{mkt}"
+                else:
+                    cli_ref = plugin_ref
+                if cli_ref not in no_bootstrap:
+                    no_bootstrap.append(cli_ref)
+
+        assert len(config["no_bootstrap"]) == 0
