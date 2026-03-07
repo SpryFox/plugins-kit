@@ -233,4 +233,5 @@ exec "$PYTHON" "${PLUGIN_ROOT}/engine/bootstrap_engine.py" \
     --plugin-root "$PLUGIN_ROOT" \
     --data-dir "$PLUGIN_DATA" \
     --hook-start-epoch "$HOOK_START_EPOCH" \
+    --project-dir "$PWD" \
     "${ENGINE_FLAGS[@]}"

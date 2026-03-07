@@ -6,5 +6,7 @@ __pycache__/
 *.egg-info/
 dist/
 build/
-.claude/
+.claude/*
+!.claude/bootstrap.json
+.claude/bootstrap.local.json
 tmp/

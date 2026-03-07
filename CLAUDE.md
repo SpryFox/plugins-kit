@@ -59,6 +59,7 @@ plugins-kit/                          # Marketplace root
 | `plugins/bootstrap/lib/git_dep_check.py` | Git dependency validation |
 | `plugins/bootstrap/lib/plugin_resolve.py` | Plugin registry resolution |
 | `plugins/bootstrap/lib/path_check.py` | PATH entry validation |
+| `plugins/bootstrap/lib/manifest_merge.py` | Deep-merge for layered bootstrap.json files |
 | `plugins/bootstrap/engine/config.py` | Config loading, migration, persistence |
 | `plugins/bootstrap/hooks/sessionstart/session-bootstrap.sh` | SessionStart hook (bash wrapper for engine) |
 | `plugins/bootstrap/bootstrap.json` | Bootstrap plugin's own manifest |

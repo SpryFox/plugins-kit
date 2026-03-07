@@ -21,6 +21,7 @@ def main():
     parser.add_argument("--plugin-root", required=True, help="Path to bootstrap plugin root")
     parser.add_argument("--data-dir", required=True, help="Path to bootstrap data directory")
     parser.add_argument("--hook-start-epoch", type=int, default=0, help="(unused, kept for backward compat)")
+    parser.add_argument("--project-dir", default=None, help="Project root directory (for layered bootstrap.json)")
     parser.add_argument("--verbose", action="store_true", help="Show all entries including ok/cached")
     parser.add_argument("--console", action="store_true", help="Plain text output, no JSON/log writes")
     args = parser.parse_args()
@@ -93,19 +94,25 @@ def main():
     # Step 3b: Activate bootstrap venv site-packages so PyYAML is available
     _activate_bootstrap_venv(data_dir)
 
-    # Step 3c: Process personal config (user-bootstrap.json) — runs every session
-    user_manifest_path = os.path.join(data_dir, "user-bootstrap.json")
-    if os.path.isfile(user_manifest_path):
-        with open(user_manifest_path, "r") as f:
-            user_manifest = json.load(f)
+    # Step 3c: Process layered bootstrap manifests (user + project level)
+    # Deprecation: warn if legacy user-bootstrap.json exists
+    legacy_path = os.path.join(data_dir, "user-bootstrap.json")
+    if os.path.isfile(legacy_path):
+        bootstrap_action_entries.append(
+            "DEPRECATED: user-bootstrap.json found in data dir. "
+            "Migrate to ~/.claude/bootstrap.json (still processed this session)."
+        )
+
+    layered_manifest = _load_layered_manifests(args.project_dir, data_dir)
+    if layered_manifest:
         action_entries = []
         ok_entries = []
         failures = _process_manifest(
-            user_manifest, current_os, data_dir, plugin_root, action_entries, ok_entries,
-            plugin_name="user",
+            layered_manifest, current_os, data_dir, plugin_root,
+            action_entries, ok_entries, plugin_name="config",
         )
-        prefixed_action = [f"user: {e}" for e in action_entries]
-        prefixed_ok = [f"user: {e}" for e in ok_entries]
+        prefixed_action = [f"config: {e}" for e in action_entries]
+        prefixed_ok = [f"config: {e}" for e in ok_entries]
         bootstrap_action_entries.extend(prefixed_action)
         bootstrap_ok_entries.extend(prefixed_ok)
         if failures:
@@ -231,6 +238,53 @@ def main():
     elif display_content:
         emit_success_response(display_content, label=bootstrap_label)
     # else: nothing to show — silent exit
+
+
+def _load_layered_manifests(project_dir, data_dir=None):
+    """Load and merge bootstrap manifests from user and project layers.
+
+    Priority (highest wins):
+        4. <project>/.claude/bootstrap.local.json
+        3. <project>/.claude/bootstrap.json
+        2. ~/.claude/bootstrap.local.json
+        1. ~/.claude/bootstrap.json
+        0. <data_dir>/user-bootstrap.json  (legacy, lowest priority)
+
+    Returns merged manifest dict, or empty dict if no files exist.
+    """
+    from manifest_merge import merge_manifests
+
+    # Collect candidate paths in priority order (lowest first)
+    candidates = []
+
+    # Legacy user-bootstrap.json (lowest priority — deprecated)
+    if data_dir:
+        legacy = os.path.join(data_dir, "user-bootstrap.json")
+        candidates.append(legacy)
+
+    # User-level (HOME is preferred, USERPROFILE is the Windows fallback)
+    home = os.environ.get("HOME") or os.path.expanduser("~")
+    claude_home = os.path.join(home, ".claude")
+    candidates.append(os.path.join(claude_home, "bootstrap.json"))
+    candidates.append(os.path.join(claude_home, "bootstrap.local.json"))
+
+    # Project-level
+    if project_dir:
+        project_claude = os.path.join(project_dir, ".claude")
+        candidates.append(os.path.join(project_claude, "bootstrap.json"))
+        candidates.append(os.path.join(project_claude, "bootstrap.local.json"))
+
+    merged = {}
+    for path in candidates:
+        if os.path.isfile(path):
+            try:
+                with open(path, "r") as f:
+                    layer = json.load(f)
+                merged = merge_manifests(merged, layer)
+            except (json.JSONDecodeError, OSError):
+                pass  # Skip malformed files
+
+    return merged
 
 
 def _activate_bootstrap_venv(data_dir):

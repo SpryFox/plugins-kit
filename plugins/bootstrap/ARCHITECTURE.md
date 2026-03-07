@@ -226,10 +226,29 @@ Checks can be throttled to avoid redundant work.
 
 Both can be combined: time-throttle the remote check, content-hash the local setup.
 
-## Personal Config (No Plugin Needed)
+## Layered Bootstrap Config (No Plugin Needed)
 
-The hybrid model enables a "personal config" use case: a user who just wants to declare their preferred tools and environment without creating a plugin. The bootstrap engine can process a `bootstrap.json` at a well-known user-level location (e.g. `~/.claude/plugins/data/plugins-kit/bootstrap/user-bootstrap.json`):
+The bootstrap engine supports a 4-layer `bootstrap.json` model — following the same pattern as Claude Code's `settings.json` / `settings.local.json`. This lets users and projects declare bootstrap requirements without creating a plugin.
 
+### Layer Priority
+
+| Priority | File | Scope | Checked in? |
+|----------|------|-------|-------------|
+| 4 (highest) | `<project>/.claude/bootstrap.local.json` | Project-local | No (gitignored) |
+| 3 | `<project>/.claude/bootstrap.json` | Project | Yes |
+| 2 | `~/.claude/bootstrap.local.json` | User-local | N/A |
+| 1 (lowest) | `~/.claude/bootstrap.json` | User | N/A |
+
+### Merge Semantics
+
+- **Arrays** (plugins, marketplaces, tools, etc.): Unioned by identity key (`ref` for plugins, `name` for marketplaces/tools). When the same identity appears in multiple layers, higher-priority layer's fields win.
+- **Objects** (venv, config, etc.): Deep-merged, higher priority wins for conflicting keys.
+- **path_entries**: Simple string list union (deduplicated, order preserved).
+- **Scalars**: Higher priority wins.
+
+### Example
+
+User-level `~/.claude/bootstrap.json` — personal tools across all projects:
 ```json
 {
   "tools": [
@@ -241,7 +260,23 @@ The hybrid model enables a "personal config" use case: a user who just wants to 
 }
 ```
 
-This gives a no-code path for the most common bootstrap need: "make sure my tools are installed on every machine." No plugin directory, no manifest, no script — just a JSON file declaring what you need.
+Project-level `<project>/.claude/bootstrap.json` — project-specific requirements:
+```json
+{
+  "tools": [
+    {"name": "node", "install": {"macos": "brew install node"}}
+  ],
+  "marketplaces": [
+    {"name": "team-plugins", "source": "https://github.com/team/plugins.git"}
+  ]
+}
+```
+
+The engine merges these layers before processing plugin `bootstrap.json` files (step 4). Layered configs set up the ecosystem (what marketplaces and plugins to use); plugin bootstrap.json files configure individual plugins.
+
+### Migration from user-bootstrap.json
+
+The legacy `user-bootstrap.json` in the data dir is still processed (lowest priority) but emits a deprecation notice. Move its contents to `~/.claude/bootstrap.json`.
 
 ## Testing
 
