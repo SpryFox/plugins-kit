@@ -33,6 +33,9 @@
       "extract_to": "${plugin_root}/skills/ue-python-api/stubs/unreal.py"
     }
   ],
+  "plugins": [
+    {"ref": "plugins-kit:unreal-kit", "enabled": true, "bootstrap": false, "scope": "user"}
+  ],
   "script": {
     "path": "custom_bootstrap.py",
     "entry_point": "bootstrap"
