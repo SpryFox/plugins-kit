@@ -7,6 +7,6 @@
     }
   ],
   "plugins": [
-    {"ref": "plugins-kit:bootstrap", "enabled": true, "scope": "user"}
+    {"ref": "plugins-kit:bootstrap", "enabled": true}
   ]
 }
