@@ -125,12 +125,8 @@ class TestMultiPluginEngine:
         assert response["continue"] is True
         assert "good-plugin" in response["systemMessage"]
 
-        # Plugin cache should be written in its own data dir
-        plugin_data_dir = os.path.join(str(tmp_path / "data"), "good-plugin")
-        assert os.path.exists(os.path.join(plugin_data_dir, "bootstrap_cache.sha256"))
-
-    def test_per_plugin_caching(self, tmp_path):
-        """Second run hits per-plugin cache."""
+    def test_second_run_reruns_checks(self, tmp_path):
+        """Second run re-runs all checks — no cache gate."""
         plugins_dir = tmp_path / "plugins"
         plugins_dir.mkdir()
 
@@ -141,35 +137,29 @@ class TestMultiPluginEngine:
         (fake_root / "defaults").symlink_to(os.path.join(BOOTSTRAP_ROOT, "defaults"))
         (fake_root / "bootstrap.json").write_text(json.dumps({"tools": [], "path_entries": []}))
 
-        test_plugin_dir = plugins_dir / "cached-plugin"
+        test_plugin_dir = plugins_dir / "rerun-plugin"
         test_plugin_dir.mkdir()
         (test_plugin_dir / "bootstrap.json").write_text(json.dumps({
             "tools": [{"name": "git", "install": {"macos": "brew install git"}}],
         }))
 
-        registry = {"plugins": {"kit:cached-plugin": [{"installPath": "./cached-plugin", "version": "1.0.0"}]}}
+        registry = {"plugins": {"kit:rerun-plugin": [{"installPath": "./rerun-plugin", "version": "1.0.0"}]}}
         (plugins_dir / "installed_plugins.json").write_text(json.dumps(registry))
 
         data_dir = str(tmp_path / "data" / "bootstrap")
         os.makedirs(data_dir)
-        config = {"schema_version": 3, "enabled_plugins": ["kit:cached-plugin"], "log_level": "info", "log_success_shell": False, "log_success_checks": True}
+        config = {"schema_version": 3, "enabled_plugins": ["kit:rerun-plugin"], "log_level": "info", "log_success_shell": False, "log_success_checks": True}
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
         # First run
         run_engine(data_dir, plugin_root=str(fake_root))
 
-        # Second run — hits cache, but entries already displayed → silent
+        # Second run — re-runs checks, produces output
         result = run_engine(data_dir, plugin_root=str(fake_root))
         assert result.returncode == 0
-        # All entries were already displayed on first run
-        assert result.stdout == ""
-
-        # Verify cache entries are in the log file
-        log_path = os.path.join(data_dir, "bootstrap.log")
-        with open(log_path) as f:
-            log_content = f.read()
-        assert "cached-plugin: cached" in log_content
+        response = json.loads(result.stdout)
+        assert "rerun-plugin" in response["systemMessage"]
 
     def test_plugin_without_manifest_skipped(self, tmp_path):
         """Plugin with no bootstrap.json is silently skipped."""

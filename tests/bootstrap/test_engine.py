@@ -42,8 +42,6 @@ class TestEngineIntegration:
         assert result.returncode == 0
         # No stdout when everything succeeds and success logging is off
         assert result.stdout.strip() == ""
-        # Cache and log should still be written
-        assert os.path.exists(os.path.join(data_dir, "bootstrap_cache.sha256"))
 
     def test_cached_run_silent(self, data_dir, tmp_path):
         """Second run should hit cache — no output with success logging off."""

@@ -37,7 +37,6 @@ def main():
     sys.path.insert(0, os.path.join(plugin_root, "engine"))
 
     from config import load_config
-    from cache import check_cache, write_cache, compute_current_hash
     from log import write_log_block
     from tool_check import check_tool
     from path_check import check_path_entry
@@ -50,10 +49,8 @@ def main():
     defaults_dir = os.path.join(plugin_root, "defaults")
     config = load_config(data_dir, defaults_dir)
 
-    # Step 2: Compute current hash + check cache (self-bootstrap only)
+    # Step 2: Load self-bootstrap manifest
     manifest_path = os.path.join(plugin_root, "bootstrap.json")
-    compute_current_hash(data_dir, [manifest_path])
-    self_cached = check_cache(data_dir, [manifest_path])
 
     current_os = detect_os()
     log_success = config.get("log_success_checks", False) or args.verbose
@@ -75,50 +72,37 @@ def main():
     version_suffix = f"@{version}" if version else ""
     bootstrap_label = f"{marketplace_name}:bootstrap{version_suffix}" if marketplace_name else f"bootstrap{version_suffix}"
 
-    # Step 3: Self-bootstrap (own manifest)
-    # "cached" entries are log-file-only (not displayed) — they mean "nothing to check"
-    all_cached_entries = []
-    if self_cached:
-        all_cached_entries.append(f"{bootstrap_label}: cached")
-    else:
-        with open(manifest_path, "r") as f:
-            manifest = json.load(f)
+    # Step 3: Self-bootstrap (own manifest) — runs every session
+    with open(manifest_path, "r") as f:
+        manifest = json.load(f)
 
-        action_entries = []
-        ok_entries = []
-        failures = _process_manifest(manifest, current_os, data_dir, plugin_root, action_entries, ok_entries)
-        all_action_entries.extend(action_entries)
-        all_ok_entries.extend(ok_entries)
+    action_entries = []
+    ok_entries = []
+    failures = _process_manifest(manifest, current_os, data_dir, plugin_root, action_entries, ok_entries)
+    all_action_entries.extend(action_entries)
+    all_ok_entries.extend(ok_entries)
 
-        if failures:
-            all_failures.extend(failures)
-        else:
-            write_cache(data_dir, [manifest_path])
+    if failures:
+        all_failures.extend(failures)
 
     # Step 3b: Activate bootstrap venv site-packages so PyYAML is available
     _activate_bootstrap_venv(data_dir)
 
-    # Step 3c: Process personal config (user-bootstrap.json)
+    # Step 3c: Process personal config (user-bootstrap.json) — runs every session
     user_manifest_path = os.path.join(data_dir, "user-bootstrap.json")
     if os.path.isfile(user_manifest_path):
-        compute_current_hash(data_dir, [user_manifest_path])
-        if check_cache(data_dir, [user_manifest_path]):
-            all_cached_entries.append("user: cached")
-        else:
-            with open(user_manifest_path, "r") as f:
-                user_manifest = json.load(f)
-            action_entries = []
-            ok_entries = []
-            failures = _process_manifest(
-                user_manifest, current_os, data_dir, plugin_root, action_entries, ok_entries,
-                plugin_name="user",
-            )
-            all_action_entries.extend(f"user: {e}" for e in action_entries)
-            all_ok_entries.extend(f"user: {e}" for e in ok_entries)
-            if failures:
-                all_failures.extend(failures)
-            else:
-                write_cache(data_dir, [user_manifest_path])
+        with open(user_manifest_path, "r") as f:
+            user_manifest = json.load(f)
+        action_entries = []
+        ok_entries = []
+        failures = _process_manifest(
+            user_manifest, current_os, data_dir, plugin_root, action_entries, ok_entries,
+            plugin_name="user",
+        )
+        all_action_entries.extend(f"user: {e}" for e in action_entries)
+        all_ok_entries.extend(f"user: {e}" for e in ok_entries)
+        if failures:
+            all_failures.extend(failures)
 
     # Step 4: Process enabled plugins (auto-discovered via bootstrap.json presence)
     registry_path = os.path.join(plugins_dir, "installed_plugins.json")
@@ -142,7 +126,7 @@ def main():
         with open(plugin_manifest_path, "r") as f:
             plugin_manifest = json.load(f)
 
-        # Config phase runs outside the cache gate (config can change between sessions)
+        # Config phase
         config_section = plugin_manifest.get("config")
         if config_section:
             config_failures = _process_config(
@@ -152,43 +136,17 @@ def main():
             if config_failures:
                 all_failures.extend(config_failures)
 
-        # Path entries phase runs outside the cache gate (same as config)
-        # Paths must be verified and written to shell config on every session start,
-        # not only when the manifest hash changes.
-        from path_check import check_path_entry, add_path_to_shell_config
-        for path_entry in plugin_manifest.get("path_entries", []):
-            expanded = os.path.expanduser(path_entry)
-            result = check_path_entry(path_entry)
-            if result.passed:
-                all_ok_entries.append(f"{plugin_info.name}: PATH {result.path}: ok - {result.message}")
-            else:
-                ok, msg = add_path_to_shell_config(path_entry)
-                all_action_entries.append(f"{plugin_info.name}: PATH {result.path}: not in PATH, added to shell config - {msg}")
-            # Add to current process PATH so subsequent phases can find tools there
-            current_path = os.environ.get("PATH", "")
-            if os.path.normpath(expanded) not in [os.path.normpath(d) for d in current_path.split(os.pathsep)]:
-                os.environ["PATH"] = expanded + os.pathsep + current_path
-
-        # Cache gate for tools/venv/git_deps
-        compute_current_hash(plugin_data_dir, [plugin_manifest_path])
-        if check_cache(plugin_data_dir, [plugin_manifest_path]):
-            all_cached_entries.append(f"{plugin_info.name}: cached")
-            continue
-
         action_entries = []
         ok_entries = []
         failures = _process_manifest(
             plugin_manifest, current_os, plugin_data_dir, plugin_info.install_path,
             action_entries, ok_entries, plugin_name=plugin_info.name,
-            process_path_entries=False,
         )
         all_action_entries.extend(f"{plugin_info.name}: {e}" for e in action_entries)
         all_ok_entries.extend(f"{plugin_info.name}: {e}" for e in ok_entries)
 
         if failures:
             all_failures.extend(failures)
-        else:
-            write_cache(plugin_data_dir, [plugin_manifest_path])
 
     # Step 5: Read shell log entries BEFORE writing engine entries to the log
     if not args.console:
@@ -198,7 +156,7 @@ def main():
 
     # Step 6: Write ALL engine entries to log file (for debugging)
     # Skip in console mode — no file writes
-    all_log_entries = all_action_entries + all_ok_entries + all_cached_entries
+    all_log_entries = all_action_entries + all_ok_entries
     if all_log_entries and not args.console:
         write_log_block(data_dir, "Engine", all_log_entries)
 
@@ -206,9 +164,6 @@ def main():
     display_entries = list(all_action_entries)
     if log_success:
         display_entries.extend(all_ok_entries)
-    # --verbose also includes cached entries
-    if args.verbose:
-        display_entries.extend(all_cached_entries)
 
     if args.console:
         # Console mode: plain text to stdout, no JSON
@@ -327,7 +282,7 @@ def _process_config(config_section, plugin_data_dir, plugin_root, log_entries, p
     return failures
 
 
-def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entries, ok_entries, plugin_name="bootstrap", process_path_entries=True):
+def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entries, ok_entries, plugin_name="bootstrap"):
     """Process a single plugin's bootstrap manifest. Returns list of failures.
 
     Entries are split into two lists:
@@ -375,8 +330,8 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
             "plugin": plugin_name,
         })
 
-    # Check path entries (skipped for plugins — handled before cache gate in main())
-    for path_entry in (manifest.get("path_entries", []) if process_path_entries else []):
+    # Check path entries
+    for path_entry in manifest.get("path_entries", []):
         expanded = os.path.expanduser(path_entry)
         result = check_path_entry(path_entry)
         if result.passed:
