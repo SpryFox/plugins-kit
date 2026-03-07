@@ -34,7 +34,7 @@
     }
   ],
   "plugins": [
-    {"ref": "plugins-kit:unreal-kit", "enabled": true, "bootstrap": false, "scope": "user"}
+    {"ref": "plugins-kit:unreal-kit", "enabled": true, "scope": "user"}
   ],
   "script": {
     "path": "custom_bootstrap.py",

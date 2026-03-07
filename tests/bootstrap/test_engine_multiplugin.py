@@ -22,16 +22,41 @@ def run_engine(data_dir, plugin_root=BOOTSTRAP_ROOT):
     )
 
 
-def make_fake_bootstrap_root(tmp_path, manifest=None):
-    """Create a fake bootstrap plugin root with symlinked lib/engine/defaults."""
+def _write_minimal_defaults(fake_root):
+    """Write a minimal defaults/config.json with empty self_setup."""
+    defaults = fake_root / "defaults"
+    defaults.mkdir(exist_ok=True)
+    config = {
+        "schema_version": 5,
+        "no_bootstrap": [],
+        "bootstrap_cache": [],
+        "log_success_shell": False,
+        "log_success_checks": False,
+        "self_setup": {},
+    }
+    (defaults / "config.json").write_text(json.dumps(config))
+
+
+def make_fake_bootstrap_root(tmp_path, manifest=None, self_setup=None):
+    """Create a fake bootstrap plugin root with symlinked lib/engine and custom defaults."""
     fake_root = tmp_path / "bootstrap"
     fake_root.mkdir(parents=True)
     (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
     (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
-    (fake_root / "defaults").symlink_to(os.path.join(BOOTSTRAP_ROOT, "defaults"))
+    defaults = fake_root / "defaults"
+    defaults.mkdir()
+    config = {
+        "schema_version": 5,
+        "no_bootstrap": [],
+        "bootstrap_cache": [],
+        "log_success_shell": False,
+        "log_success_checks": False,
+        "self_setup": self_setup or {},
+    }
+    (defaults / "config.json").write_text(json.dumps(config))
 
     if manifest is None:
-        manifest = {"tools": [], "path_entries": []}
+        manifest = {}
     (fake_root / "bootstrap.json").write_text(json.dumps(manifest))
     return str(fake_root)
 
@@ -59,8 +84,8 @@ class TestMultiPluginEngine:
         fake_root.mkdir()
         (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
         (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
-        (fake_root / "defaults").symlink_to(os.path.join(BOOTSTRAP_ROOT, "defaults"))
-        (fake_root / "bootstrap.json").write_text(json.dumps({"tools": [], "path_entries": []}))
+        _write_minimal_defaults(fake_root)
+        (fake_root / "bootstrap.json").write_text(json.dumps({}))
 
         # Create a test plugin with a manifest requiring a nonexistent tool
         test_plugin_dir = plugins_dir / "my-test"
@@ -99,8 +124,8 @@ class TestMultiPluginEngine:
         fake_root.mkdir()
         (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
         (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
-        (fake_root / "defaults").symlink_to(os.path.join(BOOTSTRAP_ROOT, "defaults"))
-        (fake_root / "bootstrap.json").write_text(json.dumps({"tools": [], "path_entries": []}))
+        _write_minimal_defaults(fake_root)
+        (fake_root / "bootstrap.json").write_text(json.dumps({}))
 
         # Plugin that only checks for 'git' (which should be available)
         test_plugin_dir = plugins_dir / "good-plugin"
@@ -134,8 +159,8 @@ class TestMultiPluginEngine:
         fake_root.mkdir()
         (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
         (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
-        (fake_root / "defaults").symlink_to(os.path.join(BOOTSTRAP_ROOT, "defaults"))
-        (fake_root / "bootstrap.json").write_text(json.dumps({"tools": [], "path_entries": []}))
+        _write_minimal_defaults(fake_root)
+        (fake_root / "bootstrap.json").write_text(json.dumps({}))
 
         test_plugin_dir = plugins_dir / "logged-plugin"
         test_plugin_dir.mkdir()
@@ -184,8 +209,8 @@ class TestMultiPluginEngine:
         fake_root.mkdir()
         (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
         (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
-        (fake_root / "defaults").symlink_to(os.path.join(BOOTSTRAP_ROOT, "defaults"))
-        (fake_root / "bootstrap.json").write_text(json.dumps({"tools": [], "path_entries": []}))
+        _write_minimal_defaults(fake_root)
+        (fake_root / "bootstrap.json").write_text(json.dumps({}))
 
         test_plugin_dir = plugins_dir / "rerun-plugin"
         test_plugin_dir.mkdir()
@@ -220,8 +245,8 @@ class TestMultiPluginEngine:
         fake_root.mkdir()
         (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
         (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
-        (fake_root / "defaults").symlink_to(os.path.join(BOOTSTRAP_ROOT, "defaults"))
-        (fake_root / "bootstrap.json").write_text(json.dumps({"tools": [], "path_entries": []}))
+        _write_minimal_defaults(fake_root)
+        (fake_root / "bootstrap.json").write_text(json.dumps({}))
 
         # Plugin dir exists but has no bootstrap.json
         no_manifest_dir = plugins_dir / "no-manifest"
@@ -251,8 +276,8 @@ class TestMultiPluginEngine:
         fake_root.mkdir()
         (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
         (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
-        (fake_root / "defaults").symlink_to(os.path.join(BOOTSTRAP_ROOT, "defaults"))
-        (fake_root / "bootstrap.json").write_text(json.dumps({"tools": [], "path_entries": []}))
+        _write_minimal_defaults(fake_root)
+        (fake_root / "bootstrap.json").write_text(json.dumps({}))
 
         # Plugin that requires a venv (which won't exist)
         venv_plugin_dir = plugins_dir / "venv-plugin"
@@ -286,8 +311,8 @@ class TestMultiPluginEngine:
         fake_root.mkdir()
         (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
         (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
-        (fake_root / "defaults").symlink_to(os.path.join(BOOTSTRAP_ROOT, "defaults"))
-        (fake_root / "bootstrap.json").write_text(json.dumps({"tools": [], "path_entries": []}))
+        _write_minimal_defaults(fake_root)
+        (fake_root / "bootstrap.json").write_text(json.dumps({}))
 
         git_plugin_dir = plugins_dir / "git-plugin"
         git_plugin_dir.mkdir()
@@ -319,8 +344,8 @@ class TestMultiPluginEngine:
         cache_dir.mkdir(parents=True)
         (cache_dir / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
         (cache_dir / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
-        (cache_dir / "defaults").symlink_to(os.path.join(BOOTSTRAP_ROOT, "defaults"))
-        (cache_dir / "bootstrap.json").write_text(json.dumps({"tools": [], "path_entries": []}))
+        _write_minimal_defaults(cache_dir)
+        (cache_dir / "bootstrap.json").write_text(json.dumps({}))
 
         # Plugin at cache/mymkt/deep-plugin/1.0.0/
         deep_plugin_dir = tmp_path / "plugins" / "cache" / "mymkt" / "deep-plugin" / "1.0.0"

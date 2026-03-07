@@ -27,9 +27,18 @@ def make_minimal_root(tmp_path):
     fake_root.mkdir()
     (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
     (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
-    (fake_root / "defaults").symlink_to(os.path.join(BOOTSTRAP_ROOT, "defaults"))
-    manifest = {"tools": []}
-    (fake_root / "bootstrap.json").write_text(json.dumps(manifest))
+    defaults = fake_root / "defaults"
+    defaults.mkdir()
+    config = {
+        "schema_version": 5,
+        "no_bootstrap": [],
+        "bootstrap_cache": [],
+        "log_success_shell": False,
+        "log_success_checks": False,
+        "self_setup": {},
+    }
+    (defaults / "config.json").write_text(json.dumps(config))
+    (fake_root / "bootstrap.json").write_text(json.dumps({}))
     return str(fake_root)
 
 

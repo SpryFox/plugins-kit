@@ -3,6 +3,7 @@
 import json
 import os
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -65,7 +66,9 @@ class TestUnrealKitVariableResolution:
         config = {"uproject": "/projects/MyGame/MyGame.uproject"}
         variables = build_variables("/opt/unreal-kit", "/data/unreal-kit", config)
         result = resolve_vars("${uproject_dir}/Config/UserEngine.ini", variables)
-        assert result == "/projects/MyGame/Config/UserEngine.ini"
+        # Path.parent uses OS-native separators for the derived _dir variable
+        expected = str(Path("/projects/MyGame")) + "/Config/UserEngine.ini"
+        assert result == expected
 
     def test_ini_file_skipped_without_uproject(self):
         config = {"uproject": ""}

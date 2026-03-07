@@ -4,7 +4,7 @@ import json
 import os
 import shutil
 
-CURRENT_SCHEMA_VERSION = 4
+CURRENT_SCHEMA_VERSION = 5
 
 
 def load_config(data_dir: str, defaults_dir: str) -> dict:
@@ -27,7 +27,7 @@ def load_config(data_dir: str, defaults_dir: str) -> dict:
     with open(config_path, "r") as f:
         config = json.load(f)
 
-    migrated = migrate_config(config)
+    migrated = migrate_config(config, defaults_dir=defaults_dir)
     if migrated is not config:
         save_config(data_dir, migrated)
         return migrated
@@ -35,8 +35,12 @@ def load_config(data_dir: str, defaults_dir: str) -> dict:
     return config
 
 
-def migrate_config(config: dict) -> dict:
+def migrate_config(config: dict, defaults_dir: str = "") -> dict:
     """Migrate config to current schema version.
+
+    Args:
+        config: Config dict to migrate.
+        defaults_dir: Path to defaults directory (used for v5 migration to read self_setup).
 
     Returns the same dict if no migration needed, or a new dict if migrated.
     """
@@ -71,6 +75,40 @@ def migrate_config(config: dict) -> dict:
         migrated.setdefault("no_bootstrap", [])
         migrated.setdefault("bootstrap_cache", [])
         migrated["schema_version"] = 4
+
+    # Migration from v4 to v5: add self_setup from defaults
+    if version < 5:
+        # Read self_setup from defaults/config.json if available
+        self_setup = None
+        if defaults_dir:
+            defaults_path = os.path.join(defaults_dir, "config.json")
+            try:
+                with open(defaults_path, "r") as f:
+                    defaults = json.load(f)
+                self_setup = defaults.get("self_setup")
+            except (FileNotFoundError, json.JSONDecodeError, OSError):
+                pass
+
+        # Hardcoded fallback if defaults not available
+        if self_setup is None:
+            self_setup = {
+                "tools": [
+                    {"name": "uv", "install": {"macos": "curl -LsSf https://astral.sh/uv/install.sh | sh", "windows": "curl -LsSf https://astral.sh/uv/install.sh | sh", "ubuntu": "curl -LsSf https://astral.sh/uv/install.sh | sh"}},
+                    {"name": "git", "install": {"macos": "brew install git", "windows": "winget install --id Git.Git -e --source winget", "ubuntu": "sudo apt install -y git"}},
+                ],
+                "path_entries": ["~/.local/bin", "~/.local/share/python-standalone/python"],
+                "venv": {"check_imports": ["yaml"]},
+            }
+
+        migrated["self_setup"] = self_setup
+
+        # Clean auto-populated no_bootstrap entries from the old bootstrap: false mechanism
+        no_bootstrap = migrated.get("no_bootstrap", [])
+        for auto_ref in ("bootstrap@plugins-kit",):
+            if auto_ref in no_bootstrap:
+                no_bootstrap.remove(auto_ref)
+
+        migrated["schema_version"] = 5
 
     return migrated
 

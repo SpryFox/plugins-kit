@@ -33,17 +33,17 @@ class TestCheckTool:
 
 class TestRunInstall:
     def test_success(self):
-        cmd = f"{sys.executable} -c 'pass'"
+        cmd = f'{sys.executable} -c "pass"'
         ok, output = run_install(cmd)
         assert ok is True
 
     def test_failure(self):
-        cmd = f"{sys.executable} -c 'import sys; sys.exit(1)'"
+        cmd = f'{sys.executable} -c "import sys; sys.exit(1)"'
         ok, output = run_install(cmd)
         assert ok is False
 
     def test_output_captured(self):
-        cmd = f"{sys.executable} -c 'print(\"hello\")'"
+        cmd = f"""{sys.executable} -c "print('hello')" """
         ok, output = run_install(cmd)
         assert ok is True
         assert "hello" in output

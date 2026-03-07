@@ -10,7 +10,21 @@ The hybrid model means a plugin author doesn't need to write any code for common
 
 ## Engine
 
-The bootstrap engine auto-discovers which installed plugins need bootstrapping by scanning for `bootstrap.json` in each plugin's install path (resolved from `plugins/installed_plugins.json`). Discovery results are cached in `plugins/data/plugins-kit/bootstrap/config.json` under `bootstrap_cache` to avoid repeated filesystem scans — entries are added on first discovery and removed if `bootstrap.json` disappears (e.g. after a plugin update). Users can permanently opt out a plugin by adding its ref to `no_bootstrap` in that config file.
+The bootstrap engine has two distinct setup phases:
+
+1. **Self-setup** (step 3): Engine prerequisites — tools, PATH entries, and venv — declared in `config.json` under `self_setup`. These make the engine itself runnable (e.g. uv, git, PyYAML). Processed before any `bootstrap.json`.
+2. **Plugin bootstrap** (step 4): Ecosystem management — marketplaces and plugins — declared in each plugin's `bootstrap.json`. The engine auto-discovers which installed plugins need bootstrapping by scanning for `bootstrap.json` in each plugin's install path (resolved from `plugins/installed_plugins.json`).
+
+Discovery results are cached in `plugins/data/plugins-kit/bootstrap/config.json` under `bootstrap_cache` to avoid repeated filesystem scans — entries are added on first discovery and removed if `bootstrap.json` disappears (e.g. after a plugin update). Users can permanently opt out a plugin by adding its ref to `no_bootstrap` in that config file.
+
+### Step 4 Processing Order
+
+Plugins are processed in a deterministic order:
+1. **Bootstrap plugin** (`plugins-kit:bootstrap`) — ensures marketplace updates happen first
+2. **Same-marketplace plugins** (other plugins from plugins-kit) — alphabetically
+3. **Other marketplace plugins** — alphabetically
+
+This ordering ensures marketplace updates complete before dependent plugins check versions.
 
 For each discovered plugin, the engine resolves the plugin's install path via `plugins/installed_plugins.json` (e.g. `~/.claude/plugins/cache/plugins-kit/unreal-kit/0.1.5`) and processes bootstrapping in two phases:
 

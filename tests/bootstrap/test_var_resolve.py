@@ -2,6 +2,7 @@
 
 import os
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -51,7 +52,8 @@ class TestBuildVariables:
     def test_dir_derived_from_file_path(self):
         config = {"uproject": "/projects/MyGame/MyGame.uproject"}
         variables = build_variables("/opt/plugin", "/data", config)
-        assert variables["uproject_dir"] == "/projects/MyGame"
+        # Path.parent uses OS-native separators, so compare with Path
+        assert variables["uproject_dir"] == str(Path("/projects/MyGame"))
 
     def test_no_dir_for_simple_values(self):
         config = {"mode": "remote"}

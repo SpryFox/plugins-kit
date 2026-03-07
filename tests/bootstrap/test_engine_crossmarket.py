@@ -23,15 +23,25 @@ def run_engine(data_dir, plugin_root=BOOTSTRAP_ROOT):
 
 
 def make_fake_bootstrap_root(plugins_dir, manifest=None):
-    """Create a fake bootstrap plugin root with symlinked lib/engine/defaults."""
+    """Create a fake bootstrap plugin root with symlinked lib/engine and custom defaults."""
     fake_root = plugins_dir / "bootstrap"
     fake_root.mkdir(parents=True, exist_ok=True)
     (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
     (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
-    (fake_root / "defaults").symlink_to(os.path.join(BOOTSTRAP_ROOT, "defaults"))
+    defaults = fake_root / "defaults"
+    defaults.mkdir(exist_ok=True)
+    config = {
+        "schema_version": 5,
+        "no_bootstrap": [],
+        "bootstrap_cache": [],
+        "log_success_shell": False,
+        "log_success_checks": False,
+        "self_setup": {},
+    }
+    (defaults / "config.json").write_text(json.dumps(config))
 
     if manifest is None:
-        manifest = {"tools": [], "path_entries": []}
+        manifest = {}
     (fake_root / "bootstrap.json").write_text(json.dumps(manifest))
     return str(fake_root)
 
@@ -76,6 +86,7 @@ class TestCrossMarketplacePluginRefs:
             # Plugin found — should either log ok or enable it
             assert "my-plugin" in msg
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="monkeypatch HOME doesn't propagate to subprocess on Windows")
     def test_cross_marketplace_uses_global_registry(self, tmp_path, monkeypatch):
         """Plugin ref with different marketplace resolves from global registry."""
         plugins_dir = tmp_path / "plugins"
@@ -117,6 +128,7 @@ class TestCrossMarketplacePluginRefs:
 
         # Monkey-patch home directory so global registry resolves to our test dir
         monkeypatch.setenv("HOME", str(tmp_path / "global"))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path / "global"))
 
         result = run_engine(data_dir, plugin_root=fake_root)
         assert result.returncode == 0
@@ -128,6 +140,7 @@ class TestCrossMarketplacePluginRefs:
             # Should reference the cross-marketplace plugin
             assert "plugins-kit:bootstrap" in msg
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="monkeypatch HOME doesn't propagate to subprocess on Windows")
     def test_cross_marketplace_ref_not_in_global_registry_fails(self, tmp_path, monkeypatch):
         """Cross-marketplace ref not found produces failure (install attempted)."""
         plugins_dir = tmp_path / "plugins"
@@ -159,6 +172,7 @@ class TestCrossMarketplacePluginRefs:
             json.dump(config, f)
 
         monkeypatch.setenv("HOME", str(tmp_path / "global"))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path / "global"))
 
         result = run_engine(data_dir, plugin_root=fake_root)
         assert result.returncode == 0

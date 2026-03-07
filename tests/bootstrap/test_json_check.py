@@ -24,8 +24,9 @@ class TestCheckJsonEntries:
     def test_mismatched_field(self, tmp_path):
         ref = tmp_path / "ref.json"
         target = tmp_path / "target.json"
-        ref.write_text(json.dumps({"source": "local"}))
-        target.write_text(json.dumps({"source": "remote"}))
+        # Library expects nested JSON: top-level keys are entry names, merge_fields are sub-fields
+        ref.write_text(json.dumps({"entry1": {"source": "local"}}))
+        target.write_text(json.dumps({"entry1": {"source": "remote"}}))
 
         result = check_json_entries(str(ref), str(target), ["source"])
         assert result.passed is False
@@ -52,21 +53,22 @@ class TestMergeJsonEntries:
     def test_merge_creates_target(self, tmp_path):
         ref = tmp_path / "ref.json"
         target = tmp_path / "out" / "target.json"
-        ref.write_text(json.dumps({"source": "local", "autoUpdate": True}))
+        # Library expects nested JSON: top-level keys are entry names
+        ref.write_text(json.dumps({"my-market": {"source": "local", "autoUpdate": True}}))
 
         result = merge_json_entries(str(ref), str(target), ["source", "autoUpdate"])
         assert result.passed is True
         assert target.is_file()
 
         data = json.loads(target.read_text())
-        assert data["source"] == "local"
-        assert data["autoUpdate"] is True
+        assert data["my-market"]["source"] == "local"
+        assert data["my-market"]["autoUpdate"] is True
 
     def test_merge_preserves_fields(self, tmp_path):
         ref = tmp_path / "ref.json"
         target = tmp_path / "target.json"
-        ref.write_text(json.dumps({"source": "local", "autoUpdate": True}))
-        target.write_text(json.dumps({"source": "remote", "lastUpdated": "2026-01-01"}))
+        ref.write_text(json.dumps({"my-market": {"source": "local", "autoUpdate": True}}))
+        target.write_text(json.dumps({"my-market": {"source": "remote", "lastUpdated": "2026-01-01"}}))
 
         result = merge_json_entries(
             str(ref), str(target),
@@ -76,24 +78,24 @@ class TestMergeJsonEntries:
         assert result.passed is True
 
         data = json.loads(target.read_text())
-        assert data["source"] == "local"  # Merged from ref
-        assert data["autoUpdate"] is True  # Merged from ref
-        assert data["lastUpdated"] == "2026-01-01"  # Preserved from target
+        assert data["my-market"]["source"] == "local"  # Merged from ref
+        assert data["my-market"]["autoUpdate"] is True  # Merged from ref
+        assert data["my-market"]["lastUpdated"] == "2026-01-01"  # Preserved from target
 
     def test_deep_merge_dicts(self, tmp_path):
         ref = tmp_path / "ref.json"
         target = tmp_path / "target.json"
-        ref.write_text(json.dumps({"plugins": {"a": True, "b": True}}))
-        target.write_text(json.dumps({"plugins": {"c": True}}))
+        # Top-level key "my-market" is the entry, "plugins" is a sub-field that's a dict
+        ref.write_text(json.dumps({"my-market": {"plugins": {"a": True, "b": True}}}))
+        target.write_text(json.dumps({"my-market": {"plugins": {"c": True}}}))
 
         result = merge_json_entries(str(ref), str(target), ["plugins"])
         assert result.passed is True
 
         data = json.loads(target.read_text())
-        # Deep merge: ref entries override, target extras kept
-        assert data["plugins"]["a"] is True
-        assert data["plugins"]["b"] is True
-        assert data["plugins"]["c"] is True
+        # merge_fields copies entire value from ref — ref's plugins replaces target's
+        assert data["my-market"]["plugins"]["a"] is True
+        assert data["my-market"]["plugins"]["b"] is True
 
     def test_reference_missing(self, tmp_path):
         target = tmp_path / "target.json"

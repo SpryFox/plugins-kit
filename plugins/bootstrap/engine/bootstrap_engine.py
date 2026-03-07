@@ -49,9 +49,6 @@ def main():
     defaults_dir = os.path.join(plugin_root, "defaults")
     config = load_config(data_dir, defaults_dir)
 
-    # Step 2: Load self-bootstrap manifest
-    manifest_path = os.path.join(plugin_root, "bootstrap.json")
-
     current_os = detect_os()
     log_success = config.get("log_success_checks", False) or args.verbose
     all_failures = []
@@ -82,13 +79,11 @@ def main():
     version_suffix = f"@{version}" if version else ""
     bootstrap_label = f"{marketplace_name}:{boot_plugin_name}{version_suffix}" if marketplace_name else f"{boot_plugin_name}{version_suffix}"
 
-    # Step 3: Self-bootstrap (own manifest) — runs every session
-    with open(manifest_path, "r") as f:
-        manifest = json.load(f)
-
+    # Step 3: Self-setup (tools, PATH, venv from config.self_setup) — runs every session
+    self_setup = config.get("self_setup", {})
     action_entries = []
     ok_entries = []
-    failures = _process_manifest(manifest, current_os, data_dir, plugin_root, action_entries, ok_entries)
+    failures = _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_entries, ok_entries)
     bootstrap_action_entries.extend(action_entries)
     bootstrap_ok_entries.extend(ok_entries)
 
@@ -119,22 +114,6 @@ def main():
     # Add bootstrap's own section to display
     display_sections.append((bootstrap_label, list(bootstrap_action_entries), list(bootstrap_ok_entries)))
 
-    # Step 3d: Populate no_bootstrap from manifest plugins with bootstrap: false
-    # This prevents step 4 from re-running bootstrap for plugins that only need
-    # install/enable/version management (handled in _process_manifest's plugins phase).
-    no_bootstrap = config.setdefault("no_bootstrap", [])
-    for plugin_def in manifest.get("plugins", []):
-        plugin_ref = plugin_def.get("ref", "")
-        if plugin_ref and plugin_def.get("bootstrap") is False:
-            # Convert to CLI format (plugin@marketplace) to match installed_plugins.json keys
-            if ":" in plugin_ref:
-                mkt, pname = plugin_ref.split(":", 1)
-                cli_ref = f"{pname}@{mkt}"
-            else:
-                cli_ref = plugin_ref
-            if cli_ref not in no_bootstrap:
-                no_bootstrap.append(cli_ref)
-
     # Step 4: Process enabled plugins (auto-discovered via bootstrap.json presence)
     registry_path = os.path.join(plugins_dir, "installed_plugins.json")
 
@@ -142,6 +121,16 @@ def main():
     if cache_changed:
         from config import save_config
         save_config(data_dir, config)
+
+    # Sort: bootstrap plugin first, then same-marketplace plugins, then others
+    def _plugin_sort_key(pi):
+        if pi.name == boot_plugin_name and pi.marketplace == marketplace_name:
+            return (0, pi.name)
+        if pi.marketplace == marketplace_name:
+            return (1, pi.name)
+        return (2, pi.name)
+
+    enabled_plugins.sort(key=_plugin_sort_key)
 
     for plugin_info in enabled_plugins:
         plugin_manifest_path = os.path.join(plugin_info.install_path, "bootstrap.json")
@@ -258,6 +247,114 @@ def _activate_bootstrap_venv(data_dir):
         for sp in matches:
             if sp not in sys.path:
                 sys.path.insert(0, sp)
+
+
+def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_entries, ok_entries):
+    """Process engine self-setup: tools, path_entries, venv.
+
+    Only these 3 phases — the minimum needed to make the engine runnable.
+    Returns list of failures.
+    """
+    from tool_check import check_tool
+    from path_check import check_path_entry
+    from venv_check import check_venv
+
+    failures = []
+
+    # Check tools
+    for tool_def in self_setup.get("tools", []):
+        name = tool_def["name"]
+        install_cmds = tool_def.get("install", {})
+        result = check_tool(name, install_cmds, current_os)
+
+        if result.passed:
+            ok_entries.append(f"{result.name}: ok - {result.message}")
+            continue
+
+        if result.install_cmd:
+            action_entries.append(f"{result.name}: not found, attempting install")
+            from tool_check import run_install
+            ok, _output = run_install(result.install_cmd)
+            if ok:
+                recheck = check_tool(name, install_cmds, current_os)
+                if recheck.passed:
+                    action_entries.append(f"{result.name}: installed - ran `{result.install_cmd}`, now {recheck.message}")
+                    continue
+            action_entries.append(f"{result.name}: FAILED - install attempted but still not found")
+        else:
+            action_entries.append(f"{result.name}: FAILED - {result.message}")
+
+        failures.append({
+            "type": "tool",
+            "name": result.name,
+            "message": result.message,
+            "install_cmd": result.install_cmd,
+            "plugin": "bootstrap",
+        })
+
+    # Check path entries
+    for path_entry in self_setup.get("path_entries", []):
+        expanded = os.path.expanduser(path_entry)
+        result = check_path_entry(path_entry)
+        if result.passed:
+            ok_entries.append(f"PATH {result.path}: ok - {result.message}")
+        else:
+            from path_check import add_path_to_shell_config
+            ok, msg = add_path_to_shell_config(path_entry)
+            action_entries.append(f"PATH {result.path}: not in PATH, added to shell config - {msg}")
+        current_path = os.environ.get("PATH", "")
+        if os.path.normpath(expanded) not in [os.path.normpath(d) for d in current_path.split(os.pathsep)]:
+            os.environ["PATH"] = expanded + os.pathsep + current_path
+
+    # Check venv
+    venv_def = self_setup.get("venv")
+    if venv_def:
+        check_imports = venv_def.get("check_imports", [])
+        result = check_venv(data_dir, plugin_root, check_imports)
+
+        if not result.passed:
+            uv_cmd = f"uv sync --project {plugin_root}"
+            action_entries.append(f"venv: not ready, running `{uv_cmd}`")
+            import shutil
+            import subprocess as _sp
+            venv_path = os.path.join(data_dir, ".venv")
+
+            local_bin = os.path.expanduser("~/.local/bin")
+            uv_bin = shutil.which("uv")
+            if not uv_bin:
+                for name in ("uv", "uv.exe", "uv.EXE"):
+                    candidate = os.path.join(local_bin, name)
+                    if os.path.isfile(candidate):
+                        uv_bin = candidate
+                        break
+
+            if uv_bin:
+                env = dict(os.environ, UV_PROJECT_ENVIRONMENT=venv_path)
+                if local_bin not in env.get("PATH", ""):
+                    env["PATH"] = local_bin + os.pathsep + env.get("PATH", "")
+                try:
+                    _sp.run(
+                        [uv_bin, "sync", "--project", plugin_root],
+                        env=env, capture_output=True, timeout=120,
+                    )
+                    result = check_venv(data_dir, plugin_root, check_imports)
+                    if result.passed:
+                        action_entries.append("venv: created")
+                except (_sp.SubprocessError, OSError):
+                    pass
+
+        if result.passed:
+            ok_entries.append(f"venv: ok - {result.message}")
+        else:
+            action_entries.append(f"venv: FAILED - {result.message}")
+            failures.append({
+                "type": "venv",
+                "message": result.message,
+                "remediation_cmd": result.remediation_cmd,
+                "plugin": "bootstrap",
+            })
+
+    return failures
 
 
 def _process_config(config_section, plugin_data_dir, plugin_root, action_entries, ok_entries=None, plugin_name=""):
@@ -528,7 +625,6 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
     for plugin_def in manifest.get("plugins", []):
         plugin_ref = plugin_def.get("ref", "")
         enabled = plugin_def.get("enabled", True)
-        skip_bootstrap = plugin_def.get("bootstrap") is False
         desired_scope = plugin_def.get("scope", "user")
         if not plugin_ref:
             continue

@@ -1,7 +1,15 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "no_bootstrap": [],
   "bootstrap_cache": [],
   "log_success_shell": false,
-  "log_success_checks": false
+  "log_success_checks": false,
+  "self_setup": {
+    "tools": [
+      {"name": "uv", "install": {"macos": "curl -LsSf https://astral.sh/uv/install.sh | sh", "windows": "curl -LsSf https://astral.sh/uv/install.sh | sh", "ubuntu": "curl -LsSf https://astral.sh/uv/install.sh | sh"}},
+      {"name": "git", "install": {"macos": "brew install git", "windows": "winget install --id Git.Git -e --source winget", "ubuntu": "sudo apt install -y git"}}
+    ],
+    "path_entries": ["~/.local/bin", "~/.local/share/python-standalone/python"],
+    "venv": {"check_imports": ["yaml"]}
+  }
 }

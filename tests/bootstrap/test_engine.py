@@ -25,13 +25,27 @@ def run_engine(data_dir, plugin_root=BOOTSTRAP_ROOT):
 class TestEngineIntegration:
     @staticmethod
     def _make_minimal_root(tmp_path):
-        """Create a fake bootstrap root with tools only (no venv requirement)."""
+        """Create a fake bootstrap root with minimal ecosystem manifest."""
         fake_root = tmp_path / "bootstrap_minimal"
         fake_root.mkdir()
         (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
         (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
-        (fake_root / "defaults").symlink_to(os.path.join(BOOTSTRAP_ROOT, "defaults"))
-        manifest = {"tools": [{"name": "git", "install": {"macos": "brew install git"}}], "path_entries": ["~/.local/bin"]}
+        # Custom defaults with self_setup containing tools
+        defaults = fake_root / "defaults"
+        defaults.mkdir()
+        config = {
+            "schema_version": 5,
+            "no_bootstrap": [],
+            "bootstrap_cache": [],
+            "log_success_shell": False,
+            "log_success_checks": False,
+            "self_setup": {
+                "tools": [{"name": "git", "install": {"macos": "brew install git"}}],
+                "path_entries": ["~/.local/bin"],
+            },
+        }
+        (defaults / "config.json").write_text(json.dumps(config))
+        manifest = {}
         (fake_root / "bootstrap.json").write_text(json.dumps(manifest))
         return str(fake_root)
 
@@ -52,19 +66,25 @@ class TestEngineIntegration:
         assert result.stdout.strip() == ""
 
     def test_failure_emits_json(self, data_dir, tmp_path):
-        """A manifest with a fake tool should produce JSON failure output."""
-        # Create a fake plugin root with a manifest referencing a nonexistent tool
+        """A self_setup with a fake tool should produce JSON failure output."""
         fake_root = tmp_path / "fake_plugin"
         fake_root.mkdir()
         (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
         (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
-        (fake_root / "defaults").symlink_to(os.path.join(BOOTSTRAP_ROOT, "defaults"))
-
-        manifest = {
-            "tools": [{"name": "nonexistent_tool_xyz_abc", "install": {"macos": "brew install fake"}}],
-            "path_entries": [],
+        defaults = fake_root / "defaults"
+        defaults.mkdir()
+        config = {
+            "schema_version": 5,
+            "no_bootstrap": [],
+            "bootstrap_cache": [],
+            "log_success_shell": False,
+            "log_success_checks": False,
+            "self_setup": {
+                "tools": [{"name": "nonexistent_tool_xyz_abc", "install": {"macos": "brew install fake"}}],
+            },
         }
-        (fake_root / "bootstrap.json").write_text(json.dumps(manifest))
+        (defaults / "config.json").write_text(json.dumps(config))
+        (fake_root / "bootstrap.json").write_text(json.dumps({}))
 
         result = run_engine(data_dir, plugin_root=str(fake_root))
         assert result.returncode == 0
@@ -81,20 +101,27 @@ class TestEngineIntegration:
         fake_root.mkdir()
         (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
         (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
-        (fake_root / "defaults").symlink_to(os.path.join(BOOTSTRAP_ROOT, "defaults"))
-
-        # Install command succeeds (python -c pass) but tool still won't exist after
-        manifest = {
-            "tools": [{
-                "name": "nonexistent_tool_xyz_abc",
-                "install": {
-                    "macos": f"{sys.executable} -c 'pass'",
-                    "windows": f"{sys.executable} -c 'pass'",
-                    "ubuntu": f"{sys.executable} -c 'pass'",
-                },
-            }],
+        defaults = fake_root / "defaults"
+        defaults.mkdir()
+        config = {
+            "schema_version": 5,
+            "no_bootstrap": [],
+            "bootstrap_cache": [],
+            "log_success_shell": False,
+            "log_success_checks": False,
+            "self_setup": {
+                "tools": [{
+                    "name": "nonexistent_tool_xyz_abc",
+                    "install": {
+                        "macos": f"{sys.executable} -c 'pass'",
+                        "windows": f"{sys.executable} -c 'pass'",
+                        "ubuntu": f"{sys.executable} -c 'pass'",
+                    },
+                }],
+            },
         }
-        (fake_root / "bootstrap.json").write_text(json.dumps(manifest))
+        (defaults / "config.json").write_text(json.dumps(config))
+        (fake_root / "bootstrap.json").write_text(json.dumps({}))
 
         result = run_engine(data_dir, plugin_root=str(fake_root))
         assert result.returncode == 0
@@ -118,7 +145,7 @@ class TestEngineIntegration:
         # Config should now be current version
         with open(os.path.join(data_dir, "config.json")) as f:
             config = json.load(f)
-        assert config["schema_version"] == 4
+        assert config["schema_version"] == 5
         assert config["some_setting"] is True
         assert config["log_success_shell"] is False
         assert config["log_success_checks"] is False

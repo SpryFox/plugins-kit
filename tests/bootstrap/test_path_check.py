@@ -7,10 +7,13 @@ from path_check import check_path_entry
 
 class TestCheckPathEntry:
     def test_existing_path_passes(self):
-        # /usr/bin is virtually always in PATH
-        result = check_path_entry("/usr/bin")
+        # Use a directory known to be in PATH on both macOS/Linux and Windows
+        path_dirs = os.environ.get("PATH", "").split(os.pathsep)
+        assert len(path_dirs) > 0, "PATH is empty"
+        known_dir = path_dirs[0]
+        result = check_path_entry(known_dir)
         assert result.passed is True
-        assert result.path == "/usr/bin"
+        assert result.path == known_dir
 
     def test_missing_path_fails(self):
         result = check_path_entry("/nonexistent/path/xyz")
