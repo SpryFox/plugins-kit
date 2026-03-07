@@ -175,10 +175,9 @@ def main():
         if plugin_log_entries and not args.console:
             write_log_block(plugin_data_dir, plugin_label, plugin_log_entries)
 
-        # Feed into display entries (prefixed with plugin label including version)
-        display_prefix = f"{plugin_info.name}@{plugin_info.version}" if plugin_info.version else plugin_info.name
-        all_action_entries.extend(f"{display_prefix}: {e}" for e in plugin_action_entries)
-        all_ok_entries.extend(f"{display_prefix}: {e}" for e in plugin_ok_entries)
+        # Feed into display entries (prefixed with plugin name)
+        all_action_entries.extend(f"{plugin_info.name}: {e}" for e in plugin_action_entries)
+        all_ok_entries.extend(f"{plugin_info.name}: {e}" for e in plugin_ok_entries)
 
     # Step 5: Read shell log entries BEFORE writing engine entries to the log
     if not args.console:
@@ -214,7 +213,7 @@ def main():
     if display_entries:
         import datetime
         ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        parts.append(f"--- {bootstrap_label} {ts} ---")
+        parts.append(f"--- Engine {ts} ---")
         for entry in display_entries:
             parts.append(entry)
     display_content = "\n".join(parts)
