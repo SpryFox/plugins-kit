@@ -587,24 +587,28 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
         if not mkt_name or not source_url:
             continue
 
-        from marketplace_lifecycle import check_marketplace_exists, add_marketplace, update_marketplace
+        from marketplace_lifecycle import check_marketplace_exists, check_marketplace_current, add_marketplace, update_marketplace
 
         mkt_result = check_marketplace_exists(mkt_name)
         if mkt_result.passed:
-            # Check if alwaysUpdate is set — if so, update on every session
+            # Check if alwaysUpdate is set — if so, check for updates
             if mkt_def.get("alwaysUpdate"):
-                action_entries.append(f"{prefix}marketplace {mkt_name}: updating (alwaysUpdate)")
-                upd_result = update_marketplace(mkt_name)
-                if upd_result.passed:
-                    action_entries.append(f"{prefix}marketplace {mkt_name}: updated")
+                current_result = check_marketplace_current(mkt_name)
+                if current_result.passed:
+                    ok_entries.append(f"{prefix}marketplace {mkt_name}: up to date")
                 else:
-                    action_entries.append(f"{prefix}marketplace {mkt_name}: update failed - {upd_result.message}")
-                    failures.append({
-                        "type": "marketplace",
-                        "name": mkt_name,
-                        "message": upd_result.message,
-                        "plugin": plugin_name,
-                    })
+                    action_entries.append(f"{prefix}marketplace {mkt_name}: updating (alwaysUpdate)")
+                    upd_result = update_marketplace(mkt_name)
+                    if upd_result.passed:
+                        action_entries.append(f"{prefix}marketplace {mkt_name}: updated")
+                    else:
+                        action_entries.append(f"{prefix}marketplace {mkt_name}: update failed - {upd_result.message}")
+                        failures.append({
+                            "type": "marketplace",
+                            "name": mkt_name,
+                            "message": upd_result.message,
+                            "plugin": plugin_name,
+                        })
             else:
                 ok_entries.append(f"{prefix}marketplace {mkt_name}: ok")
         else:

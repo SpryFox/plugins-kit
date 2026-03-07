@@ -81,6 +81,44 @@ def remove_marketplace(name: str) -> LifecycleResult:
     return LifecycleResult(passed=False, ref=name, message=f"remove failed: {stderr.strip()}")
 
 
+def check_marketplace_current(name: str) -> LifecycleResult:
+    """Check if a marketplace clone is up to date with its remote.
+
+    Does a git fetch and compares local HEAD to remote tracking branch.
+    Returns passed=True if already current, passed=False if behind.
+    """
+    km_path = os.path.expanduser("~/.claude/plugins/known_marketplaces.json")
+    try:
+        with open(km_path, "r") as f:
+            data = json.load(f)
+        install_loc = data.get(name, {}).get("installLocation", "")
+        if not install_loc or not os.path.isdir(install_loc):
+            return LifecycleResult(passed=False, ref=name, message="clone not found")
+    except (FileNotFoundError, json.JSONDecodeError):
+        return LifecycleResult(passed=False, ref=name, message="known_marketplaces.json not found")
+
+    try:
+        # Fetch latest from remote
+        subprocess.run(
+            ["git", "fetch", "--quiet"],
+            cwd=install_loc, capture_output=True, text=True, timeout=60,
+        )
+        # Compare local HEAD to upstream
+        local = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=install_loc, capture_output=True, text=True, timeout=10,
+        ).stdout.strip()
+        remote = subprocess.run(
+            ["git", "rev-parse", "@{u}"],
+            cwd=install_loc, capture_output=True, text=True, timeout=10,
+        ).stdout.strip()
+        if local == remote:
+            return LifecycleResult(passed=True, ref=name, message="up to date")
+        return LifecycleResult(passed=False, ref=name, message="updates available")
+    except (subprocess.SubprocessError, OSError) as e:
+        return LifecycleResult(passed=False, ref=name, message=f"check failed: {e}")
+
+
 def update_marketplace(name: str = "") -> LifecycleResult:
     """Update a marketplace via `claude plugin marketplace update`."""
     args = ["plugin", "marketplace", "update"]

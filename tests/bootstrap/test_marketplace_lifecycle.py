@@ -13,6 +13,7 @@ from marketplace_lifecycle import (
     LifecycleResult,
     ScopeCheckResult,
     _version_greater,
+    check_marketplace_current,
     check_marketplace_exists,
     check_plugin_installed,
     check_plugin_scope,
@@ -110,8 +111,8 @@ class TestMarketplaceAlwaysUpdate:
             if d not in sys.path:
                 sys.path.insert(0, d)
 
-    def test_always_update_calls_update(self, tmp_path, monkeypatch):
-        """When alwaysUpdate is true and marketplace exists, update_marketplace is called."""
+    def test_always_update_calls_update_when_behind(self, tmp_path, monkeypatch):
+        """When alwaysUpdate is true and marketplace is behind, update_marketplace is called."""
         self._setup_engine_path()
 
         # Setup known_marketplaces.json so check_marketplace_exists passes
@@ -136,7 +137,9 @@ class TestMarketplaceAlwaysUpdate:
         action_entries = []
         ok_entries = []
 
-        with patch("marketplace_lifecycle.update_marketplace",
+        with patch("marketplace_lifecycle.check_marketplace_current",
+                    return_value=LifecycleResult(passed=False, ref="my-market", message="updates available")), \
+             patch("marketplace_lifecycle.update_marketplace",
                     return_value=LifecycleResult(passed=True, ref="my-market", message="updated")) as mock_update:
             _process_manifest(
                 manifest, "windows", str(tmp_path / "data"), str(tmp_path / "root"),
@@ -146,6 +149,43 @@ class TestMarketplaceAlwaysUpdate:
 
         assert any("updating (alwaysUpdate)" in e for e in action_entries)
         assert any("updated" in e for e in action_entries)
+
+    def test_always_update_silent_when_current(self, tmp_path, monkeypatch):
+        """When alwaysUpdate is true but marketplace is current, result is silent (ok_entries)."""
+        self._setup_engine_path()
+
+        km = tmp_path / ".claude" / "plugins" / "known_marketplaces.json"
+        km.parent.mkdir(parents=True)
+        km.write_text(json.dumps({
+            "my-market": {
+                "source": {"source": "git", "url": "https://example.com"},
+                "installLocation": str(tmp_path / "marketplaces" / "my-market"),
+            }
+        }))
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+
+        manifest = {
+            "marketplaces": [
+                {"name": "my-market", "source": "https://example.com", "alwaysUpdate": True}
+            ]
+        }
+
+        from bootstrap_engine import _process_manifest
+        action_entries = []
+        ok_entries = []
+
+        with patch("marketplace_lifecycle.check_marketplace_current",
+                    return_value=LifecycleResult(passed=True, ref="my-market", message="up to date")), \
+             patch("marketplace_lifecycle.update_marketplace") as mock_update:
+            _process_manifest(
+                manifest, "windows", str(tmp_path / "data"), str(tmp_path / "root"),
+                action_entries, ok_entries, plugin_name="test",
+            )
+            mock_update.assert_not_called()
+
+        assert any("up to date" in e for e in ok_entries)
+        assert not any("updating" in e for e in action_entries)
 
     def test_no_always_update_skips_update(self, tmp_path, monkeypatch):
         """When alwaysUpdate is not set, marketplace just logs ok."""
@@ -206,7 +246,9 @@ class TestMarketplaceAlwaysUpdate:
         action_entries = []
         ok_entries = []
 
-        with patch("marketplace_lifecycle.update_marketplace",
+        with patch("marketplace_lifecycle.check_marketplace_current",
+                    return_value=LifecycleResult(passed=False, ref="my-market", message="updates available")), \
+             patch("marketplace_lifecycle.update_marketplace",
                     return_value=LifecycleResult(passed=False, ref="my-market", message="network error")):
             failures = _process_manifest(
                 manifest, "windows", str(tmp_path / "data"), str(tmp_path / "root"),
