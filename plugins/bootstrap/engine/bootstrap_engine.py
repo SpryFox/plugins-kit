@@ -150,7 +150,7 @@ def main():
         if config_section:
             config_failures = _process_config(
                 config_section, plugin_data_dir, plugin_info.install_path,
-                plugin_action_entries, plugin_name=plugin_info.name,
+                plugin_action_entries, ok_entries=plugin_ok_entries, plugin_name=plugin_info.name,
             )
             if config_failures:
                 all_failures.extend(config_failures)
@@ -244,7 +244,7 @@ def _activate_bootstrap_venv(data_dir):
                 sys.path.insert(0, sp)
 
 
-def _process_config(config_section, plugin_data_dir, plugin_root, log_entries, plugin_name=""):
+def _process_config(config_section, plugin_data_dir, plugin_root, action_entries, ok_entries=None, plugin_name=""):
     """Process the config section of a plugin manifest.
 
     Runs outside the cache gate — config can change between sessions.
@@ -278,7 +278,7 @@ def _process_config(config_section, plugin_data_dir, plugin_root, log_entries, p
                 changed = run_autodetect(plugin_root, autodetect_spec, config, config_path)
                 if changed:
                     save_yaml_config(config_path, config)
-                    log_entries.append("config autodetect updated values")
+                    action_entries.append("config autodetect updated values")
             except Exception:
                 pass  # Autodetect errors are non-fatal
 
@@ -293,7 +293,10 @@ def _process_config(config_section, plugin_data_dir, plugin_root, log_entries, p
             save_yaml_config(config_path, config)
 
     if not missing:
-        log_entries.append("config ok")
+        if ok_entries is not None:
+            ok_entries.append("config ok")
+        else:
+            action_entries.append("config ok")
         return []
 
     # 5. Fix-all: aggregate missing fields into failure directives
