@@ -152,6 +152,23 @@ def main():
             if config_failures:
                 all_failures.extend(config_failures)
 
+        # Path entries phase runs outside the cache gate (same as config)
+        # Paths must be verified and written to shell config on every session start,
+        # not only when the manifest hash changes.
+        from path_check import check_path_entry, add_path_to_shell_config
+        for path_entry in plugin_manifest.get("path_entries", []):
+            expanded = os.path.expanduser(path_entry)
+            result = check_path_entry(path_entry)
+            if result.passed:
+                all_ok_entries.append(f"{plugin_info.name}: PATH {result.path}: ok - {result.message}")
+            else:
+                ok, msg = add_path_to_shell_config(path_entry)
+                all_action_entries.append(f"{plugin_info.name}: PATH {result.path}: not in PATH, added to shell config - {msg}")
+            # Add to current process PATH so subsequent phases can find tools there
+            current_path = os.environ.get("PATH", "")
+            if os.path.normpath(expanded) not in [os.path.normpath(d) for d in current_path.split(os.pathsep)]:
+                os.environ["PATH"] = expanded + os.pathsep + current_path
+
         # Cache gate for tools/venv/git_deps
         compute_current_hash(plugin_data_dir, [plugin_manifest_path])
         if check_cache(plugin_data_dir, [plugin_manifest_path]):
@@ -163,6 +180,7 @@ def main():
         failures = _process_manifest(
             plugin_manifest, current_os, plugin_data_dir, plugin_info.install_path,
             action_entries, ok_entries, plugin_name=plugin_info.name,
+            process_path_entries=False,
         )
         all_action_entries.extend(f"{plugin_info.name}: {e}" for e in action_entries)
         all_ok_entries.extend(f"{plugin_info.name}: {e}" for e in ok_entries)
@@ -309,7 +327,7 @@ def _process_config(config_section, plugin_data_dir, plugin_root, log_entries, p
     return failures
 
 
-def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entries, ok_entries, plugin_name="bootstrap"):
+def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entries, ok_entries, plugin_name="bootstrap", process_path_entries=True):
     """Process a single plugin's bootstrap manifest. Returns list of failures.
 
     Entries are split into two lists:
@@ -357,8 +375,8 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
             "plugin": plugin_name,
         })
 
-    # Check path entries
-    for path_entry in manifest.get("path_entries", []):
+    # Check path entries (skipped for plugins — handled before cache gate in main())
+    for path_entry in (manifest.get("path_entries", []) if process_path_entries else []):
         expanded = os.path.expanduser(path_entry)
         result = check_path_entry(path_entry)
         if result.passed:
