@@ -49,6 +49,22 @@ else
 fi
 HOOK_START_EPOCH=$(date +%s 2>/dev/null || echo "0")
 
+# --- Session guard: prevent double invocation in same session ---
+# Claude Code may fire the same SessionStart hook twice. Guard using session_id.
+if [ -n "$HOOK_INPUT" ]; then
+    _GUARD_SID=$(echo "$HOOK_INPUT" | grep -o '"session_id"[[:space:]]*:[[:space:]]*"[^"]*"' | grep -o '"[^"]*"$' | tr -d '"' || true)
+fi
+if [ -n "${_GUARD_SID:-}" ]; then
+    _GUARD_FILE="$PLUGIN_DATA/last_session_id"
+    if [ -f "$_GUARD_FILE" ] && [ "$(cat "$_GUARD_FILE" 2>/dev/null)" = "$_GUARD_SID" ]; then
+        # Already ran for this session — silent exit
+        HOOK_OUTPUT_EMITTED=1
+        exit 0
+    fi
+    mkdir -p "$PLUGIN_DATA"
+    printf '%s' "$_GUARD_SID" > "$_GUARD_FILE"
+fi
+
 # --- Logging ---
 # Collect entries in memory; write as a block at the end (with header) only if non-empty.
 SHELL_LOG_ENTRIES=()
