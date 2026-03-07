@@ -124,7 +124,19 @@ Scripts run inside UE's embedded Python (`import unreal`). Key patterns:
 
 ## Development Workflow
 
-**Automated tests required** — every new module or integration point must have corresponding tests in `tests/` before the work is considered complete. Tests run via `uv run --extra dev pytest -v` from the repo root. Test directories mirror the plugin structure (e.g. `tests/bootstrap/` for the bootstrap plugin). This standard was established with the bootstrap plugin's M1 test suite and applies to all subsequent development.
+**Automated tests required** — every new module or integration point must have corresponding tests in `tests/` before the work is considered complete. Test directories mirror the plugin structure (e.g. `tests/bootstrap/` for the bootstrap plugin). This standard was established with the bootstrap plugin's M1 test suite and applies to all subsequent development.
+
+**Targeted test runs** — the full test suite is too slow for routine use. Always run only the specific test file(s) relevant to your changes:
+
+```bash
+# Run a specific test file
+uv run --extra dev pytest tests/bootstrap/test_marketplace_lifecycle.py -v
+
+# Run a specific test class
+uv run --extra dev pytest tests/bootstrap/test_marketplace_lifecycle.py::TestCheckPluginScope -v
+```
+
+Only run the full suite (`uv run --extra dev pytest -v`) when explicitly asked or before a release.
 
 **Always push changes** — the plugin cache (`~/.claude/plugins/cache/`) syncs from the remote repository, not the local working copy. Local edits won't take effect until committed and pushed.
 
