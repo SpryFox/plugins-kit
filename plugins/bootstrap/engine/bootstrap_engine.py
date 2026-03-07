@@ -477,7 +477,22 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
 
         mkt_result = check_marketplace_exists(mkt_name)
         if mkt_result.passed:
-            ok_entries.append(f"{prefix}marketplace {mkt_name}: ok")
+            # Check if alwaysUpdate is set — if so, update on every session
+            if mkt_def.get("alwaysUpdate"):
+                action_entries.append(f"{prefix}marketplace {mkt_name}: updating (alwaysUpdate)")
+                upd_result = update_marketplace(mkt_name)
+                if upd_result.passed:
+                    action_entries.append(f"{prefix}marketplace {mkt_name}: updated")
+                else:
+                    action_entries.append(f"{prefix}marketplace {mkt_name}: update failed - {upd_result.message}")
+                    failures.append({
+                        "type": "marketplace",
+                        "name": mkt_name,
+                        "message": upd_result.message,
+                        "plugin": plugin_name,
+                    })
+            else:
+                ok_entries.append(f"{prefix}marketplace {mkt_name}: ok")
         else:
             # Auto-add marketplace via CLI
             action_entries.append(f"{prefix}marketplace {mkt_name}: not found, adding")

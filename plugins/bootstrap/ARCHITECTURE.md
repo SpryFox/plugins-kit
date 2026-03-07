@@ -65,7 +65,7 @@ A declarative configuration file covering automatable operations. The engine rea
     }
   ],
   "marketplaces": [
-    {"name": "plugins-kit", "source": "/path/to/plugins-kit"}
+    {"name": "plugins-kit", "source": "https://github.com/user/plugins-kit.git", "alwaysUpdate": true}
   ],
   "plugins": [
     {"ref": "plugins-kit:unreal-kit", "enabled": true}
@@ -176,6 +176,13 @@ Library boundaries follow Robert C. Martin's [package cohesion principles](https
 | Python venv missing or broken | Check dir → binary → interpreter runs → packages importable | `uv sync` from `pyproject.toml` |
 | PyPI package missing | Check extracted file exists locally | Download from PyPI and extract |
 | Git dependency not cloned or out of date | Check dir exists + `git ls-remote` vs local `rev-parse HEAD` | `git clone` or `git pull` |
+
+### Marketplace
+
+| Condition | Check Method | Remediation |
+|-----------|-------------|-------------|
+| Marketplace not registered | Check `known_marketplaces.json` for `installLocation` | `claude plugin marketplace add <url>` |
+| Marketplace stale (`alwaysUpdate`) | Always (no check — unconditional on every session) | `claude plugin marketplace update <name>` |
 
 ### Plugin
 

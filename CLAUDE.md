@@ -155,3 +155,32 @@ Plugins follow the Claude Code plugin spec:
 - **Plugin manifest** (`.claude-plugin/plugin.json`): Per-plugin metadata (name, version, description, keywords)
 - **Skill discovery**: Claude Code scans `skills/` directories for `SKILL.md` files
 - **Variable expansion**: `${CLAUDE_PLUGIN_ROOT}` resolves to the plugin's install path at runtime
+
+### Plugin Cache and Registry Layout
+
+Claude Code stores plugin data under `~/.claude/plugins/`:
+
+| Path | Purpose |
+|------|---------|
+| `cache/{marketplace}/{plugin}/{version}/` | Cached plugin files (copied from marketplace clone) |
+| `marketplaces/{marketplace}/` | Git clone of marketplace repo |
+| `installed_plugins.json` | Registry of installed plugins (version, gitCommitSha, installPath, scope) |
+| `known_marketplaces.json` | Registry of known marketplaces (source, installLocation, lastUpdated, autoUpdate) |
+| `data/{plugin}/` | Per-plugin runtime data (config, logs, venv) |
+
+### Debugging
+
+```bash
+# Version report — shows local, marketplace, installed, and cached versions for all plugins
+bash scripts/plugin-versions.sh
+
+# Run bootstrap engine in console mode (plain text, no JSON, no log writes)
+python plugins/bootstrap/engine/bootstrap_engine.py --plugin-root plugins/bootstrap --data-dir ~/.claude/plugins/data/bootstrap --console
+
+# Verbose mode (show ok/cached entries too)
+python plugins/bootstrap/engine/bootstrap_engine.py --plugin-root plugins/bootstrap --data-dir ~/.claude/plugins/data/bootstrap --console --verbose
+```
+
+## Preferences
+
+- **Never use the memory system** (`~/.claude/projects/*/memory/`). Always update `CLAUDE.md` instead — it is machine-independent and checked into the repo, so all machines and sessions share the same context.

@@ -21,13 +21,15 @@
   "venv": {
     "check_imports": ["yaml"]
   },
-  "json_entries": [
+  "json_entries": [],
+  "marketplaces": [
     {
-      "reference": "known_marketplaces.json",
-      "target": "~/.claude/plugins/known_marketplaces.json",
-      "merge_fields": ["source", "autoUpdate"],
-      "preserve_fields": ["lastUpdated", "installLocation"]
+      "name": "plugins-kit",
+      "source": "https://github.com/kitaekatt/plugins-kit.git",
+      "alwaysUpdate": true
     }
   ],
-  "plugins": []
+  "plugins": [
+    {"ref": "plugins-kit:bootstrap", "enabled": true}
+  ]
 }
