@@ -9,10 +9,10 @@ BOOTSTRAP_ROOT = os.path.normpath(
     os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, "plugins", "bootstrap")
 )
 
-# Add engine to path (lib modules use bootstrap_lib.* package imports)
-sys.path.insert(0, os.path.join(BOOTSTRAP_ROOT, "engine"))
+# Add bootstrap plugin root to path so bootstrap_lib package is importable
+sys.path.insert(0, BOOTSTRAP_ROOT)
 
-from bootstrap_engine import _process_self_setup
+from bootstrap_lib.engine import _process_self_setup
 
 
 class TestProcessSelfSetup:

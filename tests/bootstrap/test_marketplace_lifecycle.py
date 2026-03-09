@@ -129,7 +129,7 @@ class TestMarketplaceAlwaysUpdate:
             ]
         }
 
-        from bootstrap_engine import _process_manifest
+        from bootstrap_lib.engine import _process_manifest
         action_entries = []
         ok_entries = []
 
@@ -167,7 +167,7 @@ class TestMarketplaceAlwaysUpdate:
             ]
         }
 
-        from bootstrap_engine import _process_manifest
+        from bootstrap_lib.engine import _process_manifest
         action_entries = []
         ok_entries = []
 
@@ -204,7 +204,7 @@ class TestMarketplaceAlwaysUpdate:
             ]
         }
 
-        from bootstrap_engine import _process_manifest
+        from bootstrap_lib.engine import _process_manifest
         action_entries = []
         ok_entries = []
 
@@ -238,7 +238,7 @@ class TestMarketplaceAlwaysUpdate:
             ]
         }
 
-        from bootstrap_engine import _process_manifest
+        from bootstrap_lib.engine import _process_manifest
         action_entries = []
         ok_entries = []
 
@@ -363,7 +363,7 @@ class TestScopeRemediation:
             ]
         }
 
-        from bootstrap_engine import _process_manifest
+        from bootstrap_lib.engine import _process_manifest
         action_entries = []
         ok_entries = []
 
@@ -406,7 +406,7 @@ class TestScopeRemediation:
             ]
         }
 
-        from bootstrap_engine import _process_manifest
+        from bootstrap_lib.engine import _process_manifest
         action_entries = []
         ok_entries = []
 
