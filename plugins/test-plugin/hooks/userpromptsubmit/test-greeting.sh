@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# test-greeting.sh — Stop hook that demonstrates both user and Claude messaging.
+# test-greeting.sh — UserPromptSubmit hook that demonstrates both user and Claude messaging.
 #
-# Displays "Stop - User" to the user via systemMessage
-# and "Stop - Claude" to Claude via decision/reason.
+# Displays "UserPromptSubmit - User" to the user via systemMessage
+# and "UserPromptSubmit - Claude" to Claude via additionalContext.
 
 cat <<'EOF'
 {
   "continue": true,
   "suppressOutput": false,
-  "systemMessage": "Stop - User"
+  "systemMessage": "UserPromptSubmit - User"
 }
 EOF

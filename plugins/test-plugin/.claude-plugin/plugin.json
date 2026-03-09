@@ -1,6 +1,6 @@
 {
   "name": "test-plugin",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Test plugin exercising all 5 bootstrap steps including Claude-driven config setup",
   "author": {
     "name": "Christina"
