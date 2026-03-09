@@ -141,7 +141,8 @@ def main():
     # Build an enabled_refs filter from settings.json + production registry so only
     # actively-enabled plugins are bootstrapped. Production layout is unaffected
     # (its registry is already authoritative).
-    prod_registry = os.path.normpath(os.path.expanduser("~/.claude/plugins/installed_plugins.json"))
+    home = os.environ.get("HOME") or os.path.expanduser("~")
+    prod_registry = os.path.normpath(os.path.join(home, ".claude", "plugins", "installed_plugins.json"))
     is_dev_layout = os.path.normpath(registry_path) != prod_registry
     enabled_refs = _load_enabled_refs(args.project_dir) if is_dev_layout else None
 
@@ -368,8 +369,9 @@ def _load_enabled_refs(project_dir=None):
 
     refs = {_normalize(ref) for ref, val in merged_enabled.items() if val}
 
-    # Also include all plugins in the production registry as a secondary source
-    prod_registry_path = os.path.expanduser("~/.claude/plugins/installed_plugins.json")
+    # Also include all plugins in the production registry as a secondary source.
+    # Use the same home resolution as above so test isolation via HOME env var works.
+    prod_registry_path = os.path.join(home, ".claude", "plugins", "installed_plugins.json")
     try:
         with open(prod_registry_path, "r") as f:
             registry = json.load(f)

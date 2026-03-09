@@ -13,13 +13,26 @@ BOOTSTRAP_ROOT = os.path.normpath(
 ENGINE_SCRIPT = os.path.join(BOOTSTRAP_ROOT, "engine", "bootstrap_engine.py")
 
 
-def run_engine(data_dir, plugin_root=BOOTSTRAP_ROOT):
+def run_engine(data_dir, plugin_root=BOOTSTRAP_ROOT, env=None):
     """Run the bootstrap engine as a subprocess."""
     return subprocess.run(
         [sys.executable, ENGINE_SCRIPT, "--plugin-root", plugin_root, "--data-dir", data_dir],
         capture_output=True,
         text=True,
+        env=env,
     )
+
+
+def _isolated_env(tmp_path):
+    """Return an env dict with HOME set to an empty temp dir.
+
+    This ensures _load_enabled_refs finds no settings files and no production
+    registry, so it returns None (no filter) — preserving pre-filter behavior
+    for tests that don't exercise the dev-layout filtering logic.
+    """
+    home = str(tmp_path / "_home")
+    os.makedirs(home, exist_ok=True)
+    return {**os.environ, "HOME": home}
 
 
 def _write_minimal_defaults(fake_root):
@@ -105,7 +118,7 @@ class TestMultiPluginEngine:
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
-        result = run_engine(data_dir, plugin_root=str(fake_root))
+        result = run_engine(data_dir, plugin_root=str(fake_root), env=_isolated_env(tmp_path))
 
         assert result.returncode == 0
         # Should emit failure JSON for the missing tool
@@ -143,7 +156,7 @@ class TestMultiPluginEngine:
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
-        result = run_engine(data_dir, plugin_root=str(fake_root))
+        result = run_engine(data_dir, plugin_root=str(fake_root), env=_isolated_env(tmp_path))
 
         assert result.returncode == 0
         response = json.loads(result.stdout)
@@ -177,7 +190,7 @@ class TestMultiPluginEngine:
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
-        result = run_engine(data_dir, plugin_root=str(fake_root))
+        result = run_engine(data_dir, plugin_root=str(fake_root), env=_isolated_env(tmp_path))
         assert result.returncode == 0
 
         # Plugin log should be in plugin's own data dir with version in header
@@ -228,10 +241,10 @@ class TestMultiPluginEngine:
             json.dump(config, f)
 
         # First run
-        run_engine(data_dir, plugin_root=str(fake_root))
+        run_engine(data_dir, plugin_root=str(fake_root), env=_isolated_env(tmp_path))
 
         # Second run — re-runs checks, produces output
-        result = run_engine(data_dir, plugin_root=str(fake_root))
+        result = run_engine(data_dir, plugin_root=str(fake_root), env=_isolated_env(tmp_path))
         assert result.returncode == 0
         response = json.loads(result.stdout)
         assert "rerun-plugin" in response["systemMessage"]
@@ -261,7 +274,7 @@ class TestMultiPluginEngine:
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
-        result = run_engine(data_dir, plugin_root=str(fake_root))
+        result = run_engine(data_dir, plugin_root=str(fake_root), env=_isolated_env(tmp_path))
 
         assert result.returncode == 0
         # Plugin with no manifest is skipped — nothing to log → silent exit
@@ -295,7 +308,7 @@ class TestMultiPluginEngine:
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
-        result = run_engine(data_dir, plugin_root=str(fake_root))
+        result = run_engine(data_dir, plugin_root=str(fake_root), env=_isolated_env(tmp_path))
 
         assert result.returncode == 0
         response = json.loads(result.stdout)
@@ -329,7 +342,7 @@ class TestMultiPluginEngine:
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
-        result = run_engine(data_dir, plugin_root=str(fake_root))
+        result = run_engine(data_dir, plugin_root=str(fake_root), env=_isolated_env(tmp_path))
 
         assert result.returncode == 0
         response = json.loads(result.stdout)
@@ -364,7 +377,7 @@ class TestMultiPluginEngine:
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
-        result = run_engine(data_dir, plugin_root=str(cache_dir))
+        result = run_engine(data_dir, plugin_root=str(cache_dir), env=_isolated_env(tmp_path))
         assert result.returncode == 0
         response = json.loads(result.stdout)
         assert "deep-plugin" in response["systemMessage"]
@@ -430,7 +443,7 @@ class TestPhase2PluginBootstrap:
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
-        result = run_engine(data_dir, plugin_root=str(fake_root))
+        result = run_engine(data_dir, plugin_root=str(fake_root), env=_isolated_env(tmp_path))
 
         assert result.returncode == 0, f"stderr: {result.stderr}"
         assert result.stdout.strip() != ""
@@ -470,7 +483,7 @@ class TestPhase2PluginBootstrap:
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
-        result = run_engine(data_dir, plugin_root=str(fake_root))
+        result = run_engine(data_dir, plugin_root=str(fake_root), env=_isolated_env(tmp_path))
 
         assert result.returncode == 0
         response = json.loads(result.stdout)
@@ -516,7 +529,7 @@ class TestPhase2PluginBootstrap:
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
-        result = run_engine(data_dir, plugin_root=str(fake_root))
+        result = run_engine(data_dir, plugin_root=str(fake_root), env=_isolated_env(tmp_path))
 
         assert result.returncode == 0
         response = json.loads(result.stdout)
@@ -524,3 +537,202 @@ class TestPhase2PluginBootstrap:
         # Each plugin should appear exactly once as a section header
         assert system_msg.count("kit:plugin-a@1.0.0") == 1, f"plugin-a duplicated: {system_msg}"
         assert system_msg.count("kit:plugin-b@2.0.0") == 1, f"plugin-b duplicated: {system_msg}"
+
+
+def _make_dev_layout(tmp_path, plugins):
+    """Create a dev layout with multiple plugins and a registry.
+
+    Args:
+        tmp_path: pytest tmp_path
+        plugins: list of (name, has_bootstrap_json) tuples
+
+    Returns:
+        (fake_root_str, plugins_dir_path, registry_path_str, data_dir_str)
+    """
+    plugins_dir = tmp_path / "plugins"
+    plugins_dir.mkdir()
+
+    fake_root = plugins_dir / "bootstrap"
+    fake_root.mkdir()
+    (fake_root / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
+    (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
+    _write_minimal_defaults(fake_root)
+    (fake_root / "bootstrap.json").write_text(json.dumps({}))
+
+    registry_plugins = {}
+    for name, has_manifest in plugins:
+        plugin_dir = plugins_dir / name
+        plugin_dir.mkdir()
+        if has_manifest:
+            (plugin_dir / "bootstrap.json").write_text(json.dumps({
+                "tools": [{"name": "git", "install": {"macos": "brew install git"}}],
+            }))
+        registry_plugins[f"testkit:{name}"] = [{"installPath": f"./{name}", "version": "1.0.0"}]
+
+    (plugins_dir / "installed_plugins.json").write_text(json.dumps({"plugins": registry_plugins}))
+
+    data_dir = str(tmp_path / "data" / "bootstrap")
+    os.makedirs(data_dir)
+    config = {"schema_version": 5, "no_bootstrap": [], "bootstrap_cache": [],
+              "log_success_shell": False, "log_success_checks": True}
+    with open(os.path.join(data_dir, "config.json"), "w") as f:
+        json.dump(config, f)
+
+    return str(fake_root), plugins_dir, data_dir
+
+
+def _settings_home(tmp_path, enabled_refs):
+    """Create a temp HOME with settings.json enabling the given plugin refs.
+
+    Args:
+        tmp_path: pytest tmp_path
+        enabled_refs: list of 'plugin@marketplace' ref strings to enable
+
+    Returns:
+        env dict with HOME set to the temp home
+    """
+    home = tmp_path / "_settings_home"
+    claude_dir = home / ".claude"
+    claude_dir.mkdir(parents=True)
+    settings = {"enabledPlugins": {ref: True for ref in enabled_refs}}
+    (claude_dir / "settings.json").write_text(json.dumps(settings))
+    return {**os.environ, "HOME": str(home)}
+
+
+class TestDevLayoutFilter:
+    """Dev layout: only enabled plugins are bootstrapped (not all registry entries)."""
+
+    def test_disabled_plugin_skipped(self, tmp_path):
+        """Registry has two plugins; only the enabled one is bootstrapped."""
+        fake_root, plugins_dir, data_dir = _make_dev_layout(tmp_path, [
+            ("enabled-plugin", True),
+            ("skipped-plugin", True),
+        ])
+        env = _settings_home(tmp_path, ["enabled-plugin@testkit"])
+
+        result = run_engine(data_dir, plugin_root=fake_root, env=env)
+
+        assert result.returncode == 0
+        response = json.loads(result.stdout)
+        system_msg = response["systemMessage"]
+        assert "enabled-plugin" in system_msg
+        assert "skipped-plugin" not in system_msg
+
+    def test_all_disabled_plugins_skipped(self, tmp_path):
+        """When no plugins are in enabled_refs, all registry plugins are filtered."""
+        fake_root, plugins_dir, data_dir = _make_dev_layout(tmp_path, [
+            ("plugin-a", True),
+            ("plugin-b", True),
+        ])
+        env = _settings_home(tmp_path, [])  # nothing enabled
+
+        result = run_engine(data_dir, plugin_root=fake_root, env=env)
+
+        assert result.returncode == 0
+        # No plugin sections — silent exit (no output) or bootstrap-only output
+        if result.stdout.strip():
+            response = json.loads(result.stdout)
+            system_msg = response.get("systemMessage", "")
+            assert "plugin-a" not in system_msg
+            assert "plugin-b" not in system_msg
+
+    def test_multiple_enabled_plugins_all_included(self, tmp_path):
+        """All plugins listed in enabled_refs are bootstrapped."""
+        fake_root, plugins_dir, data_dir = _make_dev_layout(tmp_path, [
+            ("plugin-x", True),
+            ("plugin-y", True),
+            ("plugin-z", True),
+        ])
+        env = _settings_home(tmp_path, ["plugin-x@testkit", "plugin-y@testkit"])
+
+        result = run_engine(data_dir, plugin_root=fake_root, env=env)
+
+        assert result.returncode == 0
+        response = json.loads(result.stdout)
+        system_msg = response["systemMessage"]
+        assert "plugin-x" in system_msg
+        assert "plugin-y" in system_msg
+        assert "plugin-z" not in system_msg
+
+    def test_production_layout_unaffected(self, tmp_path):
+        """In production layout (registry == prod registry), no filter is applied."""
+        # Simulate production layout: place installed_plugins.json where the engine
+        # expects the prod registry (HOME/.claude/plugins/installed_plugins.json)
+        home = tmp_path / "_prod_home"
+        prod_plugins_dir = home / ".claude" / "plugins"
+        prod_plugins_dir.mkdir(parents=True)
+
+        # Use prod_plugins_dir as the plugins_dir for the bootstrap root too
+        fake_root = prod_plugins_dir / "bootstrap"
+        fake_root.mkdir()
+        (fake_root / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
+        (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
+        _write_minimal_defaults(fake_root)
+        (fake_root / "bootstrap.json").write_text(json.dumps({}))
+
+        plugin_dir = prod_plugins_dir / "my-prod-plugin"
+        plugin_dir.mkdir()
+        (plugin_dir / "bootstrap.json").write_text(json.dumps({
+            "tools": [{"name": "git", "install": {"macos": "brew install git"}}],
+        }))
+
+        # Registry at HOME/.claude/plugins/installed_plugins.json (the prod location)
+        registry = {"plugins": {"testkit:my-prod-plugin": [
+            {"installPath": str(plugin_dir), "version": "1.0.0"}
+        ]}}
+        (prod_plugins_dir / "installed_plugins.json").write_text(json.dumps(registry))
+
+        data_dir = str(tmp_path / "data" / "bootstrap")
+        os.makedirs(data_dir)
+        config = {"schema_version": 5, "no_bootstrap": [], "bootstrap_cache": [],
+                  "log_success_shell": False, "log_success_checks": True}
+        with open(os.path.join(data_dir, "config.json"), "w") as f:
+            json.dump(config, f)
+
+        # Use HOME without any settings.json — prod layout should not filter
+        env = {**os.environ, "HOME": str(home)}
+        result = run_engine(data_dir, plugin_root=str(fake_root), env=env)
+
+        assert result.returncode == 0
+        response = json.loads(result.stdout)
+        # my-prod-plugin should be bootstrapped (no filter in prod layout)
+        assert "my-prod-plugin" in response["systemMessage"]
+
+    def test_project_scoped_plugin_from_project_settings(self, tmp_path):
+        """A plugin enabled in project settings (not user settings) is included."""
+        fake_root, plugins_dir, data_dir = _make_dev_layout(tmp_path, [
+            ("project-plugin", True),
+            ("user-plugin", True),
+        ])
+
+        # User settings: only user-plugin
+        home = tmp_path / "_proj_home"
+        claude_dir = home / ".claude"
+        claude_dir.mkdir(parents=True)
+        (claude_dir / "settings.json").write_text(json.dumps({
+            "enabledPlugins": {"user-plugin@testkit": True}
+        }))
+
+        # Project settings: project-plugin (project-scoped)
+        project_dir = tmp_path / "my-project"
+        project_claude = project_dir / ".claude"
+        project_claude.mkdir(parents=True)
+        (project_claude / "settings.json").write_text(json.dumps({
+            "enabledPlugins": {"project-plugin@testkit": True}
+        }))
+
+        env = {**os.environ, "HOME": str(home)}
+        result = subprocess.run(
+            [sys.executable, ENGINE_SCRIPT,
+             "--plugin-root", fake_root,
+             "--data-dir", data_dir,
+             "--project-dir", str(project_dir)],
+            capture_output=True, text=True, env=env,
+        )
+
+        assert result.returncode == 0
+        response = json.loads(result.stdout)
+        system_msg = response["systemMessage"]
+        # Both user-scoped and project-scoped plugins should be bootstrapped
+        assert "user-plugin" in system_msg
+        assert "project-plugin" in system_msg
