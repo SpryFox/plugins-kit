@@ -1,7 +1,7 @@
 """
 UE .ini file read/write utilities.
 
-Used by both setup.py and ue_runner.py. Pure stdlib, no external dependencies.
+Used by ue_runner.py. Pure stdlib, no external dependencies.
 """
 
 from pathlib import Path

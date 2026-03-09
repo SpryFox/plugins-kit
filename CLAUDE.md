@@ -78,24 +78,14 @@ plugins-kit/                          # Marketplace root
 |------|---------|
 | `bin/ue_runner.py` | CLI entry point — runs UE Python scripts via remote exec or commandlet |
 | `bin/ue-runner.cmd` | Windows wrapper — uses `uv run` to ensure deps |
-| `bin/setup.py` | One-shot setup — discovers project, enables settings, downloads stubs |
-| `bin/setup.cmd` | Windows wrapper for setup |
 | `lib/ue_runner_config.py` | Config loading with layered resolution and fallback YAML parser |
 | `lib/ue_discovery.py` | Project discovery — finds `.uproject` and engine directory |
 | `lib/ue_ini.py` | UE `.ini` file read/write utilities |
 | `lib/unreal_pip.py` | Pip operations inside UE's embedded Python (runs in-editor) |
 | `lib/bootstrap.py` | Dependency bootstrapper for UE scripts (runs in-editor) |
-| `scripts/setup-stubs.py` | Downloads UE Python API stubs from PyPI or copies from project |
-
 ## Commands
 
 ```bash
-# Setup (run once per machine, no user input needed)
-plugins/unreal-kit/skills/ue-python-api/bin/setup.cmd
-
-# Setup with stubs refresh (after editor restart with Developer Mode)
-plugins/unreal-kit/skills/ue-python-api/bin/setup.cmd --refresh-stubs
-
 # Run a UE Python script (auto-detects remote vs commandlet)
 plugins/unreal-kit/skills/ue-python-api/bin/ue-runner.cmd script.py
 

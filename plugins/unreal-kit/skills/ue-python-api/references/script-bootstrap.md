@@ -39,7 +39,6 @@ The function:
 The `.cmd` entry points handle host-side dependencies:
 
 - **`ue-runner.cmd`**: Uses `uv run --with upyrc --with pyyaml` for an ephemeral environment (legacy path, before session bootstrap existed)
-- **`setup.cmd`**: Requires only Python on PATH — `setup.py` is stdlib-only by design
 
 ## Stdlib-Only Constraint
 
@@ -49,7 +48,6 @@ Three modules include hand-rolled minimal YAML parsers to avoid needing pyyaml b
 |--------|--------------|------------------------|
 | `lib/bootstrap.py` | UE Editor | pyyaml is the dependency being installed |
 | `lib/ue_runner_config.py` | Host Python | May run before venv exists |
-| `bin/setup.py` | Host Python | Runs before any dependencies are installed |
 
 This duplication is intentional — each module must function independently during the bootstrapping phase when no external packages are guaranteed to exist.
 
@@ -63,7 +61,7 @@ CLI args  >  project config  >  skill config  >  hardcoded defaults
                ue-python-api/project.yaml)
 ```
 
-`setup.py` writes the project config during initial setup. The config includes `engine_dir` and `uproject` paths needed by both the remote executor and the commandlet fallback.
+The bootstrap engine's `project_config` primitive writes the project config during session start. The config includes `engine_dir` and `uproject` paths needed by both the remote executor and the commandlet fallback.
 
 ## Interaction Flow
 

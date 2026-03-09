@@ -1,7 +1,7 @@
 """
 UE project discovery — find .uproject files and engine directories.
 
-Used by both setup.py and ue_runner.py. Pure stdlib, no external dependencies.
+Used by ue_runner.py and custom_bootstrap.py. Pure stdlib, no external dependencies.
 """
 
 import json

@@ -400,10 +400,7 @@ _INI_SECTION = "[/Script/PythonScriptPlugin.PythonScriptPluginSettings]"
 
 
 def run_setup(config: RunnerConfig) -> bool:
-    """Interactive setup: discover UE project, check settings, prompt before fixes.
-
-    For non-interactive setup, use bin/setup.cmd instead.
-    """
+    """Interactive setup: discover UE project, check settings, prompt before fixes."""
     from ue_runner_config import write_project_config as _write_project_config
 
     all_ok = True

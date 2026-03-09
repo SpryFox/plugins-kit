@@ -5,7 +5,7 @@ Resolution order: CLI args → per-project config → global config → skill co
 
 Per-project config lives at:
     <project_root>/.claude/unreal-kit.yaml
-Written by bootstrap autodetect or bin/setup.py during session start.
+Written by bootstrap's project_config primitive during session start.
 
 Global config (legacy, migration fallback) lives at:
     ~/.claude/plugins/data/plugins-kit/unreal-kit/config.yaml
