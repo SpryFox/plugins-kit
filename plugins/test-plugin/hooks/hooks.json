@@ -1,12 +1,11 @@
 {
   "hooks": {
-    "SessionStart": [
+    "Stop": [
       {
-        "matcher": "*",
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/sessionstart/session-bootstrap.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/userpromptsubmit/test-greeting.sh"
           }
         ]
       }

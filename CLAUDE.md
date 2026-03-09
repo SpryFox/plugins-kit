@@ -64,7 +64,7 @@ plugins-kit/                          # Marketplace root
 | `plugins/bootstrap/skills/bootstrap/references/engine-internals.md` | Bootstrap engine internals |
 | `docs/planning/bootstrap/MILESTONES.md` | Development milestones and progress |
 | `plugins/test-plugin/bootstrap.json` | Test plugin's bootstrap manifest |
-| `plugins/test-plugin/scripts/setup.py` | Test plugin config setup |
+| `plugins/test-plugin/bootstrap.json` | Test plugin's bootstrap manifest (includes config section) |
 | `tests/bootstrap/` | All bootstrap tests (mirrors bootstrap_lib/ structure) |
 
 ### Key Design Decisions
@@ -183,7 +183,41 @@ Plugins follow the Claude Code plugin spec:
 
 ### Hook Output JSON Schema
 
-Hook responses vary by hook type. **Only SessionStart, PreToolUse, and PermissionRequest** support `hookSpecificOutput` (with `hookEventName` and `additionalContext`). **Stop hooks** only support top-level fields: `continue`, `suppressOutput`, `systemMessage`, `decision`, `reason`. Background mode output (consumed by Stop hook) must NOT include `hookSpecificOutput`. **Important**: `systemMessage` is user-facing only — Claude never sees it. To inject context into Claude from a Stop hook, use `decision: "block"` + `reason` (the `reason` text is delivered to Claude as feedback).
+**Official docs**: https://code.claude.com/docs/en/hooks (canonical reference for all hook events, input/output schemas, exit codes, matchers, and decision control). When in doubt about hook behavior, fetch this URL — it is the source of truth.
+
+**Universal JSON output fields** (all events):
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `continue` | `true` | If `false`, Claude stops entirely. Takes precedence over event-specific decisions |
+| `stopReason` | none | Message shown to user when `continue` is `false`. Not shown to Claude |
+| `suppressOutput` | `false` | If `true`, hides stdout from verbose mode |
+| `systemMessage` | none | Warning shown to user only — Claude never sees it |
+
+**Decision control by event**:
+
+| Events | Pattern | Key fields |
+|--------|---------|------------|
+| UserPromptSubmit, PostToolUse, PostToolUseFailure, Stop, SubagentStop, ConfigChange | Top-level `decision` | `decision: "block"`, `reason` |
+| TeammateIdle, TaskCompleted | Exit code or `continue: false` | Exit 2 blocks with stderr feedback |
+| PreToolUse | `hookSpecificOutput` | `permissionDecision` (allow/deny/ask), `permissionDecisionReason`, `updatedInput`, `additionalContext` |
+| PermissionRequest | `hookSpecificOutput` | `decision.behavior` (allow/deny), `updatedInput`, `updatedPermissions`, `message` |
+
+**Context injection** — how to get text to Claude vs. the user:
+
+| Event | To user | To Claude |
+|-------|---------|-----------|
+| SessionStart | `systemMessage` | Plain text stdout or `hookSpecificOutput.additionalContext` |
+| UserPromptSubmit | `systemMessage` | Plain text stdout or `hookSpecificOutput.additionalContext` |
+| PreToolUse | `systemMessage` | `hookSpecificOutput.additionalContext` |
+| PostToolUse / PostToolUseFailure | `systemMessage` | `hookSpecificOutput.additionalContext` or `decision: "block"` + `reason` |
+| Stop / SubagentStop | `systemMessage` | `decision: "block"` + `reason` |
+| SubagentStart | `systemMessage` | `hookSpecificOutput.additionalContext` |
+| Notification | `systemMessage` | `hookSpecificOutput.additionalContext` |
+
+**Exit codes**: 0 = success (JSON parsed from stdout), 2 = blocking error (stderr fed to Claude), other = non-blocking error. JSON is only processed on exit 0. For UserPromptSubmit and SessionStart, stdout is always added as context (not just in verbose mode).
+
+**Background mode output** (consumed by Stop hook) must NOT include `hookSpecificOutput`.
 
 ### Plugin Cache and Registry Layout
 
