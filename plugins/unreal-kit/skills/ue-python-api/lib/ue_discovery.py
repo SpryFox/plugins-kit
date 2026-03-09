@@ -67,7 +67,22 @@ def find_uproject_from_cwd() -> Path | None:
     searches from CWD — which is the project root when Claude Code is launched
     from there.
     """
-    current = Path.cwd().resolve()
+    return _find_uproject_walking_up(Path.cwd().resolve())
+
+
+def find_uproject_from_path(start: Path) -> Path | None:
+    """Find the nearest .uproject file by walking up from an arbitrary path.
+
+    Useful for inferring which project a script belongs to based on the
+    script's location on disk.
+    """
+    return _find_uproject_walking_up(start.resolve())
+
+
+def _find_uproject_walking_up(start: Path) -> Path | None:
+    """Walk up from start looking for a .uproject file."""
+    # If start is a file, begin from its parent directory
+    current = start if start.is_dir() else start.parent
     for _ in range(6):  # safety limit
         found = find_uproject_files(current, max_depth=2)
         if found:

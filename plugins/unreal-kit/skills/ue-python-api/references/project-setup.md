@@ -20,7 +20,7 @@ The setup script auto-discovers everything from its position in the project tree
 
 1. **Finds your `.uproject`** — walks up from the skill directory
 2. **Finds the Engine directory** — walks up from `.uproject` looking for `Engine/Binaries/Win64/UnrealEditor-Cmd.exe`
-3. **Writes `config.yaml`** — to `~/.claude/plugins/data/unreal-kit/config.yaml` (used by the runner for paths)
+3. **Writes per-project config** — to `<project_root>/.claude/unreal-kit.yaml` (used by the runner for paths)
 4. **Enables `bRemoteExecution`** — in `Config/UserEngine.ini` (per-user, not checked in). Allows running scripts from terminal via UDP
 5. **Enables `bIsDeveloperMode`** — in `Config/UserEngine.ini`. Enables UE to generate Python API stubs
 6. **Downloads API stubs** — from PyPI (`unreal-stub` package). Used by the AI to search the UE Python API

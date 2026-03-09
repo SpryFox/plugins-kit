@@ -38,9 +38,7 @@ if str(LIB_DIR) not in sys.path:
 
 from ue_discovery import find_engine_dir, find_uproject_from_cwd, find_uproject_from_skill
 from ue_ini import read_ini_bool, write_ini_setting
-
-# Config path (matches ue_runner_config.py)
-LOCAL_CONFIG_PATH = Path.home() / ".claude" / "plugins" / "data" / "unreal-kit" / "config.yaml"
+from ue_runner_config import write_project_config as _write_project_config
 
 INI_SECTION = "[/Script/PythonScriptPlugin.PythonScriptPluginSettings]"
 
@@ -88,19 +86,13 @@ def discover_project() -> tuple[Path | None, Path | None]:
 # ---------------------------------------------------------------------------
 
 def write_project_config(uproject: Path, engine_dir: Path | None) -> Path | None:
-    """Write project.yaml for the runner config system."""
-    config_path = LOCAL_CONFIG_PATH
-
-    # Build YAML content with simple string formatting (no pyyaml needed)
-    # Use forward slashes — backslashes in YAML double-quoted strings
-    # are escape sequences and break pyyaml parsing on Windows.
-    lines = []
+    """Write per-project config to <project_root>/.claude/unreal-kit.yaml."""
+    project_root = uproject.parent
+    data = {"uproject": str(uproject)}
     if engine_dir:
-        lines.append(f'engine_dir: "{str(engine_dir).replace(chr(92), "/")}"')
-    lines.append(f'uproject: "{str(uproject).replace(chr(92), "/")}"')
+        data["engine_dir"] = str(engine_dir)
 
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    config_path = _write_project_config(project_root, data)
     print(f"[setup]   WROTE {config_path}")
     return config_path
 

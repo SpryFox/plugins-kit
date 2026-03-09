@@ -1,11 +1,14 @@
 """
 UE Python Script Runner — Configuration loading.
 
-Resolution order: CLI args → local project config → skill config → defaults.
+Resolution order: CLI args → per-project config → global config → skill config → defaults.
 
-Local project config lives at:
+Per-project config lives at:
+    <project_root>/.claude/unreal-kit.yaml
+Written by bootstrap autodetect or bin/setup.py during session start.
+
+Global config (legacy, migration fallback) lives at:
     ~/.claude/plugins/data/plugins-kit/unreal-kit/config.yaml
-Written by the bootstrap engine during session start.
 """
 
 import os
@@ -15,7 +18,9 @@ from pathlib import Path
 SKILL_DIR = Path(__file__).resolve().parent.parent
 SKILL_CONFIG_PATH = SKILL_DIR / "ue_runner_config.yaml"
 
-LOCAL_CONFIG_PATH = Path.home() / ".claude" / "plugins" / "data" / "plugins-kit" / "unreal-kit" / "config.yaml"
+PROJECT_CONFIG_NAME = ".claude/unreal-kit.yaml"
+
+_GLOBAL_CONFIG_PATH = Path.home() / ".claude" / "plugins" / "data" / "plugins-kit" / "unreal-kit" / "config.yaml"
 
 # Hardcoded defaults for global settings (last resort)
 _DEFAULTS = {
@@ -68,17 +73,58 @@ class RunnerConfig:
         return errors
 
 
+def find_project_config(start: Path | None = None) -> Path | None:
+    """Walk up from start (default CWD) looking for .claude/unreal-kit.yaml."""
+    current = (start or Path.cwd()).resolve()
+    if not current.is_dir():
+        current = current.parent
+    for _ in range(10):
+        candidate = current / PROJECT_CONFIG_NAME
+        if candidate.is_file():
+            return candidate
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    return None
+
+
+def write_project_config(project_root: Path, data: dict) -> Path:
+    """Write config to <project_root>/.claude/unreal-kit.yaml.
+
+    Creates the .claude/ directory if needed. Returns the config path.
+    Uses forward slashes for Windows compatibility in YAML.
+    """
+    config_path = project_root / PROJECT_CONFIG_NAME
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    lines = []
+    for key, value in data.items():
+        safe_value = str(value).replace("\\", "/")
+        lines.append(f'{key}: "{safe_value}"')
+    config_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return config_path
+
+
 def load_config(config_path: str | Path | None = None) -> RunnerConfig:
-    """Load config: defaults → skill config → local project config → CLI."""
+    """Load config: defaults → skill config → per-project config → CLI.
+
+    If config_path is given, use it directly. Otherwise, search for
+    per-project config (.claude/unreal-kit.yaml) by walking up from CWD,
+    falling back to the global config for migration.
+    """
     # Start with defaults, layer skill-level config
     skill_data = _load_yaml(SKILL_CONFIG_PATH)
     merged = _deep_merge(_DEFAULTS, skill_data)
 
-    # Layer local project config (~/.claude/.local-data/...)
+    # Layer project config: explicit path > per-project > global fallback
     if config_path:
         local_data = _load_yaml(config_path)
     else:
-        local_data = _load_yaml(LOCAL_CONFIG_PATH)
+        project_config = find_project_config()
+        if project_config:
+            local_data = _load_yaml(project_config)
+        else:
+            local_data = _load_yaml(_GLOBAL_CONFIG_PATH)
     merged = _deep_merge(merged, local_data)
 
     remote_data = merged.get("remote_execution", {})

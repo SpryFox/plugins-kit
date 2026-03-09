@@ -8,11 +8,11 @@
     "required_fields": {
       "uproject": {
         "user_msg": "Path to .uproject file",
-        "agent_msg": "Ask the user for their .uproject file path and write it to {config_path}"
+        "agent_msg": "Ask the user for their .uproject file path. Write it to {config_path} AND to <project_root>/.claude/unreal-kit.yaml (the per-project config)."
       },
       "engine_dir": {
         "user_msg": "Path to UE engine directory",
-        "agent_msg": "Ask the user for their UE engine directory and write it to {config_path}"
+        "agent_msg": "Ask the user for their UE engine directory. Write it to {config_path} AND to <project_root>/.claude/unreal-kit.yaml (the per-project config)."
       }
     },
     "autodetect": "custom_bootstrap.py autodetect"

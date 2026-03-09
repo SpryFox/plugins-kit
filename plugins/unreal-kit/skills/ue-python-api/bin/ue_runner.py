@@ -27,6 +27,7 @@ _LIB_DIR = _SKILL_DIR / "lib"
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
+from ue_discovery import find_engine_dir as _find_engine_dir, find_uproject_from_cwd, find_uproject_from_path
 from ue_runner_config import RunnerConfig, load_config
 
 
@@ -46,6 +47,7 @@ def run_ue_script(
     force_mode: str | None = None,
     config: RunnerConfig | None = None,
     copy_output_to: str | None = None,
+    project: str | None = None,
 ) -> RunResult:
     """
     Execute a UE Python script, auto-selecting the best execution path.
@@ -55,6 +57,8 @@ def run_ue_script(
         force_mode: "remote", "commandlet", or None (auto-detect).
         config: RunnerConfig instance, or None to load from default config.
         copy_output_to: If set, copy any output YAML to this directory.
+        project: Explicit path to a .uproject file. Overrides config and
+                 auto-discovery.
 
     Returns:
         RunResult with execution details.
@@ -65,6 +69,9 @@ def run_ue_script(
     script_path = os.path.abspath(script_path)
     if not os.path.isfile(script_path):
         return RunResult(success=False, mode="none", error=f"Script not found: {script_path}")
+
+    # Resolve which project to target: explicit flag > CWD > script path > config
+    config = _resolve_project(config, script_path, project)
 
     # Validate config (commandlet needs valid paths; remote can work without them)
     errors = config.validate()
@@ -319,6 +326,69 @@ def _warn(msg: str):
 
 
 # ---------------------------------------------------------------------------
+# Project resolution — pick the right project for this invocation
+# ---------------------------------------------------------------------------
+
+def _resolve_project(
+    config: RunnerConfig,
+    script_path: str,
+    explicit_project: str | None = None,
+) -> RunnerConfig:
+    """Override config's uproject/engine_dir based on context.
+
+    Resolution order:
+      1. Explicit --project flag
+      2. Walk up from CWD looking for a .uproject
+      3. Walk up from the script's location looking for a .uproject
+      4. Keep config values (backward compat — from setup's config.yaml)
+
+    When a project is discovered via (1-3), engine_dir is re-resolved from
+    the discovered .uproject so the two always stay in sync.
+    """
+    from dataclasses import replace
+
+    discovered = None
+    source = None
+
+    if explicit_project:
+        p = Path(explicit_project).resolve()
+        if p.is_file() and p.suffix == ".uproject":
+            discovered = p
+            source = "--project flag"
+        else:
+            _warn(f"--project path is not a .uproject file: {p}")
+
+    if not discovered:
+        cwd_project = find_uproject_from_cwd()
+        if cwd_project:
+            discovered = cwd_project
+            source = f"CWD ({Path.cwd()})"
+
+    if not discovered:
+        script_project = find_uproject_from_path(Path(script_path))
+        if script_project:
+            discovered = script_project
+            source = f"script path ({script_path})"
+
+    if not discovered:
+        return config  # fall back to config file values
+
+    new_uproject = str(discovered)
+    new_engine_dir = ""
+    engine = _find_engine_dir(discovered)
+    if engine:
+        new_engine_dir = str(engine)
+
+    # Only log if the project actually changed
+    if new_uproject != config.uproject:
+        _info(f"Project resolved from {source}: {discovered.name}")
+        if config.uproject:
+            _info(f"  (config had: {config.uproject})")
+
+    return replace(config, uproject=new_uproject, engine_dir=new_engine_dir or config.engine_dir)
+
+
+# ---------------------------------------------------------------------------
 # Setup — check project settings (delegates to shared libs)
 # ---------------------------------------------------------------------------
 
@@ -333,7 +403,7 @@ def run_setup(config: RunnerConfig) -> bool:
 
     For non-interactive setup, use bin/setup.cmd instead.
     """
-    from ue_runner_config import LOCAL_CONFIG_PATH
+    from ue_runner_config import write_project_config as _write_project_config
 
     all_ok = True
 
@@ -349,25 +419,24 @@ def run_setup(config: RunnerConfig) -> bool:
         print(f"  (Walked up looking for Engine/Binaries/Win64/UnrealEditor-Cmd.exe)")
         return False
 
-    # Write project.yaml
-    project_yaml_path = LOCAL_CONFIG_PATH
+    # Write per-project config
+    project_root = uproject.parent
+    config_path = project_root / ".claude" / "unreal-kit.yaml"
     print(f"\n  Project:")
     print(f"    uproject:   {uproject}")
     print(f"    engine_dir: {engine_dir}")
     print(f"\n  Write project config?")
-    print(f"    File: {project_yaml_path}")
+    print(f"    File: {config_path}")
     if not _confirm("  Save?", default_yes=True):
         print("  Skipped.")
         return False
 
-    project_yaml_path.parent.mkdir(parents=True, exist_ok=True)
-    # Write YAML without pyyaml dependency
-    # Use forward slashes — backslashes in YAML double-quoted strings
-    # are escape sequences and break pyyaml parsing on Windows.
-    with open(project_yaml_path, "w") as f:
-        f.write(f'engine_dir: "{str(engine_dir).replace(chr(92), "/")}"\n')
-        f.write(f'uproject: "{str(uproject).replace(chr(92), "/")}"\n')
-    print(f"  WROTE {project_yaml_path}")
+    data = {
+        "engine_dir": str(engine_dir),
+        "uproject": str(uproject),
+    }
+    written = _write_project_config(project_root, data)
+    print(f"  WROTE {written}")
 
     # Reload config with the new file
     from ue_runner_config import load_config as _reload
@@ -520,6 +589,10 @@ def main():
         help="Force execution mode (default: auto-detect)",
     )
     parser.add_argument(
+        "--project", metavar="UPROJECT",
+        help="Path to the .uproject file (overrides auto-detection and config)",
+    )
+    parser.add_argument(
         "--config", help="Path to config YAML",
     )
     parser.add_argument(
@@ -543,6 +616,7 @@ def main():
         force_mode=args.mode,
         config=config,
         copy_output_to=getattr(args, "copy_output", None),
+        project=args.project,
     )
 
     # Print results

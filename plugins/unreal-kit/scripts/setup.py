@@ -9,6 +9,9 @@ Modes:
   --apply --data-dir <path> --set K=V    Write config values
   --init-defaults --data-dir <path> --source <path>  Auto-detect from CWD, fallback to template
 
+Per-project config lives at <project_root>/.claude/unreal-kit.yaml.
+The --data-dir config is a mirror used by the bootstrap engine for variable resolution.
+
 Exit codes: 0=success, 1=needs setup, 2=error
 """
 
@@ -16,6 +19,7 @@ import json
 import os
 import sys
 
+PROJECT_CONFIG_NAME = ".claude/unreal-kit.yaml"
 
 # --- Config schema (single source of truth) ---
 
@@ -166,6 +170,14 @@ def do_apply(data_dir, set_args):
     existing.update(values)
     write_config(config_path, existing)
 
+    # Also write per-project config if uproject is known
+    uproject = existing.get("uproject")
+    if uproject and os.path.isfile(uproject):
+        try:
+            _write_per_project_config(uproject, existing)
+        except OSError:
+            pass  # Non-fatal
+
     print(json.dumps({
         "status": "ok",
         "config_path": config_path,
@@ -174,22 +186,35 @@ def do_apply(data_dir, set_args):
     return 0
 
 
+def _write_per_project_config(uproject, data):
+    """Write per-project config to <project_root>/.claude/unreal-kit.yaml."""
+    from pathlib import Path
+    project_root = Path(uproject).parent
+    config_path = project_root / PROJECT_CONFIG_NAME
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(config_path, "w", encoding="utf-8") as f:
+        for key, value in data.items():
+            safe_value = str(value).replace("\\", "/")
+            f.write(f'{key}: "{safe_value}"\n')
+    return str(config_path)
+
+
 def do_init_defaults(data_dir, source_path):
     """Auto-detect from CWD, falling back to template copy.
 
     Unlike test-plugin which just copies defaults, this tries CWD-based
     auto-detection first so config is created silently when Claude Code
-    is launched from a project root.
+    is launched from a project root. Also writes per-project config at
+    <project_root>/.claude/unreal-kit.yaml.
     """
     config_path = os.path.join(data_dir, "config.yaml")
 
     # Try auto-detection from CWD
     engine_dir, uproject = _auto_detect()
     if engine_dir and uproject:
-        write_config(config_path, {
-            "engine_dir": engine_dir,
-            "uproject": uproject,
-        })
+        data = {"engine_dir": engine_dir, "uproject": uproject}
+        write_config(config_path, data)
+        _write_per_project_config(uproject, data)
         print(json.dumps({
             "status": "ok",
             "config_path": config_path,
@@ -201,10 +226,9 @@ def do_init_defaults(data_dir, source_path):
 
     # Auto-detect found uproject but no engine dir — still write what we have
     if uproject:
-        write_config(config_path, {
-            "engine_dir": "",
-            "uproject": uproject,
-        })
+        data = {"engine_dir": "", "uproject": uproject}
+        write_config(config_path, data)
+        _write_per_project_config(uproject, {"uproject": uproject})
         print(json.dumps({
             "status": "partial",
             "config_path": config_path,
