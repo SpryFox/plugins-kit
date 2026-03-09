@@ -147,6 +147,7 @@ def main():
         return (2, pi.name)
 
     enabled_plugins.sort(key=_plugin_sort_key)
+    deferred_plugin_logs = []
 
     for plugin_info in enabled_plugins:
         plugin_manifest_path = os.path.join(plugin_info.install_path, "bootstrap.json")
@@ -188,27 +189,31 @@ def main():
         if failures:
             all_failures.extend(failures)
 
-        # Write plugin's log entries to its own data dir
+        # Collect plugin log info (deferred — written after reading shell entries)
         plugin_label = f"{plugin_info.name}@{plugin_info.version}" if plugin_info.version else plugin_info.name
         plugin_log_entries = plugin_action_entries + plugin_ok_entries
-        if plugin_log_entries and not args.console:
-            write_log_block(plugin_data_dir, plugin_label, plugin_log_entries)
+        deferred_plugin_logs.append((plugin_data_dir, plugin_label, plugin_log_entries))
 
         # Add plugin section to display
         plugin_display_header = f"{plugin_info.marketplace}:{plugin_info.name}@{plugin_info.version}" if plugin_info.marketplace else plugin_label
         display_sections.append((plugin_display_header, list(plugin_action_entries), list(plugin_ok_entries)))
 
-    # Step 5: Read shell log entries BEFORE writing engine entries to the log
+    # Step 5: Read shell log entries BEFORE writing any engine entries to the log.
+    # Plugin log writes are deferred to step 6 to avoid the bootstrap plugin's
+    # ok_entries leaking back through shell_content (its data_dir == engine data_dir).
     if not args.console:
         shell_content = _read_new_log_entries(data_dir)
     else:
         shell_content = ""  # Console mode: shell already printed its entries
 
-    # Step 6: Write bootstrap's own entries to its log (plugin entries already written to their own dirs)
+    # Step 6: Write all log entries (bootstrap + plugins) — after reading shell entries
     # Skip in console mode — no file writes
     bootstrap_log_entries = bootstrap_action_entries + bootstrap_ok_entries
     if bootstrap_log_entries and not args.console:
         write_log_block(data_dir, bootstrap_label, bootstrap_log_entries)
+    for plugin_data_dir, plugin_label, plugin_log_entries in deferred_plugin_logs:
+        if plugin_log_entries and not args.console:
+            write_log_block(plugin_data_dir, plugin_label, plugin_log_entries)
 
     # Step 7: Build display from sections — actions always, ok only if log_success
     # Each section with entries gets a header line

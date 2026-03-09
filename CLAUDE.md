@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**plugins-kit** is a Claude Code plugin marketplace containing development plugins for Claude Code. Currently ships one plugin: **unreal-kit**, which provides Unreal Engine Python API automation for asset inspection, reference graph traversal, script execution, and data extraction.
+**plugins-kit** is the **development repository** (source of truth) for the plugins-kit Claude Code marketplace. It contains the source code for all plugins in the marketplace. Currently ships: **bootstrap** (dependency management) and **unreal-kit** (Unreal Engine Python API automation).
 
-This is a **Claude Code plugin** — it extends Claude Code with skills, commands, and hooks via the `.claude-plugin/marketplace.json` manifest. Plugins are loaded either via `--plugin-dir` (development) or `enabledPlugins` in settings (production).
+This repo is a **Claude Code plugin marketplace** — it extends Claude Code with skills, commands, and hooks via the `.claude-plugin/marketplace.json` manifest. Plugins are loaded either via `--plugin-dir` (local development) or `enabledPlugins` in settings (production installs from the remote repo).
 
 **Related repository**: The **update01** marketplace (`~/Dev/update01`) is a separate deployment of the same bootstrap system. Changes to shared bootstrap code (engine, hooks, libs) must be applied to both repos.
 
@@ -139,9 +139,14 @@ uv run --extra dev pytest tests/bootstrap/test_marketplace_lifecycle.py::TestChe
 
 Only run the full suite (`uv run --extra dev pytest -v`) when explicitly asked or before a release.
 
-**Always bump, commit, and push** — the plugin cache (`~/.claude/plugins/cache/`) syncs from the remote repository, not the local working copy. Local edits won't take effect until the plugin version is bumped (in `.claude-plugin/plugin.json`), committed, and pushed. The cache keys on version — same version means same code, so a push without a version bump will not refresh the cache.
+**Publishing changes** — the plugin cache (`~/.claude/plugins/cache/`) syncs from the remote repository, not the local working copy. Local edits won't take effect until published. To publish:
 
-**Never manually sync the cache** — do not copy files directly into the plugin cache. Always commit and push, then let Claude Code refresh the cache on restart.
+1. Bump the plugin version in `.claude-plugin/plugin.json` (the cache keys on version — same version = same code)
+2. Commit all changes (including the version bump)
+3. Push to the remote repository
+4. Restart Claude Code — it will pull the new version into the cache
+
+The cache will NOT refresh without a version bump, even if you push new commits. Never copy files directly into the plugin cache — always use this publish flow.
 
 **Keep architecture docs current** — when modifying bootstrap behavior, update the bootstrap skill references (`plugins/bootstrap/skills/bootstrap/references/`) to reflect the changes. These are the source of truth for how the system works.
 
