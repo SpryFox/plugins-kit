@@ -714,8 +714,10 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                 action_entries.append(f"{prefix}git {result.repo_name}: {result.message}, checking out {pinned_commit[:7]}")
                 try:
                     import subprocess as _sp2
-                    _sp2.run(["git", "-C", target_path, "fetch"], capture_output=True, timeout=60)
-                    r = _sp2.run(["git", "-C", target_path, "checkout", pinned_commit], capture_output=True, text=True, timeout=30)
+                    from .git_dep_check import _git_exe
+                    _git = _git_exe()
+                    _sp2.run([_git, "-C", target_path, "fetch"], capture_output=True, timeout=60)
+                    r = _sp2.run([_git, "-C", target_path, "checkout", pinned_commit], capture_output=True, text=True, timeout=30)
                     ok = r.returncode == 0
                     msg = f"checked out {pinned_commit[:7]}" if ok else (r.stderr.strip() or "checkout failed")
                 except (_sp2.SubprocessError, OSError) as e:
