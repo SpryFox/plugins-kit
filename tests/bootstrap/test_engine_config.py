@@ -247,3 +247,52 @@ class TestEngineConfigPhase:
         with open(config_path) as f:
             content = f.read()
         assert "auto-detected" in content
+
+    def test_autodetect_runs_even_when_fields_populated(self, tmp_path):
+        """Autodetect is called even when all required fields have values (no has_empty gate)."""
+        fake_root = make_fake_bootstrap_root(tmp_path)
+        plugins_dir = tmp_path / "plugins"
+
+        plugin_dir = plugins_dir / "ad-plugin"
+        plugin_dir.mkdir()
+        defaults = plugin_dir / "defaults"
+        defaults.mkdir()
+        # Config with values already set
+        (defaults / "config.yaml").write_text("SERVER: old-value\n")
+
+        # Autodetect script that overwrites SERVER with a marker
+        (plugin_dir / "detect.py").write_text(
+            "def detect(config, config_path):\n"
+            "    config['SERVER'] = 'refreshed'\n"
+            "    return True\n"
+        )
+
+        (plugin_dir / "bootstrap.json").write_text(json.dumps({
+            "config": {
+                "file": "config.yaml",
+                "defaults_source": "defaults/config.yaml",
+                "required_fields": {
+                    "SERVER": {"user_msg": "Server address", "agent_msg": "Set SERVER in {config_path}"},
+                },
+                "autodetect": "detect.py detect",
+            },
+        }))
+
+        registry = {"plugins": {"kit:ad-plugin": [{"installPath": "./ad-plugin", "version": "1.0.0"}]}}
+        (plugins_dir / "installed_plugins.json").write_text(json.dumps(registry))
+
+        data_dir = str(tmp_path / "data" / "bootstrap")
+        os.makedirs(data_dir)
+        config = {"schema_version": 3, "enabled_plugins": ["kit:ad-plugin"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
+        with open(os.path.join(data_dir, "config.json"), "w") as f:
+            json.dump(config, f)
+
+        result = run_engine(data_dir, plugin_root=fake_root)
+        assert result.returncode == 0
+
+        # Verify autodetect ran and updated the value even though it was already set
+        plugin_data_dir = os.path.join(str(tmp_path / "data"), "ad-plugin")
+        config_path = os.path.join(plugin_data_dir, "config.yaml")
+        with open(config_path) as f:
+            content = f.read()
+        assert "refreshed" in content

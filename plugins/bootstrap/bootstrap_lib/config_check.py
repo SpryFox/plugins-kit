@@ -123,6 +123,49 @@ def run_autodetect(
         return _empty
 
 
+def run_project_autodetect(plugin_root: str, autodetect_spec: str) -> Optional[Dict[str, str]]:
+    """Run a project_config autodetect. Returns dict of discovered field values, or None.
+
+    Unlike run_autodetect, this calls the function with no arguments and expects
+    a dict return (field name -> value) or None.
+
+    Args:
+        plugin_root: Plugin root directory
+        autodetect_spec: "<script_path> <function_name>" from manifest
+
+    Returns:
+        Dict of discovered field values, or None if nothing detected.
+    """
+    parts = autodetect_spec.split()
+    if len(parts) != 2:
+        return None
+
+    script_rel, func_name = parts
+    script_path = os.path.join(plugin_root, script_rel)
+
+    if not os.path.isfile(script_path):
+        return None
+
+    try:
+        spec = importlib.util.spec_from_file_location("_project_autodetect", script_path)
+        if spec is None or spec.loader is None:
+            return None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        func = getattr(module, func_name, None)
+        if func is None:
+            return None
+
+        result = func()
+
+        if isinstance(result, dict):
+            return result
+        return None
+    except Exception:
+        return None
+
+
 def load_yaml_config(config_path: str) -> Dict[str, Any]:
     """Load a YAML config file. Returns empty dict on failure."""
     try:

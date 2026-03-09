@@ -171,6 +171,14 @@ def main():
         plugin_action_entries = []
         plugin_ok_entries = []
 
+        # Project config phase (per-CWD discovery, before config phase)
+        project_config_section = plugin_manifest.get("project_config")
+        if project_config_section:
+            _process_project_config(
+                project_config_section, plugin_data_dir, plugin_info.install_path,
+                plugin_action_entries, ok_entries=plugin_ok_entries, plugin_name=plugin_info.name,
+            )
+
         # Config phase
         config_section = plugin_manifest.get("config")
         if config_section:
@@ -531,24 +539,22 @@ def _process_config(config_section, plugin_data_dir, plugin_root, action_entries
 
     required_fields = config_section.get("required_fields", {})
 
-    # 3. Autodetect (optional): run only when at least one required field is empty
+    # 3. Autodetect (optional): always run when declared
     autodetect_spec = config_section.get("autodetect")
-    if autodetect_spec and required_fields:
-        has_empty = any(not config.get(f) for f in required_fields)
-        if has_empty:
-            try:
-                changed, ad_actions, ad_ok = run_autodetect(plugin_root, autodetect_spec, config, config_path)
-                action_entries.extend(ad_actions)
-                if ok_entries is not None:
-                    ok_entries.extend(ad_ok)
-                else:
-                    action_entries.extend(ad_ok)
-                if changed:
-                    save_yaml_config(config_path, config)
-                    if not ad_actions:
-                        action_entries.append("config autodetect updated values")
-            except Exception:
-                pass  # Autodetect errors are non-fatal
+    if autodetect_spec:
+        try:
+            changed, ad_actions, ad_ok = run_autodetect(plugin_root, autodetect_spec, config, config_path)
+            action_entries.extend(ad_actions)
+            if ok_entries is not None:
+                ok_entries.extend(ad_ok)
+            else:
+                action_entries.extend(ad_ok)
+            if changed:
+                save_yaml_config(config_path, config)
+                if not ad_actions:
+                    action_entries.append("config autodetect updated values")
+        except Exception:
+            pass  # Autodetect errors are non-fatal
 
     # 4. Validate required fields (apply defaults, collect missing)
     config, missing = config_validate(config, required_fields, config_path)
@@ -579,6 +585,72 @@ def _process_config(config_section, plugin_data_dir, plugin_root, action_entries
         })
 
     return failures
+
+
+def _process_project_config(project_config_section, plugin_data_dir, plugin_root, action_entries, ok_entries=None, plugin_name=""):
+    """Process the project_config section of a plugin manifest.
+
+    Discovers or reads per-project config (in CWD), syncs values to the data-dir config.
+    Returns empty list (failures are handled by the config phase's fix-all).
+    """
+    from .config_check import load_yaml_config, save_yaml_config, run_project_autodetect
+
+    config_file = project_config_section["file"]
+    required_fields = project_config_section.get("required_fields", [])
+    autodetect_spec = project_config_section.get("autodetect")
+
+    project_config_path = os.path.join(os.getcwd(), config_file)
+
+    if os.path.isfile(project_config_path):
+        # File exists — load it and check required fields
+        project_data = load_yaml_config(project_config_path)
+        missing_fields = [f for f in required_fields if not project_data.get(f)]
+
+        if missing_fields and autodetect_spec:
+            # Some fields missing — try autodetect to fill gaps
+            detected = run_project_autodetect(plugin_root, autodetect_spec)
+            if detected:
+                for field in missing_fields:
+                    if detected.get(field):
+                        project_data[field] = detected[field]
+                save_yaml_config(project_config_path, project_data)
+                action_entries.append(f"project config: updated {project_config_path}")
+            # If autodetect returned None, fall through — config phase fix-all handles it
+        else:
+            if ok_entries is not None:
+                ok_entries.append(f"project config: ok - {project_config_path}")
+    else:
+        # File doesn't exist — try autodetect
+        if autodetect_spec:
+            detected = run_project_autodetect(plugin_root, autodetect_spec)
+            if detected:
+                os.makedirs(os.path.dirname(project_config_path), exist_ok=True)
+                save_yaml_config(project_config_path, detected)
+                action_entries.append(f"project config: created {project_config_path}")
+                project_data = detected
+            else:
+                return []  # Nothing detected — config phase fix-all handles it
+        else:
+            return []  # No file, no autodetect — nothing to do
+
+    # Sync discovered values to data-dir config
+    data_config_path = os.path.join(plugin_data_dir, "config.yaml")
+    if os.path.isfile(data_config_path):
+        data_config = load_yaml_config(data_config_path)
+    else:
+        data_config = {}
+
+    changed = False
+    for field in required_fields:
+        val = project_data.get(field, "")
+        if val and val != data_config.get(field, ""):
+            data_config[field] = val
+            changed = True
+
+    if changed:
+        save_yaml_config(data_config_path, data_config)
+
+    return []
 
 
 def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entries, ok_entries, plugin_name="bootstrap"):

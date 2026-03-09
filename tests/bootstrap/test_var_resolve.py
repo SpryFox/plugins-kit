@@ -1,5 +1,6 @@
 """Tests for plugins/bootstrap/lib/var_resolve.py."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -70,4 +71,9 @@ class TestBuildVariables:
 
     def test_none_config(self):
         variables = build_variables("/opt/plugin", "/data", None)
-        assert len(variables) == 2
+        assert len(variables) == 3  # plugin_root, data_dir, cwd
+
+    def test_cwd_variable(self):
+        variables = build_variables("/opt/plugin", "/data")
+        assert "cwd" in variables
+        assert variables["cwd"] == os.getcwd()

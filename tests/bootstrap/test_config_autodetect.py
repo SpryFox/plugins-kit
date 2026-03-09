@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from bootstrap_lib.config_check import run_autodetect, save_yaml_config, load_yaml_config
+from bootstrap_lib.config_check import run_autodetect, run_project_autodetect, save_yaml_config, load_yaml_config
 
 
 def _write_autodetect_script(plugin_root, script_name="custom_bootstrap.py", body=""):
@@ -124,3 +124,67 @@ def autodetect(config, config_path):
         assert changed is False
         assert actions == []
         assert ok == ["config: ok - /existing.yaml"]
+
+
+class TestRunProjectAutodetect:
+    def test_returns_dict(self, tmp_path):
+        """Project autodetect returns a dict of discovered values."""
+        plugin_root = str(tmp_path / "plugin")
+        os.makedirs(plugin_root)
+
+        _write_autodetect_script(plugin_root, body="""\
+def discover():
+    return {"uproject": "/path/to/Game.uproject", "engine_dir": "/path/to/engine"}
+""")
+        result = run_project_autodetect(plugin_root, "custom_bootstrap.py discover")
+        assert result == {"uproject": "/path/to/Game.uproject", "engine_dir": "/path/to/engine"}
+
+    def test_returns_none(self, tmp_path):
+        """Project autodetect returns None when nothing found."""
+        plugin_root = str(tmp_path / "plugin")
+        os.makedirs(plugin_root)
+
+        _write_autodetect_script(plugin_root, body="""\
+def discover():
+    return None
+""")
+        result = run_project_autodetect(plugin_root, "custom_bootstrap.py discover")
+        assert result is None
+
+    def test_error_returns_none(self, tmp_path):
+        """Project autodetect that raises returns None."""
+        plugin_root = str(tmp_path / "plugin")
+        os.makedirs(plugin_root)
+
+        _write_autodetect_script(plugin_root, body="""\
+def discover():
+    raise RuntimeError("boom")
+""")
+        result = run_project_autodetect(plugin_root, "custom_bootstrap.py discover")
+        assert result is None
+
+    def test_invalid_spec_returns_none(self, tmp_path):
+        """Invalid spec (no function name) returns None."""
+        plugin_root = str(tmp_path / "plugin")
+        os.makedirs(plugin_root)
+        result = run_project_autodetect(plugin_root, "just-a-script.py")
+        assert result is None
+
+    def test_missing_script_returns_none(self, tmp_path):
+        """Missing script returns None."""
+        plugin_root = str(tmp_path / "plugin")
+        os.makedirs(plugin_root)
+        result = run_project_autodetect(plugin_root, "nonexistent.py discover")
+        assert result is None
+
+    def test_non_dict_return_is_none(self, tmp_path):
+        """Non-dict return (e.g. bool) is treated as None."""
+        plugin_root = str(tmp_path / "plugin")
+        os.makedirs(plugin_root)
+
+        _write_autodetect_script(plugin_root, body="""\
+def discover():
+    return True
+""")
+        result = run_project_autodetect(plugin_root, "custom_bootstrap.py discover")
+        assert result is None

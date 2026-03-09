@@ -4,6 +4,7 @@ Expands ${var} references using a variables dict. Unresolved variables
 cause the value to be marked as unresolvable (returns None).
 """
 
+import os
 import re
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -52,6 +53,7 @@ def build_variables(
     variables: Dict[str, str] = {
         "plugin_root": plugin_root,
         "data_dir": data_dir,
+        "cwd": os.getcwd(),
     }
 
     if config:

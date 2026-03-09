@@ -1,89 +1,37 @@
 """Custom bootstrap script for unreal-kit.
 
 Two entry points:
-- autodetect(config, config_path): Discovers .uproject and engine_dir from CWD,
-  reads/writes per-project config at <project_root>/.claude/unreal-kit.yaml
+- autodetect(): Discovers .uproject and engine_dir from CWD (no-arg, returns dict | None)
 - bootstrap(ctx): Copies project-specific stubs if available (upgrade from PyPI stubs)
 """
 
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 
-def autodetect(config: Dict[str, Any], config_path: str) -> bool:
-    """Discover .uproject and engine_dir, preferring per-project config.
+def autodetect() -> Optional[Dict[str, str]]:
+    """Discover .uproject and engine_dir from CWD.
 
-    Resolution:
-    1. Check for existing .claude/unreal-kit.yaml (walk up from CWD).
-       If found, read it and populate the engine's config dict.
-    2. If not found, discover from CWD via ue_discovery.
-       Write .claude/unreal-kit.yaml in the project root.
-    3. Populate config dict so the engine writes to data_dir config
-       (needed for ini_settings variable resolution).
-
-    Returns True if any config values were updated.
+    Returns dict of discovered field values, or None if no project found.
+    Called by the engine's project_config primitive (no arguments).
     """
-    # Add lib to path
     skill_lib = os.path.join(os.path.dirname(__file__), "lib")
     if skill_lib not in sys.path:
         sys.path.insert(0, skill_lib)
 
     from ue_discovery import find_uproject_from_cwd, find_engine_dir
-    from ue_runner_config import find_project_config, write_project_config, _load_yaml
 
-    actions = []
-    ok = []
+    uproject = find_uproject_from_cwd()
+    if not uproject:
+        return None
 
-    # 1. Check for existing per-project config
-    project_config_path = find_project_config()
-    if project_config_path:
-        project_data = _load_yaml(project_config_path)
-        changed = False
-        for key in ("uproject", "engine_dir"):
-            val = project_data.get(key, "")
-            if val and val != config.get(key, ""):
-                config[key] = val
-                changed = True
-        if changed:
-            actions.append(f"config: updated from {project_config_path}")
-        else:
-            ok.append(f"config: ok - {project_config_path}")
-        return {"changed": changed, "actions": actions, "ok": ok}
-
-    # 2. Discover from CWD
-    changed = False
-
-    if not config.get("uproject"):
-        uproject = find_uproject_from_cwd()
-        if uproject:
-            config["uproject"] = str(uproject)
-            changed = True
-
-    if not config.get("engine_dir") and config.get("uproject"):
-        uproject_path = Path(config["uproject"])
-        if uproject_path.is_file():
-            engine = find_engine_dir(uproject_path)
-            if engine:
-                config["engine_dir"] = str(engine)
-                changed = True
-
-    # 3. Write per-project config if we discovered a project
-    if config.get("uproject"):
-        uproject_path = Path(config["uproject"])
-        if uproject_path.is_file():
-            project_root = Path.cwd()
-            data = {"uproject": config["uproject"]}
-            if config.get("engine_dir"):
-                data["engine_dir"] = config["engine_dir"]
-            try:
-                cfg_path = write_project_config(project_root, data)
-                actions.append(f"config: created {cfg_path}")
-            except OSError:
-                pass  # Non-fatal — per-project config is a convenience
-
-    return {"changed": changed, "actions": actions, "ok": ok}
+    result: Dict[str, str] = {"uproject": str(uproject)}
+    engine = find_engine_dir(uproject)
+    if engine:
+        result["engine_dir"] = str(engine)
+    return result
 
 
 def bootstrap(ctx: Any) -> None:
