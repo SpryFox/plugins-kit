@@ -1,13 +1,8 @@
 """Tests for plugins/bootstrap/lib/ini_check.py."""
 
-import os
-import sys
-
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, "plugins", "bootstrap", "lib"))
-
-from ini_check import check_ini_setting, write_ini_setting
+from bootstrap_lib.ini_check import check_ini_setting, write_ini_setting
 
 
 class TestCheckIniSetting:

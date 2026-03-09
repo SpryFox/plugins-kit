@@ -28,7 +28,7 @@ class TestEngineIntegration:
         """Create a fake bootstrap root with minimal ecosystem manifest."""
         fake_root = tmp_path / "bootstrap_minimal"
         fake_root.mkdir()
-        (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
+        (fake_root / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
         (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
         # Custom defaults with self_setup containing tools
         defaults = fake_root / "defaults"
@@ -69,7 +69,7 @@ class TestEngineIntegration:
         """A self_setup with a fake tool should produce JSON failure output."""
         fake_root = tmp_path / "fake_plugin"
         fake_root.mkdir()
-        (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
+        (fake_root / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
         (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
         defaults = fake_root / "defaults"
         defaults.mkdir()
@@ -99,7 +99,7 @@ class TestEngineIntegration:
         """When install command runs but tool is still missing, failure JSON is emitted."""
         fake_root = tmp_path / "fake_plugin"
         fake_root.mkdir()
-        (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
+        (fake_root / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
         (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
         defaults = fake_root / "defaults"
         defaults.mkdir()

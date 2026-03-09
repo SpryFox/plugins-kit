@@ -5,7 +5,7 @@ import subprocess
 
 import pytest
 
-from git_dep_check import GitDepCheckResult, check_git_dep, _extract_repo_name
+from bootstrap_lib.git_dep_check import GitDepCheckResult, check_git_dep, _extract_repo_name
 
 
 class TestExtractRepoName:

@@ -2,7 +2,7 @@
 
 import sys
 
-from tool_check import check_tool, run_install
+from bootstrap_lib.tool_check import check_tool, run_install
 
 
 class TestCheckTool:

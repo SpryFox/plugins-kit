@@ -1,14 +1,11 @@
 """Tests for time-based caching in plugins/bootstrap/lib/cache.py."""
 
 import os
-import sys
 import time
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, "plugins", "bootstrap", "lib"))
-
-from cache import check_time_cache, write_time_cache
+from bootstrap_lib.cache import check_time_cache, write_time_cache
 
 
 class TestTimeCache:

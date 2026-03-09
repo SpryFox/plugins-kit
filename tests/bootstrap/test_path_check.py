@@ -2,7 +2,7 @@
 
 import os
 
-from path_check import check_path_entry
+from bootstrap_lib.path_check import check_path_entry
 
 
 class TestCheckPathEntry:

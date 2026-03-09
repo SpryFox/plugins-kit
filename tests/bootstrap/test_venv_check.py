@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from venv_check import VenvCheckResult, check_venv
+from bootstrap_lib.venv_check import VenvCheckResult, check_venv
 
 
 class TestCheckVenv:

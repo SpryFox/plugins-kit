@@ -2,20 +2,12 @@
 
 import json
 import os
-import sys
 from pathlib import Path
 
 import pytest
 
-BOOTSTRAP_ROOT = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, "plugins", "bootstrap")
-)
-
-# Add lib/ to path for direct imports
-sys.path.insert(0, os.path.join(BOOTSTRAP_ROOT, "lib"))
-
-from var_resolve import resolve_vars, build_variables
-from ini_check import check_ini_setting, write_ini_setting
+from bootstrap_lib.var_resolve import resolve_vars, build_variables
+from bootstrap_lib.ini_check import check_ini_setting, write_ini_setting
 
 
 class TestUnrealKitManifestStructure:

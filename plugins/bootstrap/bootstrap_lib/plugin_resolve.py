@@ -15,11 +15,17 @@ class PluginInfo(NamedTuple):
 def parse_plugin_ref(plugin_ref: str) -> tuple:
     """Parse a plugin ref into (marketplace, plugin_name).
 
-    Format: 'marketplace:plugin' (e.g. 'plugins-kit:bootstrap').
-    Returns ('', plugin_ref) if no colon separator found.
+    Supports two formats:
+    - 'marketplace:plugin' (e.g. 'plugins-kit:bootstrap') — used in bootstrap.json
+    - 'plugin@marketplace' (e.g. 'bootstrap@plugins-kit') — used in installed_plugins.json
+
+    Returns ('', plugin_ref) if no separator found.
     """
     if ":" in plugin_ref:
         marketplace, plugin_name = plugin_ref.split(":", 1)
+        return marketplace, plugin_name
+    if "@" in plugin_ref:
+        plugin_name, marketplace = plugin_ref.split("@", 1)
         return marketplace, plugin_name
     return "", plugin_ref
 

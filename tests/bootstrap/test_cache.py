@@ -2,7 +2,7 @@
 
 import os
 
-from cache import check_cache, write_cache, compute_current_hash, check_cache_fast
+from bootstrap_lib.cache import check_cache, write_cache, compute_current_hash, check_cache_fast
 
 
 class TestCache:

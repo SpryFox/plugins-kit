@@ -5,7 +5,33 @@ import os
 
 import pytest
 
-from plugin_resolve import PluginInfo, list_enabled_plugins, resolve_plugin
+from bootstrap_lib.plugin_resolve import PluginInfo, list_enabled_plugins, parse_plugin_ref, resolve_plugin
+
+
+class TestParsePluginRef:
+    def test_colon_format(self):
+        """Colon format: marketplace:plugin (used in bootstrap.json)."""
+        marketplace, name = parse_plugin_ref("plugins-kit:bootstrap")
+        assert marketplace == "plugins-kit"
+        assert name == "bootstrap"
+
+    def test_at_format(self):
+        """At format: plugin@marketplace (used in installed_plugins.json)."""
+        marketplace, name = parse_plugin_ref("bootstrap@plugins-kit")
+        assert marketplace == "plugins-kit"
+        assert name == "bootstrap"
+
+    def test_no_separator(self):
+        """No separator returns empty marketplace."""
+        marketplace, name = parse_plugin_ref("standalone")
+        assert marketplace == ""
+        assert name == "standalone"
+
+    def test_colon_takes_precedence(self):
+        """If both : and @ are present, colon wins (unlikely but deterministic)."""
+        marketplace, name = parse_plugin_ref("mk:plug@extra")
+        assert marketplace == "mk"
+        assert name == "plug@extra"
 
 
 class TestResolvePlugin:
@@ -165,6 +191,23 @@ class TestListEnabledPlugins:
         assert results == []
         assert cache_changed
         assert config["bootstrap_cache"] == []
+
+    def test_at_format_refs_parsed_correctly(self, tmp_path):
+        """Plugin refs in @ format (from installed_plugins.json) are parsed correctly."""
+        plugin_dir = tmp_path / "my-plugin"
+        plugin_dir.mkdir()
+        (plugin_dir / "bootstrap.json").write_text("{}")
+
+        registry = {"plugins": {"my-plugin@my-marketplace": [{"installPath": f"./{plugin_dir.name}", "version": "1.0.0"}]}}
+        reg_path = tmp_path / "installed_plugins.json"
+        reg_path.write_text(json.dumps(registry))
+        config = {"no_bootstrap": [], "bootstrap_cache": []}
+
+        results, cache_changed = list_enabled_plugins(config, str(reg_path), str(tmp_path))
+
+        assert len(results) == 1
+        assert results[0].name == "my-plugin"
+        assert results[0].marketplace == "my-marketplace"
 
     def test_empty_registry(self, tmp_path):
         """Empty registry returns empty results."""

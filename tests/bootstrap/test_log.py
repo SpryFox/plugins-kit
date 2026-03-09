@@ -3,7 +3,7 @@
 import os
 import re
 
-from log import LOG_FILENAME, MAX_LOG_LINES, write_log_block
+from bootstrap_lib.log import LOG_FILENAME, MAX_LOG_LINES, write_log_block
 
 
 class TestWriteLogBlock:

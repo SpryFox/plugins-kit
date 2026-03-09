@@ -7,9 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, "plugins", "bootstrap", "lib"))
-
-from marketplace_lifecycle import (
+from bootstrap_lib.marketplace_lifecycle import (
     LifecycleResult,
     ScopeCheckResult,
     _version_greater,
@@ -101,15 +99,13 @@ class TestMarketplaceAlwaysUpdate:
 
     @staticmethod
     def _setup_engine_path():
-        """Add engine and lib to sys.path for direct _process_manifest import."""
+        """Add engine to sys.path for direct _process_manifest import."""
         bootstrap_root = os.path.normpath(
             os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, "plugins", "bootstrap")
         )
         engine_dir = os.path.join(bootstrap_root, "engine")
-        lib_dir = os.path.join(bootstrap_root, "lib")
-        for d in (engine_dir, lib_dir):
-            if d not in sys.path:
-                sys.path.insert(0, d)
+        if engine_dir not in sys.path:
+            sys.path.insert(0, engine_dir)
 
     def test_always_update_calls_update_when_behind(self, tmp_path, monkeypatch):
         """When alwaysUpdate is true and marketplace is behind, update_marketplace is called."""
@@ -137,9 +133,9 @@ class TestMarketplaceAlwaysUpdate:
         action_entries = []
         ok_entries = []
 
-        with patch("marketplace_lifecycle.check_marketplace_current",
+        with patch("bootstrap_lib.marketplace_lifecycle.check_marketplace_current",
                     return_value=LifecycleResult(passed=False, ref="my-market", message="updates available")), \
-             patch("marketplace_lifecycle.update_marketplace",
+             patch("bootstrap_lib.marketplace_lifecycle.update_marketplace",
                     return_value=LifecycleResult(passed=True, ref="my-market", message="updated")) as mock_update:
             _process_manifest(
                 manifest, "windows", str(tmp_path / "data"), str(tmp_path / "root"),
@@ -175,9 +171,9 @@ class TestMarketplaceAlwaysUpdate:
         action_entries = []
         ok_entries = []
 
-        with patch("marketplace_lifecycle.check_marketplace_current",
+        with patch("bootstrap_lib.marketplace_lifecycle.check_marketplace_current",
                     return_value=LifecycleResult(passed=True, ref="my-market", message="up to date")), \
-             patch("marketplace_lifecycle.update_marketplace") as mock_update:
+             patch("bootstrap_lib.marketplace_lifecycle.update_marketplace") as mock_update:
             _process_manifest(
                 manifest, "windows", str(tmp_path / "data"), str(tmp_path / "root"),
                 action_entries, ok_entries, plugin_name="test",
@@ -212,7 +208,7 @@ class TestMarketplaceAlwaysUpdate:
         action_entries = []
         ok_entries = []
 
-        with patch("marketplace_lifecycle.update_marketplace") as mock_update:
+        with patch("bootstrap_lib.marketplace_lifecycle.update_marketplace") as mock_update:
             _process_manifest(
                 manifest, "windows", str(tmp_path / "data"), str(tmp_path / "root"),
                 action_entries, ok_entries, plugin_name="test",
@@ -246,9 +242,9 @@ class TestMarketplaceAlwaysUpdate:
         action_entries = []
         ok_entries = []
 
-        with patch("marketplace_lifecycle.check_marketplace_current",
+        with patch("bootstrap_lib.marketplace_lifecycle.check_marketplace_current",
                     return_value=LifecycleResult(passed=False, ref="my-market", message="updates available")), \
-             patch("marketplace_lifecycle.update_marketplace",
+             patch("bootstrap_lib.marketplace_lifecycle.update_marketplace",
                     return_value=LifecycleResult(passed=False, ref="my-market", message="network error")):
             failures = _process_manifest(
                 manifest, "windows", str(tmp_path / "data"), str(tmp_path / "root"),
@@ -339,10 +335,8 @@ class TestScopeRemediation:
             os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, "plugins", "bootstrap")
         )
         engine_dir = os.path.join(bootstrap_root, "engine")
-        lib_dir = os.path.join(bootstrap_root, "lib")
-        for d in (engine_dir, lib_dir):
-            if d not in sys.path:
-                sys.path.insert(0, d)
+        if engine_dir not in sys.path:
+            sys.path.insert(0, engine_dir)
 
     def test_scope_mismatch_triggers_reinstall(self, tmp_path, monkeypatch):
         """Plugin at wrong scope gets uninstalled and reinstalled at correct scope."""
@@ -373,11 +367,11 @@ class TestScopeRemediation:
         action_entries = []
         ok_entries = []
 
-        with patch("marketplace_lifecycle.uninstall_plugin",
+        with patch("bootstrap_lib.marketplace_lifecycle.uninstall_plugin",
                     return_value=LifecycleResult(passed=True, ref="plugins-kit:bootstrap", message="uninstalled")) as mock_uninst, \
-             patch("marketplace_lifecycle.install_plugin",
+             patch("bootstrap_lib.marketplace_lifecycle.install_plugin",
                     return_value=LifecycleResult(passed=True, ref="plugins-kit:bootstrap", message="installed")) as mock_inst, \
-             patch("marketplace_lifecycle.check_plugin_version") as mock_ver:
+             patch("bootstrap_lib.marketplace_lifecycle.check_plugin_version") as mock_ver:
             mock_ver.return_value = type("R", (), {"up_to_date": True})()
             _process_manifest(
                 manifest, "windows", str(tmp_path / "data"), str(tmp_path / "root"),
@@ -416,8 +410,8 @@ class TestScopeRemediation:
         action_entries = []
         ok_entries = []
 
-        with patch("marketplace_lifecycle.uninstall_plugin") as mock_uninst, \
-             patch("marketplace_lifecycle.check_plugin_version") as mock_ver:
+        with patch("bootstrap_lib.marketplace_lifecycle.uninstall_plugin") as mock_uninst, \
+             patch("bootstrap_lib.marketplace_lifecycle.check_plugin_version") as mock_ver:
             mock_ver.return_value = type("R", (), {"up_to_date": True})()
             _process_manifest(
                 manifest, "windows", str(tmp_path / "data"), str(tmp_path / "root"),

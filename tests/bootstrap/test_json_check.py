@@ -1,14 +1,10 @@
 """Tests for plugins/bootstrap/lib/json_check.py."""
 
 import json
-import os
-import sys
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, "plugins", "bootstrap", "lib"))
-
-from json_check import check_json_entries, merge_json_entries
+from bootstrap_lib.json_check import check_json_entries, merge_json_entries
 
 
 class TestCheckJsonEntries:

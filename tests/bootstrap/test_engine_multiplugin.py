@@ -41,7 +41,7 @@ def make_fake_bootstrap_root(tmp_path, manifest=None, self_setup=None):
     """Create a fake bootstrap plugin root with symlinked lib/engine and custom defaults."""
     fake_root = tmp_path / "bootstrap"
     fake_root.mkdir(parents=True)
-    (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
+    (fake_root / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
     (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
     defaults = fake_root / "defaults"
     defaults.mkdir()
@@ -82,7 +82,7 @@ class TestMultiPluginEngine:
 
         fake_root = plugins_dir / "bootstrap"
         fake_root.mkdir()
-        (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
+        (fake_root / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
         (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
         _write_minimal_defaults(fake_root)
         (fake_root / "bootstrap.json").write_text(json.dumps({}))
@@ -122,7 +122,7 @@ class TestMultiPluginEngine:
 
         fake_root = plugins_dir / "bootstrap"
         fake_root.mkdir()
-        (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
+        (fake_root / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
         (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
         _write_minimal_defaults(fake_root)
         (fake_root / "bootstrap.json").write_text(json.dumps({}))
@@ -157,7 +157,7 @@ class TestMultiPluginEngine:
 
         fake_root = plugins_dir / "bootstrap"
         fake_root.mkdir()
-        (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
+        (fake_root / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
         (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
         _write_minimal_defaults(fake_root)
         (fake_root / "bootstrap.json").write_text(json.dumps({}))
@@ -207,7 +207,7 @@ class TestMultiPluginEngine:
 
         fake_root = plugins_dir / "bootstrap"
         fake_root.mkdir()
-        (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
+        (fake_root / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
         (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
         _write_minimal_defaults(fake_root)
         (fake_root / "bootstrap.json").write_text(json.dumps({}))
@@ -243,7 +243,7 @@ class TestMultiPluginEngine:
 
         fake_root = plugins_dir / "bootstrap"
         fake_root.mkdir()
-        (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
+        (fake_root / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
         (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
         _write_minimal_defaults(fake_root)
         (fake_root / "bootstrap.json").write_text(json.dumps({}))
@@ -274,7 +274,7 @@ class TestMultiPluginEngine:
 
         fake_root = plugins_dir / "bootstrap"
         fake_root.mkdir()
-        (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
+        (fake_root / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
         (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
         _write_minimal_defaults(fake_root)
         (fake_root / "bootstrap.json").write_text(json.dumps({}))
@@ -309,7 +309,7 @@ class TestMultiPluginEngine:
 
         fake_root = plugins_dir / "bootstrap"
         fake_root.mkdir()
-        (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
+        (fake_root / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
         (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
         _write_minimal_defaults(fake_root)
         (fake_root / "bootstrap.json").write_text(json.dumps({}))
@@ -342,7 +342,7 @@ class TestMultiPluginEngine:
         # Simulate cache layout: plugins/cache/mkt/bootstrap/0.5.0/
         cache_dir = tmp_path / "plugins" / "cache" / "mymkt" / "bootstrap" / "0.5.0"
         cache_dir.mkdir(parents=True)
-        (cache_dir / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
+        (cache_dir / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
         (cache_dir / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
         _write_minimal_defaults(cache_dir)
         (cache_dir / "bootstrap.json").write_text(json.dumps({}))

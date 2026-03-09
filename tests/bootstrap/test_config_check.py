@@ -1,16 +1,10 @@
 """Tests for bootstrap lib/config_check.py — config management primitives."""
 
 import os
-import sys
 
 import pytest
 
-BOOTSTRAP_LIB = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, "plugins", "bootstrap", "lib")
-)
-sys.path.insert(0, BOOTSTRAP_LIB)
-
-from config_check import config_init, config_validate, load_yaml_config, save_yaml_config
+from bootstrap_lib.config_check import config_init, config_validate, load_yaml_config, save_yaml_config
 
 
 class TestConfigInit:

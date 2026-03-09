@@ -21,7 +21,7 @@ plugins-kit/                          # Marketplace root
       .claude-plugin/plugin.json      # Plugin manifest
       bootstrap.json                  # Bootstrap plugin's own manifest
       engine/                         # Bootstrap engine + config
-      lib/                            # Shared libraries (cache, tool_check, etc.)
+      bootstrap_lib/                  # Shared libraries (cache, tool_check, etc.) — installable Python package
       hooks/sessionstart/             # SessionStart hook (bash wrapper)
       defaults/                       # Default config files
     test-plugin/                      # Test plugin (exercises bootstrap system)
@@ -51,15 +51,15 @@ plugins-kit/                          # Marketplace root
 | File | Purpose |
 |------|---------|
 | `plugins/bootstrap/engine/bootstrap_engine.py` | Main engine — processes manifests, runs checks, emits hook JSON |
-| `plugins/bootstrap/lib/cache.py` | Content-hash caching (compute, check, write) |
-| `plugins/bootstrap/lib/tool_check.py` | System tool availability checks |
-| `plugins/bootstrap/lib/platform_detect.py` | OS detection |
-| `plugins/bootstrap/lib/log.py` | File-based bootstrap logging |
-| `plugins/bootstrap/lib/venv_check.py` | Python venv validation |
-| `plugins/bootstrap/lib/git_dep_check.py` | Git dependency validation |
-| `plugins/bootstrap/lib/plugin_resolve.py` | Plugin registry resolution |
-| `plugins/bootstrap/lib/path_check.py` | PATH entry validation |
-| `plugins/bootstrap/lib/manifest_merge.py` | Deep-merge for layered bootstrap.json files |
+| `plugins/bootstrap/bootstrap_lib/cache.py` | Content-hash caching (compute, check, write) |
+| `plugins/bootstrap/bootstrap_lib/tool_check.py` | System tool availability checks |
+| `plugins/bootstrap/bootstrap_lib/platform_detect.py` | OS detection |
+| `plugins/bootstrap/bootstrap_lib/log.py` | File-based bootstrap logging |
+| `plugins/bootstrap/bootstrap_lib/venv_check.py` | Python venv validation |
+| `plugins/bootstrap/bootstrap_lib/git_dep_check.py` | Git dependency validation |
+| `plugins/bootstrap/bootstrap_lib/plugin_resolve.py` | Plugin registry resolution |
+| `plugins/bootstrap/bootstrap_lib/path_check.py` | PATH entry validation |
+| `plugins/bootstrap/bootstrap_lib/manifest_merge.py` | Deep-merge for layered bootstrap.json files |
 | `plugins/bootstrap/engine/config.py` | Config loading, migration, persistence |
 | `plugins/bootstrap/hooks/sessionstart/session-bootstrap.sh` | SessionStart hook (bash wrapper for engine) |
 | `plugins/bootstrap/bootstrap.json` | Bootstrap plugin's own manifest |
@@ -67,12 +67,12 @@ plugins-kit/                          # Marketplace root
 | `docs/planning/bootstrap/MILESTONES.md` | Development milestones and progress |
 | `plugins/test-plugin/bootstrap.json` | Test plugin's bootstrap manifest |
 | `plugins/test-plugin/scripts/setup.py` | Test plugin config setup |
-| `tests/bootstrap/` | All bootstrap tests (mirrors lib/ structure) |
+| `tests/bootstrap/` | All bootstrap tests (mirrors bootstrap_lib/ structure) |
 
 ### Key Design Decisions
 
 - **Bootstrapping**: Two-layer system — session bootstrap (bash SessionStart hook, manifest-driven) ensures system tools, venv, and git deps; script bootstrap (Python, runs inside UE Editor) handles UE-side packages at runtime. See [engine-internals.md](plugins/bootstrap/skills/bootstrap/references/engine-internals.md) for engine details and [script-bootstrap.md](plugins/unreal-kit/skills/ue-python-api/references/script-bootstrap.md) for UE-side bootstrapping.
-- **Config resolution order**: CLI args > project config (`~/.claude/plugins/data/unreal-kit/config.yaml`) > skill config (`ue_runner_config.yaml`) > hardcoded defaults
+- **Config resolution order**: CLI args > project config (`~/.claude/plugins/data/plugins-kit/unreal-kit/config.yaml`) > skill config (`ue_runner_config.yaml`) > hardcoded defaults
 - **Auto-detection execution**: `ue_runner.py` tries remote execution (UDP via upyrc) first, falls back to headless commandlet if editor isn't running
 
 ### Core Components

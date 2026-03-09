@@ -26,7 +26,7 @@ def make_fake_bootstrap_root(tmp_path, manifest=None):
     """Create a fake bootstrap plugin root with symlinked lib/engine/defaults."""
     fake_root = tmp_path / "plugins" / "bootstrap"
     fake_root.mkdir(parents=True)
-    (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
+    (fake_root / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
     (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
     (fake_root / "defaults").symlink_to(os.path.join(BOOTSTRAP_ROOT, "defaults"))
 

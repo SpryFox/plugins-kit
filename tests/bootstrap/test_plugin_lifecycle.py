@@ -1,14 +1,10 @@
 """Tests for plugins/bootstrap/lib/plugin_lifecycle.py."""
 
 import json
-import os
-import sys
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, "plugins", "bootstrap", "lib"))
-
-from plugin_lifecycle import (
+from bootstrap_lib.plugin_lifecycle import (
     check_plugin_registered,
     register_plugin,
     unregister_plugin,

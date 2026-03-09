@@ -2,16 +2,12 @@
 
 import io
 import json
-import os
-import sys
 import zipfile
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, "plugins", "bootstrap", "lib"))
-
-from pypi_check import check_pypi_package, download_and_extract, _get_wheel_url
+from bootstrap_lib.pypi_check import check_pypi_package, download_and_extract, _get_wheel_url
 
 
 class TestCheckPypiPackage:
@@ -38,8 +34,8 @@ class TestDownloadAndExtract:
                 zf.writestr(name, content)
         return buf.getvalue()
 
-    @patch("pypi_check.urlopen")
-    @patch("pypi_check._get_wheel_url")
+    @patch("bootstrap_lib.pypi_check.urlopen")
+    @patch("bootstrap_lib.pypi_check._get_wheel_url")
     def test_download_and_extract_success(self, mock_get_url, mock_urlopen, tmp_path):
         wheel_data = self._make_wheel_bytes({
             "unreal/__init__.py": b"# init",
@@ -60,8 +56,8 @@ class TestDownloadAndExtract:
         assert target.is_file()
         assert target.stat().st_size > 100
 
-    @patch("pypi_check.urlopen")
-    @patch("pypi_check._get_wheel_url")
+    @patch("bootstrap_lib.pypi_check.urlopen")
+    @patch("bootstrap_lib.pypi_check._get_wheel_url")
     def test_extract_pattern_filters_files(self, mock_get_url, mock_urlopen, tmp_path):
         """extract_pattern selects files matching the glob instead of largest."""
         wheel_data = self._make_wheel_bytes({
@@ -84,7 +80,7 @@ class TestDownloadAndExtract:
         content = target.read_text()
         assert "key" in content
 
-    @patch("pypi_check._get_wheel_url")
+    @patch("bootstrap_lib.pypi_check._get_wheel_url")
     def test_download_fails_no_url(self, mock_get_url, tmp_path):
         mock_get_url.return_value = None
         target = tmp_path / "stubs" / "unreal.py"
@@ -92,8 +88,8 @@ class TestDownloadAndExtract:
         assert result.passed is False
         assert "failed to find wheel" in result.message
 
-    @patch("pypi_check.urlopen")
-    @patch("pypi_check._get_wheel_url")
+    @patch("bootstrap_lib.pypi_check.urlopen")
+    @patch("bootstrap_lib.pypi_check._get_wheel_url")
     def test_bad_zip_data(self, mock_get_url, mock_urlopen, tmp_path):
         mock_get_url.return_value = "https://example.com/bad.whl"
 
@@ -108,8 +104,8 @@ class TestDownloadAndExtract:
         assert result.passed is False
         assert "not a valid wheel" in result.message
 
-    @patch("pypi_check.urlopen")
-    @patch("pypi_check._get_wheel_url")
+    @patch("bootstrap_lib.pypi_check.urlopen")
+    @patch("bootstrap_lib.pypi_check._get_wheel_url")
     def test_wheel_with_no_py_files(self, mock_get_url, mock_urlopen, tmp_path):
         wheel_data = self._make_wheel_bytes({
             "data.txt": b"not a python file",
@@ -130,7 +126,7 @@ class TestDownloadAndExtract:
 
 
 class TestGetWheelUrl:
-    @patch("pypi_check.urlopen")
+    @patch("bootstrap_lib.pypi_check.urlopen")
     def test_returns_wheel_url(self, mock_urlopen):
         pypi_response = {
             "info": {"version": "1.0"},
@@ -148,7 +144,7 @@ class TestGetWheelUrl:
         url = _get_wheel_url("some-pkg")
         assert url == "https://example.com/pkg.whl"
 
-    @patch("pypi_check.urlopen")
+    @patch("bootstrap_lib.pypi_check.urlopen")
     def test_falls_back_to_sdist(self, mock_urlopen):
         pypi_response = {
             "info": {"version": "1.0"},
@@ -165,7 +161,7 @@ class TestGetWheelUrl:
         url = _get_wheel_url("some-pkg")
         assert url == "https://example.com/pkg.tar.gz"
 
-    @patch("pypi_check.urlopen", side_effect=Exception("network error"))
+    @patch("bootstrap_lib.pypi_check.urlopen", side_effect=Exception("network error"))
     def test_returns_none_on_error(self, mock_urlopen):
         url = _get_wheel_url("some-pkg")
         assert url is None

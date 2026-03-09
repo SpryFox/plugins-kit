@@ -27,8 +27,8 @@ def make_minimal_root(tmp_path):
     """Create a fake bootstrap root with no requirements."""
     fake_root = tmp_path / "bootstrap_minimal"
     fake_root.mkdir(exist_ok=True)
-    if not (fake_root / "lib").exists():
-        (fake_root / "lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "lib"))
+    if not (fake_root / "bootstrap_lib").exists():
+        (fake_root / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
     if not (fake_root / "engine").exists():
         (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
     defaults = fake_root / "defaults"

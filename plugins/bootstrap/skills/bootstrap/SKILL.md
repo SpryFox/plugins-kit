@@ -28,7 +28,38 @@ The engine produces four message outcomes on session start:
 
 **Healthy steady state**: Bootstrap is working correctly when it's invisible.
 
-**Verify bootstrap ran**: Check `~/.claude/plugins/data/bootstrap/bootstrap.log`.
+**Verify bootstrap ran**: Each plugin gets its own log at `~/.claude/plugins/data/<marketplace>/<plugin-name>/bootstrap.log`. Check `<marketplace>/bootstrap/bootstrap.log` for the engine itself, or `plugins-kit/unreal-kit/bootstrap.log` for unreal-kit, etc. If a plugin's log file doesn't exist, bootstrap never reached that plugin.
+
+## How Bootstrap Remediation Works
+
+Bootstrap uses a two-phase model: **auto-remediate first, escalate to fix-all only when user action is required**.
+
+### Phase 1: Auto-remediation (silent)
+
+The engine tries to resolve issues without user involvement:
+
+- **Tool installs**: Missing CLI tool with a known install command → run the install, re-check, continue silently if it works
+- **Config autodetect**: Plugin manifests can declare an `"autodetect"` script in their `config` block. The engine calls it before validating required fields — if the script discovers and fills the values (e.g. finding a `.uproject` by scanning from CWD), no user prompt is needed
+- **Default values**: Required config fields with a `"default"` in the manifest are applied automatically
+
+If auto-remediation resolves everything, the user sees nothing.
+
+### Phase 2: Fix-all (user action needed)
+
+When issues remain that the engine can't resolve silently, it aggregates all failures into a single **fix-all message** delivered via the SessionStart hook response:
+
+- **`additionalContext`** (seen by the agent): Numbered remediation steps — install commands to run, config values to ask for, files to write. Ends with "type 'fix-all' or 'fixed' to re-run bootstrap."
+- **`systemMessage`** (seen by the user): The bootstrap log showing what was checked and what failed
+
+**The fix-all interaction**: The user sees the failure summary and types `fix-all`. The agent then executes the numbered steps — running install commands, asking the user for paths or API keys, writing config files. After remediation, bootstrap re-runs to verify everything is resolved.
+
+### Example: Plugin with config autodetect
+
+A plugin declares two required fields (`uproject`, `engine_dir`) and an autodetect script:
+1. Engine copies default config (empty values) to the plugin's data directory
+2. Engine calls the autodetect function — it scans the filesystem and fills both values
+3. Engine validates required fields — both are present, no fix-all needed
+4. If autodetect only finds one value, the other becomes a fix-all item: the agent asks the user for it
 
 ## Remediable Condition Categories
 

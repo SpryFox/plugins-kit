@@ -33,18 +33,18 @@ def main():
     plugin_root = args.plugin_root
     data_dir = args.data_dir
 
-    # Add lib/ to path for imports
-    sys.path.insert(0, os.path.join(plugin_root, "lib"))
+    # Add plugin root to path for bootstrap_lib package and engine/ for config module
+    sys.path.insert(0, plugin_root)
     sys.path.insert(0, os.path.join(plugin_root, "engine"))
 
     from config import load_config
-    from log import write_log_block
-    from tool_check import check_tool
-    from path_check import check_path_entry
-    from platform_detect import detect_os
-    from plugin_resolve import list_enabled_plugins
-    from venv_check import check_venv
-    from git_dep_check import check_git_dep
+    from bootstrap_lib.log import write_log_block
+    from bootstrap_lib.tool_check import check_tool
+    from bootstrap_lib.path_check import check_path_entry
+    from bootstrap_lib.platform_detect import detect_os
+    from bootstrap_lib.plugin_resolve import list_enabled_plugins
+    from bootstrap_lib.venv_check import check_venv
+    from bootstrap_lib.git_dep_check import check_git_dep
 
     # Step 1: Load/migrate config
     defaults_dir = os.path.join(plugin_root, "defaults")
@@ -261,7 +261,7 @@ def _load_layered_manifests(project_dir, data_dir=None):
 
     Returns merged manifest dict, or empty dict if no files exist.
     """
-    from manifest_merge import merge_manifests
+    from bootstrap_lib.manifest_merge import merge_manifests
 
     # Collect candidate paths in priority order (lowest first)
     candidates = []
@@ -318,9 +318,9 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
     Only these 3 phases — the minimum needed to make the engine runnable.
     Returns list of failures.
     """
-    from tool_check import check_tool
-    from path_check import check_path_entry
-    from venv_check import check_venv
+    from bootstrap_lib.tool_check import check_tool
+    from bootstrap_lib.path_check import check_path_entry
+    from bootstrap_lib.venv_check import check_venv
 
     failures = []
     p = "[bootstrap-setup] "
@@ -337,7 +337,7 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
 
         if result.install_cmd:
             action_entries.append(f"{p}{result.name}: not found, attempting install")
-            from tool_check import run_install
+            from bootstrap_lib.tool_check import run_install
             ok, _output = run_install(result.install_cmd)
             if ok:
                 recheck = check_tool(name, install_cmds, current_os)
@@ -363,7 +363,7 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
         if result.passed:
             ok_entries.append(f"{p}PATH {result.path}: ok - {result.message}")
         else:
-            from path_check import add_path_to_shell_config
+            from bootstrap_lib.path_check import add_path_to_shell_config
             ok, msg = add_path_to_shell_config(path_entry)
             action_entries.append(f"{p}PATH {result.path}: not in PATH, added to shell config - {msg}")
         current_path = os.environ.get("PATH", "")
@@ -434,7 +434,7 @@ def _process_project_venv(venv_def, project_dir):
     Returns:
         (action_entries, ok_entries, failures) tuple.
     """
-    from venv_check import check_venv
+    from bootstrap_lib.venv_check import check_venv
 
     action_entries = []
     ok_entries = []
@@ -500,7 +500,7 @@ def _process_config(config_section, plugin_data_dir, plugin_root, action_entries
     Runs outside the cache gate — config can change between sessions.
     Returns list of failures (missing config fields).
     """
-    from config_check import config_init, config_validate, run_autodetect, load_yaml_config, save_yaml_config
+    from bootstrap_lib.config_check import config_init, config_validate, run_autodetect, load_yaml_config, save_yaml_config
 
     config_file = config_section["file"]
     defaults_source = config_section.get("defaults_source")
@@ -570,10 +570,10 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
     - action_entries: actions performed, failures, conditions not met (always displayed)
     - ok_entries: checks that passed (only displayed if log_success is true)
     """
-    from tool_check import check_tool
-    from path_check import check_path_entry
-    from venv_check import check_venv
-    from git_dep_check import check_git_dep
+    from bootstrap_lib.tool_check import check_tool
+    from bootstrap_lib.path_check import check_path_entry
+    from bootstrap_lib.venv_check import check_venv
+    from bootstrap_lib.git_dep_check import check_git_dep
 
     failures = []
     prefix = ""
@@ -591,7 +591,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
         # Tool not found — attempt remediation if install command available
         if result.install_cmd:
             action_entries.append(f"{prefix}{result.name}: not found, attempting install")
-            from tool_check import run_install
+            from bootstrap_lib.tool_check import run_install
             ok, _output = run_install(result.install_cmd)
             if ok:
                 recheck = check_tool(name, install_cmds, current_os)
@@ -619,7 +619,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
             ok_entries.append(f"{prefix}PATH {result.path}: ok - {result.message}")
         else:
             # Attempt persistent remediation: add to shell RC files
-            from path_check import add_path_to_shell_config
+            from bootstrap_lib.path_check import add_path_to_shell_config
             ok, msg = add_path_to_shell_config(path_entry)
             action_entries.append(f"{prefix}PATH {result.path}: not in PATH, added to shell config - {msg}")
         # Add to current process PATH so subsequent phases can find tools there
@@ -691,7 +691,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
         if result.passed:
             ok_entries.append(f"{prefix}git {result.repo_name}: ok - {result.message}")
         else:
-            from git_dep_check import clone_git_dep, pull_git_dep
+            from bootstrap_lib.git_dep_check import clone_git_dep, pull_git_dep
             import os as _os
             target_path = result.target_path
             if not _os.path.isdir(target_path):
@@ -723,7 +723,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
         if not mkt_name or not source_url:
             continue
 
-        from marketplace_lifecycle import check_marketplace_exists, check_marketplace_current, add_marketplace, update_marketplace
+        from bootstrap_lib.marketplace_lifecycle import check_marketplace_exists, check_marketplace_current, add_marketplace, update_marketplace
 
         mkt_result = check_marketplace_exists(mkt_name)
         if mkt_result.passed:
@@ -770,7 +770,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
         if not plugin_ref:
             continue
 
-        from marketplace_lifecycle import check_plugin_installed, install_plugin
+        from bootstrap_lib.marketplace_lifecycle import check_plugin_installed, install_plugin
 
         # Compute CLI ref for logging (marketplace:plugin → plugin@marketplace)
         cli_ref = f"{plugin_ref.split(':', 1)[1]}@{plugin_ref.split(':', 1)[0]}" if ":" in plugin_ref else plugin_ref
@@ -793,7 +793,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                 })
                 continue
 
-        from marketplace_lifecycle import enable_plugin_in_claude, disable_plugin_in_claude, check_plugin_enabled, check_plugin_version, update_plugin, check_plugin_scope, uninstall_plugin
+        from bootstrap_lib.marketplace_lifecycle import enable_plugin_in_claude, disable_plugin_in_claude, check_plugin_enabled, check_plugin_version, update_plugin, check_plugin_scope, uninstall_plugin
 
         # Check scope mismatch (only for already-installed plugins)
         if install_result.passed:
@@ -872,7 +872,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                     })
 
     # Variable resolution for subsequent phases
-    from var_resolve import build_variables, resolve_vars
+    from bootstrap_lib.var_resolve import build_variables, resolve_vars
     config = _load_plugin_config(data_dir)
     variables = build_variables(plugin_root, data_dir, config)
 
@@ -887,7 +887,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
         # Ensure section has brackets for check/write
         section_header = section if section.startswith("[") else f"[{section}]"
 
-        from ini_check import check_ini_setting, write_ini_setting
+        from bootstrap_lib.ini_check import check_ini_setting, write_ini_setting
         for key, expected in ini_def.get("settings", {}).items():
             result = check_ini_setting(ini_file, section_header, key, expected)
             if result.passed:
@@ -923,7 +923,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
         merge_fields = json_def.get("merge_fields", [])
         preserve_fields = json_def.get("preserve_fields", [])
 
-        from json_check import check_json_entries, merge_json_entries
+        from bootstrap_lib.json_check import check_json_entries, merge_json_entries
         result = check_json_entries(ref_path, target_path, merge_fields, preserve_fields)
         if result.passed:
             ok_entries.append(f"{prefix}json {os.path.basename(target_path)}: ok")
@@ -947,7 +947,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
             ok_entries.append(f"{prefix}pypi {pypi_def['package']}: skipped (unresolved vars)")
             continue
 
-        from pypi_check import check_pypi_package, download_and_extract
+        from bootstrap_lib.pypi_check import check_pypi_package, download_and_extract
         result = check_pypi_package(pypi_def["package"], extract_to)
         if result.passed:
             ok_entries.append(f"{prefix}pypi {result.package}: ok")
@@ -980,7 +980,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
 def _load_plugin_config(data_dir):
     """Load plugin config from data_dir if it exists. Returns dict or empty."""
     try:
-        from config_check import load_yaml_config
+        from bootstrap_lib.config_check import load_yaml_config
         import os
         config_path = os.path.join(data_dir, "config.yaml")
         if os.path.isfile(config_path):
@@ -1062,7 +1062,7 @@ class _ScriptContext:
 
     def save_config(self) -> None:
         """Write config back to disk."""
-        from config_check import save_yaml_config
+        from bootstrap_lib.config_check import save_yaml_config
         save_yaml_config(self.config_path, self.config)
 
     def add_failure(self, failure_type: str, **kwargs) -> None:
@@ -1082,7 +1082,7 @@ def _read_new_log_entries(data_dir):
     Uses a 'last_displayed_at' file to track the timestamp of the last display.
     Does NOT update the marker — call _update_display_marker() after all entries are written.
     """
-    from log import LOG_FILENAME
+    from bootstrap_lib.log import LOG_FILENAME
     log_file = os.path.join(data_dir, LOG_FILENAME)
     marker_file = os.path.join(data_dir, "last_displayed_at")
 
@@ -1121,7 +1121,7 @@ def _read_new_log_entries(data_dir):
 
 def _update_display_marker(data_dir):
     """Update the display marker to the latest timestamp in the log file."""
-    from log import LOG_FILENAME
+    from bootstrap_lib.log import LOG_FILENAME
     log_file = os.path.join(data_dir, LOG_FILENAME)
     marker_file = os.path.join(data_dir, "last_displayed_at")
 

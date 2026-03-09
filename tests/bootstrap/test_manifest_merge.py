@@ -1,17 +1,8 @@
 """Unit tests for manifest_merge.merge_manifests()."""
 
-import os
-import sys
-
 import pytest
 
-# Add lib/ to path for direct imports
-BOOTSTRAP_ROOT = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, "plugins", "bootstrap")
-)
-sys.path.insert(0, os.path.join(BOOTSTRAP_ROOT, "lib"))
-
-from manifest_merge import merge_manifests
+from bootstrap_lib.manifest_merge import merge_manifests
 
 
 class TestEmptyInputs:

@@ -1,6 +1,6 @@
 """Tests for bootstrap lib/platform_detect.py."""
 
-from platform_detect import detect_os
+from bootstrap_lib.platform_detect import detect_os
 
 
 class TestDetectOs:

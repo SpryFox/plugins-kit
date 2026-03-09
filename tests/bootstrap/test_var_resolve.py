@@ -1,14 +1,10 @@
 """Tests for plugins/bootstrap/lib/var_resolve.py."""
 
-import os
-import sys
 from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, "plugins", "bootstrap", "lib"))
-
-from var_resolve import resolve_vars, build_variables
+from bootstrap_lib.var_resolve import resolve_vars, build_variables
 
 
 class TestResolveVars:
