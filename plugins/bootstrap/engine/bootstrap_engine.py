@@ -24,6 +24,8 @@ def main():
     parser.add_argument("--project-dir", default=None, help="Project root directory (for layered bootstrap.json)")
     parser.add_argument("--verbose", action="store_true", help="Show all entries including ok/cached")
     parser.add_argument("--console", action="store_true", help="Plain text output, no JSON/log writes")
+    parser.add_argument("--background", action="store_true",
+        help="Write display output to bootstrap_display.json instead of stdout")
     args = parser.parse_args()
 
     # --console implies --verbose
@@ -247,11 +249,12 @@ def main():
     _update_display_marker(data_dir)
 
     # Step 8: Emit results
+    output_file = os.path.join(data_dir, "bootstrap_display.json") if args.background else None
     if all_failures:
-        emit_failure_response(all_failures, current_os, display_content, label=bootstrap_label)
+        emit_failure_response(all_failures, current_os, display_content, label=bootstrap_label, output_file=output_file)
     elif display_content:
-        emit_success_response(display_content, label=bootstrap_label)
-    # else: nothing to show — silent exit
+        emit_success_response(display_content, label=bootstrap_label, output_file=output_file)
+    # else: nothing to show — silent exit (no file written in background mode)
 
 
 def _load_layered_manifests(project_dir, data_dir=None):
@@ -1162,22 +1165,36 @@ def _extract_timestamp(line):
     return ""
 
 
-def emit_success_response(log_content, label="bootstrap"):
+def _write_atomic(path, content):
+    """Write content to path atomically via tmp+rename."""
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(content)
+    os.replace(tmp, path)
+
+
+def emit_success_response(log_content, label="bootstrap", output_file=None):
     """Emit hook JSON showing bootstrap log to user and agent."""
+    hook_event = "Stop" if output_file else "SessionStart"
     response = {
         "continue": True,
         "suppressOutput": False,
         "systemMessage": f"{label}:\n{log_content}",
         "hookSpecificOutput": {
-            "hookEventName": "SessionStart",
+            "hookEventName": hook_event,
             "additionalContext": f"{label} -> bootstrap complete:\n{log_content}",
         },
     }
-    print(json.dumps(response))
+    content = json.dumps(response)
+    if output_file:
+        _write_atomic(output_file, content)
+    else:
+        print(content)
 
 
-def emit_failure_response(failures, current_os, log_content, label="bootstrap"):
-    """Emit hook JSON with fix-all directives to stdout."""
+def emit_failure_response(failures, current_os, log_content, label="bootstrap", output_file=None):
+    """Emit hook JSON with fix-all directives to stdout or file."""
+    hook_event = "Stop" if output_file else "SessionStart"
     agent_lines = [f"{label} -> Setup issues found. Fix in order:\n"]
 
     for i, f in enumerate(failures, 1):
@@ -1213,12 +1230,16 @@ def emit_failure_response(failures, current_os, log_content, label="bootstrap"):
         "suppressOutput": False,
         "systemMessage": f"{label}:\n{log_content}",
         "hookSpecificOutput": {
-            "hookEventName": "SessionStart",
+            "hookEventName": hook_event,
             "additionalContext": agent_msg,
         },
     }
 
-    print(json.dumps(response))
+    content = json.dumps(response)
+    if output_file:
+        _write_atomic(output_file, content)
+    else:
+        print(content)
 
 
 if __name__ == "__main__":

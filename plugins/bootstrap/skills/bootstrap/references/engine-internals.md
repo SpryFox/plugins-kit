@@ -2,6 +2,18 @@
 
 How the bootstrap engine discovers, processes, and remediates plugin dependencies on session start.
 
+## Two-Phase Architecture
+
+Bootstrap uses a fire-and-forget model to avoid blocking session start:
+
+1. **SessionStart hook** (instant): Emits `{"continue": true, "suppressOutput": true}` immediately, then forks the engine to the background with `--background`. The shell script exits and Claude Code becomes interactive within milliseconds.
+
+2. **Engine (background)**: Runs all checks (tools, venv, marketplace, plugins, etc.), writes results to `bootstrap.log`, and — if there's anything to display — writes display JSON atomically to `bootstrap_display.json` in the data directory. When everything passes silently, no display file is created.
+
+3. **Stop hook** (every turn, ~0ms when idle): Checks for `bootstrap_display.json`. If present, emits its contents (with `hookEventName: "Stop"`) and deletes the file. If absent, exits immediately with no output.
+
+This means users see bootstrap results on the first turn after the engine completes, rather than waiting for the engine before the session starts. Console mode (`--console`) bypasses this entirely and runs synchronously with plain text output.
+
 ## Engine Phases
 
 The bootstrap engine has two distinct setup phases:
@@ -75,6 +87,8 @@ The engine collects messages from all plugin scripts and emits a unified respons
 - **User message** (`systemMessage`): Human-readable summary of what needs attention
 
 ## Execution Flow
+
+The engine accepts a `--background` flag. When set, output is written atomically to `bootstrap_display.json` in the data directory instead of stdout, and `hookEventName` is set to `"Stop"` (so the Stop hook can surface it). When there's nothing to display (silent success with `log_success_checks` off), no file is written.
 
 1. **Auto-run phase**: Bootstrap runs on session start. For each tool check, the engine runs check -> remediate -> re-check:
    - Tool present -> log `<name>: passed`, continue

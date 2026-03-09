@@ -35,9 +35,11 @@ BOOTSTRAP_LABEL="${MARKETPLACE_NAME}:bootstrap"
 PLUGIN_DATA="${HOME}/.claude/plugins/data/${MARKETPLACE_NAME}/bootstrap"
 
 # Set trap after BOOTSTRAP_LABEL is defined so variable expands correctly
-# In console mode, no JSON safety net needed — plain text output
+# In console mode, no JSON safety net needed — plain text output.
+# In normal mode, JSON is emitted immediately below, so the trap only needs
+# to write failure info to the display file for the Stop hook to surface.
 if [ -z "$FLAG_CONSOLE" ]; then
-    trap '[ -z "$HOOK_OUTPUT_EMITTED" ] && echo "{\"continue\": true, \"suppressOutput\": false, \"systemMessage\": \"'"${BOOTSTRAP_LABEL}"': shell error\", \"hookSpecificOutput\": {\"hookEventName\": \"SessionStart\"}}"' EXIT
+    trap '[ -z "$HOOK_OUTPUT_EMITTED" ] && mkdir -p "$PLUGIN_DATA" && printf "{\"continue\": true, \"suppressOutput\": false, \"systemMessage\": \"%s: shell error\", \"hookSpecificOutput\": {\"hookEventName\": \"Stop\"}}" "'"${BOOTSTRAP_LABEL}"'" > "$PLUGIN_DATA/bootstrap_display.json"' EXIT
 fi
 
 # --- Capture hook input from stdin and record start time ---
@@ -63,6 +65,14 @@ if [ -n "${_GUARD_SID:-}" ]; then
     fi
     mkdir -p "$PLUGIN_DATA"
     printf '%s' "$_GUARD_SID" > "$_GUARD_FILE"
+fi
+
+# --- Emit hook JSON immediately (fire-and-forget) ---
+# In normal mode, emit JSON now so Claude Code doesn't block waiting for engine output.
+# The engine will write its display JSON to bootstrap_display.json for the Stop hook.
+if [ -z "$FLAG_CONSOLE" ]; then
+    echo '{"continue": true, "suppressOutput": true}'
+    HOOK_OUTPUT_EMITTED=1
 fi
 
 # --- Logging ---
@@ -172,8 +182,8 @@ if [ -z "$PYTHON" ]; then
     else
         log_entry "python3: FAILED - unsupported platform for auto-install ($OS)"
         flush_log
-        HOOK_OUTPUT_EMITTED=1
-        printf '{"continue": true, "suppressOutput": false, "systemMessage": "%s -> python3 not found and platform not supported for auto-install. Install Python 3 manually.", "hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "%s -> CRITICAL: python3 not found. Unsupported platform. Install Python 3.x manually."}}\n' "${BOOTSTRAP_LABEL}" "${BOOTSTRAP_LABEL}"
+        mkdir -p "$PLUGIN_DATA"
+        printf '{"continue": true, "suppressOutput": false, "systemMessage": "%s -> python3 not found and platform not supported for auto-install. Install Python 3 manually.", "hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": "%s -> CRITICAL: python3 not found. Unsupported platform. Install Python 3.x manually."}}\n' "${BOOTSTRAP_LABEL}" "${BOOTSTRAP_LABEL}" > "$PLUGIN_DATA/bootstrap_display.json"
         exit 0
     fi
 
@@ -185,8 +195,8 @@ if [ -z "$PYTHON" ]; then
     if ! curl -LsSf "$URL" | tar xz -C "$STANDALONE_DIR" 2>/dev/null; then
         log_entry "python3: FAILED - download error"
         flush_log
-        HOOK_OUTPUT_EMITTED=1
-        printf '{"continue": true, "suppressOutput": false, "systemMessage": "%s -> python3 auto-install failed (download error). Install Python 3 manually.", "hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "%s -> CRITICAL: python3 not found. Auto-install download failed. Install Python 3.x manually."}}\n' "${BOOTSTRAP_LABEL}" "${BOOTSTRAP_LABEL}"
+        mkdir -p "$PLUGIN_DATA"
+        printf '{"continue": true, "suppressOutput": false, "systemMessage": "%s -> python3 auto-install failed (download error). Install Python 3 manually.", "hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": "%s -> CRITICAL: python3 not found. Auto-install download failed. Install Python 3.x manually."}}\n' "${BOOTSTRAP_LABEL}" "${BOOTSTRAP_LABEL}" > "$PLUGIN_DATA/bootstrap_display.json"
         exit 0
     fi
 
@@ -258,10 +268,21 @@ fi
 
 # --- Invoke Engine ---
 
-HOOK_OUTPUT_EMITTED=1
-exec "$PYTHON" "${PLUGIN_ROOT}/engine/bootstrap_engine.py" \
-    --plugin-root "$PLUGIN_ROOT" \
-    --data-dir "$PLUGIN_DATA" \
-    --hook-start-epoch "$HOOK_START_EPOCH" \
-    --project-dir "$PWD" \
-    "${ENGINE_FLAGS[@]}"
+if [ -z "$FLAG_CONSOLE" ]; then
+    # Background mode: engine writes display JSON to file; stdout goes to /dev/null
+    "$PYTHON" "${PLUGIN_ROOT}/engine/bootstrap_engine.py" \
+        --plugin-root "$PLUGIN_ROOT" \
+        --data-dir "$PLUGIN_DATA" \
+        --hook-start-epoch "$HOOK_START_EPOCH" \
+        --project-dir "$PWD" \
+        --background \
+        "${ENGINE_FLAGS[@]}" > /dev/null 2>&1 &
+else
+    # Console mode: synchronous, plain text to stdout
+    exec "$PYTHON" "${PLUGIN_ROOT}/engine/bootstrap_engine.py" \
+        --plugin-root "$PLUGIN_ROOT" \
+        --data-dir "$PLUGIN_DATA" \
+        --hook-start-epoch "$HOOK_START_EPOCH" \
+        --project-dir "$PWD" \
+        "${ENGINE_FLAGS[@]}"
+fi

@@ -51,6 +51,12 @@ All manual operations represent a blocking condition where auto-configuration ca
 | External app requires config change and/or restart | Modification applied that requires restart | User restarts external application, types `fixed` |
 | Claude Code requires config change and/or restart | Modification applied that requires restart | User restarts Claude Code |
 
+## Display Timing
+
+Bootstrap results (including remediation instructions) surface on the **first Stop after the engine completes**, not at session start. The SessionStart hook emits suppressed JSON immediately and forks the engine to the background. A Stop hook checks for `bootstrap_display.json` on each turn and displays it once.
+
+This means the user can start typing immediately. If the engine finishes before the first turn completes, results appear on that turn. If the engine is still running (e.g. slow marketplace fetch), results appear on the next turn after completion.
+
 ## User Experience Outcomes
 
 From the user's perspective, there are three possible outcomes on session start:
