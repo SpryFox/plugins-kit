@@ -27,10 +27,4 @@ FAVORITE_COLOR: "green"
 
 ## If Config Is Missing
 
-If `~/.claude/plugins/data/test-plugin/config.yaml` does not exist or is incomplete, suggest invoking the **test-setup** skill to configure the plugin first.
-
-Check config status:
-
-```bash
-python ${CLAUDE_PLUGIN_ROOT}/scripts/setup.py --check --data-dir ~/.claude/plugins/data/test-plugin
-```
+If `~/.claude/plugins/data/test-plugin/config.yaml` does not exist or is incomplete, the bootstrap engine will create it automatically with default values on the next session start.

@@ -63,7 +63,6 @@ plugins-kit/                          # Marketplace root
 | `plugins/bootstrap/bootstrap.json` | Bootstrap plugin's own manifest |
 | `plugins/bootstrap/skills/bootstrap/references/engine-internals.md` | Bootstrap engine internals |
 | `docs/planning/bootstrap/MILESTONES.md` | Development milestones and progress |
-| `plugins/test-plugin/bootstrap.json` | Test plugin's bootstrap manifest |
 | `plugins/test-plugin/bootstrap.json` | Test plugin's bootstrap manifest (includes config section) |
 | `tests/bootstrap/` | All bootstrap tests (mirrors bootstrap_lib/ structure) |
 

@@ -1201,14 +1201,18 @@ def _update_display_marker(data_dir):
 def _extract_timestamp(line):
     """Extract ISO timestamp from a log header line.
 
-    Format: --- label timestamp ---
+    Format: --- label YYYY-MM-DDTHH:MM:SSZ ---
     Returns the timestamp string or empty string.
+    Rejects footer lines (--- label done in X.Xs ---).
     """
     line = line.strip()
     if line.startswith("---") and line.endswith("---"):
         parts = line.split()
         if len(parts) >= 3:
-            return parts[-2]
+            candidate = parts[-2]
+            # Must look like an ISO timestamp (starts with digit, contains T)
+            if candidate and candidate[0].isdigit() and "T" in candidate:
+                return candidate
     return ""
 
 

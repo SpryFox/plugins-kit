@@ -1,97 +1,69 @@
 # Plugin Setup Pattern
 
-A standard mechanism for plugins that need user-specific configuration (API keys, preferences, paths). Instead of prompting during bootstrap, the pattern detects missing config and emits context that guides Claude through an interactive setup flow.
+How plugins declare and manage user-specific configuration (API keys, preferences, paths).
 
-## Overview
+## Preferred: Declarative Config via `bootstrap.json`
 
-The pattern adds **Step 5** to the existing 4-step bootstrap sequence. Step 5 runs a plugin's `setup.py` script to check whether configuration is complete, and if not, surfaces remediation guidance to Claude.
+Plugins that need configuration should declare a `config` section in their `bootstrap.json`. The bootstrap engine handles initialization, validation, and fix-all remediation automatically.
 
-```
-Steps 1-4 (environment bootstrap)
-    |
-    v
-Step 5: Check config (check-config.sh)
-    Run setup.py --check
-    |-- Config valid --> emit success
-    |-- Config missing --> emit context directing Claude to setup skill
-```
-
-## Interface Contract: `setup.py`
-
-Every plugin that needs configuration provides a `scripts/setup.py` with four modes:
-
-### `--check --data-dir <path>`
-Check whether config exists and is complete.
-- **Exit 0**: Config is valid, all required fields present
-- **Exit 1**: Needs setup — prints JSON with `missing_fields` array
-- **Exit 2**: Error (script bug, invalid args)
-
-### `--describe --data-dir <path>`
-Print human-readable field descriptions showing name, description, default, example, and current value. Output is YAML-formatted text.
-
-### `--apply --data-dir <path> --set KEY=VALUE [--set KEY=VALUE ...]`
-Validate and write config values. Merges with existing config. Prints JSON confirmation on success.
-
-### `--init-defaults --data-dir <path> --source <path>`
-Copy a template config from `<source>/config.yaml` to the data directory. Use this to accept all defaults without interactive setup.
-
-### Constraints
-
-- **Stdlib-only**: `setup.py` must not import any third-party packages. It runs before the venv exists and when the venv may be broken.
-- **Simple YAML**: Config files use `KEY: "value"` format — parseable with string splitting, no YAML library needed.
-- **Exit codes**: 0=success, 1=needs setup, 2=error.
-
-## Bootstrap Integration
-
-### `check-config.sh` (Step 5)
-
-The bootstrap step script follows the same pattern as Steps 1-4:
-- Sources shared helpers via `declare -f` guards
-- Resolves Python (venv first, system fallback)
-- Runs `setup.py --check`
-- Emits structured JSON with `context_message` and `user_message` on failure
-
-### Orchestrator changes
-
-In `session-bootstrap.sh`:
-1. Source `check-config.sh` alongside other step scripts
-2. Step 5 runs **after** the cache write (Step 4)
-3. Step 5 also runs on **cache hit** (config is user data, not environment state)
-4. On failure: emit error context and `exit 0` (same as Step 1 — session starts with remediation guidance)
-
-### Config is NOT cached
-
-`validate-cache.sh` hashes environment manifests (`system-tools.yaml`, `pyproject.toml`, `git-dependencies.yaml`). Config is user data that changes independently, so Step 5 checks it every session regardless of cache state.
-
-### Stop hook
-
-The Stop hook (`hooks/stop/bootstrap-check.py`) adds a config check after the system tools check. If config is missing, it blocks with the same severity as a missing tool.
-
-## Setup Skill Pattern
-
-The setup skill (`skills/test-setup/SKILL.md`) follows this flow:
-
-1. Run `setup.py --describe` to learn available fields and their current values
-2. Ask the user for each value, showing defaults
-3. Run `setup.py --apply --set KEY=VALUE` with gathered values
-4. Verify with `setup.py --check` (exit 0 = done)
-
-### Alternative: Silent defaults
-
-For non-interactive setup (CI, automation):
-```bash
-python setup.py --init-defaults --data-dir <data-dir> --source <plugin-root>/defaults
+```json
+{
+  "config": {
+    "file": "config.yaml",
+    "defaults_source": "defaults/config.yaml",
+    "required_fields": {
+      "GREETING_NAME": {
+        "default": "World",
+        "user_msg": "Name to use in greeting",
+        "agent_msg": "Set GREETING_NAME in {config_path}"
+      },
+      "API_KEY": {
+        "user_msg": "Your API key",
+        "agent_msg": "Ask the user for their API key and write it to {config_path}"
+      }
+    }
+  }
+}
 ```
 
-## How to Adopt This Pattern
+### What the engine does
 
-1. Create `scripts/setup.py` implementing the 4-mode interface
-2. Create `defaults/config.yaml` with template values
-3. Copy `check-config.sh` to `hooks/sessionstart/`
-4. Source it in your `session-bootstrap.sh` and add Step 5
-5. Add config check to your Stop hook
-6. Create a setup skill that runs `--describe` -> collect -> `--apply` -> `--check`
+1. **Init**: Copies `defaults_source` to the data directory if config doesn't exist
+2. **Autodetect** (optional): Runs a plugin script to discover values automatically
+3. **Validate**: Checks required fields, applies defaults where declared
+4. **Fix-all**: Fields without defaults that are still empty become fix-all items
 
-## Reference Implementation
+### Autodetect
 
-See `plugins/test-plugin/` for a complete working example exercising all 5 bootstrap steps.
+For fields that can be discovered programmatically (e.g. finding a `.uproject` file by scanning the filesystem), declare an autodetect script:
+
+```json
+"autodetect": "custom_bootstrap.py autodetect"
+```
+
+The function signature is `autodetect(config: dict, config_path: str)` and it can return either:
+- `bool` — True if config was modified
+- `dict` — `{"changed": bool, "actions": [...], "ok": [...]}` for structured logging
+
+### Reference implementation
+
+See `plugins/test-plugin/bootstrap.json` for a minimal example with two fields and defaults.
+
+## Legacy: `scripts/setup.py` CLI Pattern
+
+Some plugins (e.g. `local-review-kit`) still use a `scripts/setup.py` CLI for interactive setup driven by skills. This pattern predates the engine's config support and is being phased out for plugins that can use `bootstrap.json` config sections.
+
+The CLI provides four modes:
+
+| Mode | Purpose |
+|------|---------|
+| `--check --data-dir <path>` | Exit 0 if config valid, 1 if needs setup |
+| `--describe --data-dir <path>` | Print field descriptions as YAML |
+| `--apply --data-dir <path> --set K=V` | Write config values |
+| `--init-defaults --data-dir <path> --source <path>` | Copy template config |
+
+### When to use which
+
+- **New plugins**: Use `bootstrap.json` config section. No `scripts/setup.py` needed.
+- **Plugins with complex interactive setup** (e.g. API keys that need validation): May still benefit from `scripts/setup.py` alongside the config section, with skills driving the `--describe`/`--apply` flow.
+- **Plugins with autodetect**: Use the `bootstrap.json` autodetect spec. The engine calls it automatically.

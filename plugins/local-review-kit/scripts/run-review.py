@@ -17,29 +17,7 @@ import os
 import sys
 from pathlib import Path
 
-
-# --- Minimal YAML reader (stdlib only, matches setup.py) ---
-
-def read_config(config_path):
-    """Read simple key: \"value\" YAML into a dict."""
-    result = {}
-    if not os.path.isfile(config_path):
-        return result
-    with open(config_path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if ":" not in line:
-                continue
-            key, _, value = line.partition(":")
-            key = key.strip()
-            value = value.strip()
-            # Strip surrounding quotes
-            if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
-                value = value[1:-1]
-            result[key] = value
-    return result
+from config_utils import read_config
 
 
 def _resolve_data_dir() -> Path:
