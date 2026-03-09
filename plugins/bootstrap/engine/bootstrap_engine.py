@@ -1181,7 +1181,7 @@ def emit_success_response(log_content, label="bootstrap", output_file=None):
         response = {
             "continue": True,
             "suppressOutput": False,
-            "systemMessage": f"{label}:\n{log_content}\n\n{label} -> bootstrap complete:\n{log_content}",
+            "systemMessage": f"{label} -> bootstrap complete:\n{log_content}",
         }
         _write_atomic(output_file, json.dumps(response))
     else:
