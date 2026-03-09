@@ -148,6 +148,8 @@ The cache will NOT refresh without a version bump, even if you push new commits.
 
 **Keep architecture docs current** — when modifying bootstrap behavior, update the bootstrap skill references (`plugins/bootstrap/skills/bootstrap/references/`) to reflect the changes. These are the source of truth for how the system works.
 
+**Anti-pattern: silent bootstrap operations.** Every bootstrap check must log its outcome — `ok_entries` when passing (verbose-only), `action_entries` when remediating (always visible). Adding a check that creates files, clones repos, or writes config without emitting a log entry is a bug. See the "Every check must log its outcome" principle in [engine-internals.md](plugins/bootstrap/skills/bootstrap/references/engine-internals.md).
+
 **Plan non-trivial tasks**: Before implementing any non-trivial task:
 1. Enter plan mode (EnterPlanMode)
 2. Explore the codebase and design the approach

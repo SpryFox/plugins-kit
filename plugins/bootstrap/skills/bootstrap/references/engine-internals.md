@@ -130,6 +130,16 @@ Both can be combined: time-throttle the remote check, content-hash the local set
 
 **Commit pinning for git_deps.** Git dependencies can optionally specify a `commit` SHA to pin to a specific version. After cloning, the engine checks out the pinned commit. On subsequent runs, it verifies HEAD matches the expected SHA. If mismatched, it fetches and checks out the correct commit.
 
+**Every check must log its outcome.** The engine uses two entry lists: `action_entries` (always displayed) and `ok_entries` (displayed only in verbose mode). Every check — whether built-in (tools, venv, git deps) or custom (autodetect, bootstrap scripts) — must emit exactly one entry:
+
+- **detect → ok (no change needed)** → append to `ok_entries` (silent unless verbose)
+- **detect → remediate (created, installed, updated)** → append to `action_entries` (always logged)
+- **detect → fail (unresolvable)** → append to `action_entries` + add to fix-all failures
+
+This is the fundamental logging contract. A check that performs work (creates a file, clones a repo, writes config) without emitting an action entry is a bug — the user loses visibility into what bootstrap did. A check that passes silently without emitting an ok entry is also a bug — verbose mode becomes incomplete and debugging is harder.
+
+Autodetect functions support this by returning a dict with `{"changed": bool, "actions": [...], "ok": [...]}` instead of a plain bool. The engine routes the messages to the appropriate entry list.
+
 **Remediation, not auto-fix.** When something is missing, the hook emits structured JSON with the exact install command into Claude's `additionalContext`. The user can fix it themselves or tell Claude to do it.
 
 ## Shared Library

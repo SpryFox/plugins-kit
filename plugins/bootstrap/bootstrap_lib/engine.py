@@ -534,10 +534,16 @@ def _process_config(config_section, plugin_data_dir, plugin_root, action_entries
         has_empty = any(not config.get(f) for f in required_fields)
         if has_empty:
             try:
-                changed = run_autodetect(plugin_root, autodetect_spec, config, config_path)
+                changed, ad_actions, ad_ok = run_autodetect(plugin_root, autodetect_spec, config, config_path)
+                action_entries.extend(ad_actions)
+                if ok_entries is not None:
+                    ok_entries.extend(ad_ok)
+                else:
+                    action_entries.extend(ad_ok)
                 if changed:
                     save_yaml_config(config_path, config)
-                    action_entries.append("config autodetect updated values")
+                    if not ad_actions:
+                        action_entries.append("config autodetect updated values")
             except Exception:
                 pass  # Autodetect errors are non-fatal
 

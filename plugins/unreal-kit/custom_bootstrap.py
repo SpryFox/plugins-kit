@@ -33,6 +33,9 @@ def autodetect(config: Dict[str, Any], config_path: str) -> bool:
     from ue_discovery import find_uproject_from_cwd, find_engine_dir
     from ue_runner_config import find_project_config, write_project_config, _load_yaml
 
+    actions = []
+    ok = []
+
     # 1. Check for existing per-project config
     project_config_path = find_project_config()
     if project_config_path:
@@ -43,7 +46,11 @@ def autodetect(config: Dict[str, Any], config_path: str) -> bool:
             if val and val != config.get(key, ""):
                 config[key] = val
                 changed = True
-        return changed
+        if changed:
+            actions.append(f"config: updated from {project_config_path}")
+        else:
+            ok.append(f"config: ok - {project_config_path}")
+        return {"changed": changed, "actions": actions, "ok": ok}
 
     # 2. Discover from CWD
     changed = False
@@ -71,11 +78,12 @@ def autodetect(config: Dict[str, Any], config_path: str) -> bool:
             if config.get("engine_dir"):
                 data["engine_dir"] = config["engine_dir"]
             try:
-                write_project_config(project_root, data)
+                cfg_path = write_project_config(project_root, data)
+                actions.append(f"config: created {cfg_path}")
             except OSError:
                 pass  # Non-fatal — per-project config is a convenience
 
-    return changed
+    return {"changed": changed, "actions": actions, "ok": ok}
 
 
 def bootstrap(ctx: Any) -> None:

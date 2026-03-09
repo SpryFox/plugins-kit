@@ -72,7 +72,7 @@ def run_autodetect(
     autodetect_spec: str,
     config: Dict[str, Any],
     config_path: str,
-) -> bool:
+) -> Tuple[bool, List[str], List[str]]:
     """Run a plugin's autodetect script.
 
     Args:
@@ -82,32 +82,45 @@ def run_autodetect(
         config_path: Path to config file
 
     Returns:
-        True if config was changed by autodetect
+        Tuple of (changed, action_messages, ok_messages).
+        Autodetect functions may return bool (backward compat) or a dict with
+        keys: changed (bool), actions (list[str]), ok (list[str]).
     """
+    _empty = (False, [], [])
     parts = autodetect_spec.split()
     if len(parts) != 2:
-        return False
+        return _empty
 
     script_rel, func_name = parts
     script_path = os.path.join(plugin_root, script_rel)
 
     if not os.path.isfile(script_path):
-        return False
+        return _empty
 
     try:
         spec = importlib.util.spec_from_file_location("_autodetect", script_path)
         if spec is None or spec.loader is None:
-            return False
+            return _empty
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
 
         func = getattr(module, func_name, None)
         if func is None:
-            return False
+            return _empty
 
-        return bool(func(config, config_path))
+        result = func(config, config_path)
+
+        # Support dict return with messages
+        if isinstance(result, dict):
+            changed = bool(result.get("changed", False))
+            actions = list(result.get("actions", []))
+            ok = list(result.get("ok", []))
+            return (changed, actions, ok)
+
+        # Backward compat: plain bool
+        return (bool(result), [], [])
     except Exception:
-        return False
+        return _empty
 
 
 def load_yaml_config(config_path: str) -> Dict[str, Any]:

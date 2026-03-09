@@ -27,7 +27,7 @@ def autodetect(config, config_path):
     return True
 """)
         config = {"P4PORT": "", "P4USER": ""}
-        changed = run_autodetect(plugin_root, "custom_bootstrap.py autodetect", config, "/path/c.yaml")
+        changed, actions, ok = run_autodetect(plugin_root, "custom_bootstrap.py autodetect", config, "/path/c.yaml")
         assert changed is True
         assert config["P4PORT"] == "detected:1666"
 
@@ -36,7 +36,7 @@ def autodetect(config, config_path):
         plugin_root = str(tmp_path / "plugin")
         os.makedirs(plugin_root)
         config = {"P4PORT": ""}
-        changed = run_autodetect(plugin_root, "just-a-script.py", config, "/path/c.yaml")
+        changed, actions, ok = run_autodetect(plugin_root, "just-a-script.py", config, "/path/c.yaml")
         assert changed is False
 
     def test_not_called_when_script_missing(self, tmp_path):
@@ -44,7 +44,7 @@ def autodetect(config, config_path):
         plugin_root = str(tmp_path / "plugin")
         os.makedirs(plugin_root)
         config = {"P4PORT": ""}
-        changed = run_autodetect(plugin_root, "nonexistent.py autodetect", config, "/path/c.yaml")
+        changed, actions, ok = run_autodetect(plugin_root, "nonexistent.py autodetect", config, "/path/c.yaml")
         assert changed is False
 
     def test_errors_caught_gracefully(self, tmp_path):
@@ -57,7 +57,7 @@ def autodetect(config, config_path):
     raise RuntimeError("boom")
 """)
         config = {"P4PORT": ""}
-        changed = run_autodetect(plugin_root, "custom_bootstrap.py autodetect", config, "/path/c.yaml")
+        changed, actions, ok = run_autodetect(plugin_root, "custom_bootstrap.py autodetect", config, "/path/c.yaml")
         assert changed is False
 
     def test_returns_false_no_changes(self, tmp_path):
@@ -70,7 +70,7 @@ def autodetect(config, config_path):
     return False
 """)
         config = {"P4PORT": ""}
-        changed = run_autodetect(plugin_root, "custom_bootstrap.py autodetect", config, "/path/c.yaml")
+        changed, actions, ok = run_autodetect(plugin_root, "custom_bootstrap.py autodetect", config, "/path/c.yaml")
         assert changed is False
 
     def test_config_written_back_after_changes(self, tmp_path):
@@ -87,9 +87,40 @@ def autodetect(config, config_path):
         save_yaml_config(config_path, {"DETECTED": ""})
 
         config = load_yaml_config(config_path)
-        changed = run_autodetect(plugin_root, "custom_bootstrap.py autodetect", config, config_path)
+        changed, actions, ok = run_autodetect(plugin_root, "custom_bootstrap.py autodetect", config, config_path)
         assert changed is True
 
         save_yaml_config(config_path, config)
         reloaded = load_yaml_config(config_path)
         assert reloaded["DETECTED"] == "yes"
+
+    def test_dict_return_with_messages(self, tmp_path):
+        """Autodetect returning a dict provides messages to the engine."""
+        plugin_root = str(tmp_path / "plugin")
+        os.makedirs(plugin_root)
+
+        _write_autodetect_script(plugin_root, body="""\
+def autodetect(config, config_path):
+    config["PORT"] = "1666"
+    return {"changed": True, "actions": ["config: created /foo/bar.yaml"], "ok": []}
+""")
+        config = {"PORT": ""}
+        changed, actions, ok = run_autodetect(plugin_root, "custom_bootstrap.py autodetect", config, "/path/c.yaml")
+        assert changed is True
+        assert actions == ["config: created /foo/bar.yaml"]
+        assert ok == []
+
+    def test_dict_return_ok_messages(self, tmp_path):
+        """Autodetect returning ok messages for existing config."""
+        plugin_root = str(tmp_path / "plugin")
+        os.makedirs(plugin_root)
+
+        _write_autodetect_script(plugin_root, body="""\
+def autodetect(config, config_path):
+    return {"changed": False, "actions": [], "ok": ["config: ok - /existing.yaml"]}
+""")
+        config = {"PORT": "val"}
+        changed, actions, ok = run_autodetect(plugin_root, "custom_bootstrap.py autodetect", config, "/path/c.yaml")
+        assert changed is False
+        assert actions == []
+        assert ok == ["config: ok - /existing.yaml"]
