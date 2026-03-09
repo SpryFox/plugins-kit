@@ -32,6 +32,16 @@ Plugins are processed in a deterministic order:
 
 This ordering ensures marketplace updates complete before dependent plugins check versions.
 
+### Step 4b: Phase 2 Re-scan
+
+After Step 4 completes, the engine re-scans for newly installed plugins. This handles plugins that were installed during Step 4 (e.g. via a `plugins` manifest entry or a bootstrap script that calls `install_plugin`). The re-scan:
+
+1. Calls `list_enabled_plugins()` again (reads `installed_plugins.json` fresh from disk)
+2. Filters out already-processed plugins using a `processed_plugin_refs` set
+3. Processes only new plugins using the same `_bootstrap_single_plugin()` helper
+
+This is a **single pass** — no recursive re-scanning. Plugins installed by Phase 2 plugins bootstrap on the next session start. This eliminates one of the two restarts previously needed: install + bootstrap now happen in the same session.
+
 For each discovered plugin, the engine resolves the plugin's install path via `plugins/installed_plugins.json` (e.g. `~/.claude/plugins/cache/plugins-kit/unreal-kit/0.1.5`) and processes bootstrapping in two phases:
 
 1. **Manifest phase**: If `bootstrap.json` exists, the engine reads it and calls the appropriate library primitives for each declared operation. No plugin code runs — the engine drives everything.

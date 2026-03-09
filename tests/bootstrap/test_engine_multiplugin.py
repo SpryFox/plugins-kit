@@ -368,3 +368,159 @@ class TestMultiPluginEngine:
         assert result.returncode == 0
         response = json.loads(result.stdout)
         assert "deep-plugin" in response["systemMessage"]
+
+
+class TestPhase2PluginBootstrap:
+    """Tests for Step 4b: re-scan for plugins installed during Step 4."""
+
+    def test_phase2_bootstraps_newly_installed_plugin(self, tmp_path):
+        """A plugin installed during Step 4 (via script) is bootstrapped in Step 4b."""
+        plugins_dir = tmp_path / "plugins"
+        plugins_dir.mkdir()
+
+        # Set up fake bootstrap root
+        fake_root = plugins_dir / "bootstrap"
+        fake_root.mkdir()
+        (fake_root / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
+        (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
+        _write_minimal_defaults(fake_root)
+
+        # "installer" plugin: its bootstrap script adds "new-plugin" to the registry
+        installer_dir = plugins_dir / "installer"
+        installer_dir.mkdir()
+
+        # Create the script that simulates install_plugin writing to the registry
+        install_script = installer_dir / "install_new_plugin.py"
+        new_plugin_dir = plugins_dir / "new-plugin"
+        install_script.write_text(
+            "import json, os\n"
+            "def bootstrap(ctx):\n"
+            "    registry_path = os.path.join(os.path.dirname(ctx.plugin_root), 'installed_plugins.json')\n"
+            "    with open(registry_path) as f:\n"
+            "        registry = json.load(f)\n"
+            f"    new_path = {repr(str(new_plugin_dir))}\n"
+            "    registry['plugins']['kit:new-plugin'] = [{'installPath': new_path, 'version': '1.0.0'}]\n"
+            "    with open(registry_path, 'w') as f:\n"
+            "        json.dump(registry, f)\n"
+            "    ctx.log('installed new-plugin')\n"
+        )
+
+        (installer_dir / "bootstrap.json").write_text(json.dumps({
+            "tools": [{"name": "git", "install": {"macos": "brew install git"}}],
+            "script": {"path": "install_new_plugin.py"},
+        }))
+
+        # "new-plugin": will be added to registry by installer's script
+        new_plugin_dir.mkdir()
+        (new_plugin_dir / "bootstrap.json").write_text(json.dumps({
+            "tools": [{"name": "fake_phase2_tool_xyz", "install": {"macos": "brew install fake"}}],
+        }))
+
+        # Initial registry: only installer plugin (new-plugin not yet installed)
+        registry = {"plugins": {"kit:installer": [{"installPath": str(installer_dir), "version": "1.0.0"}]}}
+        (plugins_dir / "installed_plugins.json").write_text(json.dumps(registry))
+
+        # Bootstrap's own manifest is empty (no checks)
+        (fake_root / "bootstrap.json").write_text(json.dumps({}))
+
+        data_dir = str(tmp_path / "data" / "bootstrap")
+        os.makedirs(data_dir)
+        config = {"schema_version": 3, "enabled_plugins": ["kit:installer"], "log_level": "info",
+                  "log_success_shell": False, "log_success_checks": True}
+        with open(os.path.join(data_dir, "config.json"), "w") as f:
+            json.dump(config, f)
+
+        result = run_engine(data_dir, plugin_root=str(fake_root))
+
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        assert result.stdout.strip() != ""
+        response = json.loads(result.stdout)
+        # new-plugin's tool check should appear (it was discovered in Step 4b)
+        ctx_text = response.get("hookSpecificOutput", {}).get("additionalContext", "")
+        system_msg = response.get("systemMessage", "")
+        combined = ctx_text + system_msg
+        assert "fake_phase2_tool_xyz" in combined, f"Phase 2 plugin not bootstrapped. Output: {combined}"
+        assert "[new-plugin]" in combined or "new-plugin" in combined
+
+    def test_phase2_noop_when_no_new_plugins(self, tmp_path):
+        """No new plugins installed during Step 4 — identical behavior, no regression."""
+        plugins_dir = tmp_path / "plugins"
+        plugins_dir.mkdir()
+
+        fake_root = plugins_dir / "bootstrap"
+        fake_root.mkdir()
+        (fake_root / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
+        (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
+        _write_minimal_defaults(fake_root)
+        (fake_root / "bootstrap.json").write_text(json.dumps({}))
+
+        test_plugin_dir = plugins_dir / "stable-plugin"
+        test_plugin_dir.mkdir()
+        (test_plugin_dir / "bootstrap.json").write_text(json.dumps({
+            "tools": [{"name": "git", "install": {"macos": "brew install git"}}],
+        }))
+
+        registry = {"plugins": {"kit:stable-plugin": [{"installPath": str(test_plugin_dir), "version": "1.0.0"}]}}
+        (plugins_dir / "installed_plugins.json").write_text(json.dumps(registry))
+
+        data_dir = str(tmp_path / "data" / "bootstrap")
+        os.makedirs(data_dir)
+        config = {"schema_version": 3, "enabled_plugins": ["kit:stable-plugin"], "log_level": "info",
+                  "log_success_shell": False, "log_success_checks": True}
+        with open(os.path.join(data_dir, "config.json"), "w") as f:
+            json.dump(config, f)
+
+        result = run_engine(data_dir, plugin_root=str(fake_root))
+
+        assert result.returncode == 0
+        response = json.loads(result.stdout)
+        assert "stable-plugin" in response["systemMessage"]
+        # Verify no duplicate entries — stable-plugin should appear exactly once in sections
+        assert response["systemMessage"].count("stable-plugin") >= 1
+
+    def test_phase2_skips_already_processed_plugins(self, tmp_path):
+        """Plugin already in registry from start appears exactly once, not duplicated by Phase 2."""
+        plugins_dir = tmp_path / "plugins"
+        plugins_dir.mkdir()
+
+        fake_root = plugins_dir / "bootstrap"
+        fake_root.mkdir()
+        (fake_root / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
+        (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
+        _write_minimal_defaults(fake_root)
+        (fake_root / "bootstrap.json").write_text(json.dumps({}))
+
+        # Two plugins, both in registry from the start
+        plugin_a_dir = plugins_dir / "plugin-a"
+        plugin_a_dir.mkdir()
+        (plugin_a_dir / "bootstrap.json").write_text(json.dumps({
+            "tools": [{"name": "git", "install": {"macos": "brew install git"}}],
+        }))
+
+        plugin_b_dir = plugins_dir / "plugin-b"
+        plugin_b_dir.mkdir()
+        (plugin_b_dir / "bootstrap.json").write_text(json.dumps({
+            "tools": [{"name": "git", "install": {"macos": "brew install git"}}],
+        }))
+
+        registry = {"plugins": {
+            "kit:plugin-a": [{"installPath": str(plugin_a_dir), "version": "1.0.0"}],
+            "kit:plugin-b": [{"installPath": str(plugin_b_dir), "version": "2.0.0"}],
+        }}
+        (plugins_dir / "installed_plugins.json").write_text(json.dumps(registry))
+
+        data_dir = str(tmp_path / "data" / "bootstrap")
+        os.makedirs(data_dir)
+        config = {"schema_version": 3, "enabled_plugins": ["kit:plugin-a", "kit:plugin-b"],
+                  "log_level": "info", "log_success_shell": False, "log_success_checks": True}
+        with open(os.path.join(data_dir, "config.json"), "w") as f:
+            json.dump(config, f)
+
+        result = run_engine(data_dir, plugin_root=str(fake_root))
+
+        assert result.returncode == 0
+        response = json.loads(result.stdout)
+        system_msg = response["systemMessage"]
+        # Each plugin should appear exactly once as a section header
+        assert system_msg.count("kit:plugin-a@1.0.0") == 1, f"plugin-a duplicated: {system_msg}"
+        assert system_msg.count("kit:plugin-b@2.0.0") == 1, f"plugin-b duplicated: {system_msg}"

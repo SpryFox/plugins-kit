@@ -137,7 +137,15 @@ def main():
     # Step 4: Process enabled plugins (auto-discovered via bootstrap.json presence)
     registry_path = os.path.join(plugins_dir, "installed_plugins.json")
 
-    enabled_plugins, cache_changed = list_enabled_plugins(config, registry_path, plugins_dir)
+    # In dev layout the registry lists all repo plugins, not just enabled ones.
+    # Build an enabled_refs filter from settings.json + production registry so only
+    # actively-enabled plugins are bootstrapped. Production layout is unaffected
+    # (its registry is already authoritative).
+    prod_registry = os.path.normpath(os.path.expanduser("~/.claude/plugins/installed_plugins.json"))
+    is_dev_layout = os.path.normpath(registry_path) != prod_registry
+    enabled_refs = _load_enabled_refs(args.project_dir) if is_dev_layout else None
+
+    enabled_plugins, cache_changed = list_enabled_plugins(config, registry_path, plugins_dir, enabled_refs)
     if cache_changed:
         from .config import save_config
         save_config(data_dir, config)
@@ -152,63 +160,34 @@ def main():
 
     enabled_plugins.sort(key=_plugin_sort_key)
     deferred_plugin_logs = []
+    processed_plugin_refs = set()
 
     for plugin_info in enabled_plugins:
-        plugin_manifest_path = os.path.join(plugin_info.install_path, "bootstrap.json")
-        if not os.path.isfile(plugin_manifest_path):
-            continue
-
-        # Per-plugin data dir and cache
-        plugin_data_dir = os.path.join(
-            os.path.dirname(data_dir), plugin_info.name
+        ref = f"{plugin_info.marketplace}:{plugin_info.name}" if plugin_info.marketplace else plugin_info.name
+        processed_plugin_refs.add(ref)
+        _bootstrap_single_plugin(
+            plugin_info, current_os, data_dir, all_failures,
+            log_success, display_sections, deferred_plugin_logs, args,
         )
-        os.makedirs(plugin_data_dir, exist_ok=True)
 
-        with open(plugin_manifest_path, "r") as f:
-            plugin_manifest = json.load(f)
+    # Step 4b: Re-scan for plugins installed during Steps 3c/4
+    # (e.g. a layered bootstrap.json declared a plugin to install via `claude plugin install`)
+    phase2_plugins, phase2_cache_changed = list_enabled_plugins(config, registry_path, plugins_dir, enabled_refs)
+    if phase2_cache_changed:
+        from .config import save_config
+        save_config(data_dir, config)
 
-        # Per-plugin entry lists (written to plugin's own log)
-        plugin_action_entries = []
-        plugin_ok_entries = []
-
-        # Project config phase (per-CWD discovery, before config phase)
-        project_config_section = plugin_manifest.get("project_config")
-        if project_config_section:
-            _process_project_config(
-                project_config_section, plugin_data_dir, plugin_info.install_path,
-                plugin_action_entries, ok_entries=plugin_ok_entries, plugin_name=plugin_info.name,
-            )
-
-        # Config phase
-        config_section = plugin_manifest.get("config")
-        if config_section:
-            config_failures = _process_config(
-                config_section, plugin_data_dir, plugin_info.install_path,
-                plugin_action_entries, ok_entries=plugin_ok_entries, plugin_name=plugin_info.name,
-            )
-            if config_failures:
-                all_failures.extend(config_failures)
-
-        action_entries = []
-        ok_entries = []
-        failures = _process_manifest(
-            plugin_manifest, current_os, plugin_data_dir, plugin_info.install_path,
-            action_entries, ok_entries, plugin_name=plugin_info.name,
+    new_plugins = [
+        pi for pi in phase2_plugins
+        if (f"{pi.marketplace}:{pi.name}" if pi.marketplace else pi.name)
+           not in processed_plugin_refs
+    ]
+    new_plugins.sort(key=_plugin_sort_key)
+    for plugin_info in new_plugins:
+        _bootstrap_single_plugin(
+            plugin_info, current_os, data_dir, all_failures,
+            log_success, display_sections, deferred_plugin_logs, args,
         )
-        plugin_action_entries.extend(action_entries)
-        plugin_ok_entries.extend(ok_entries)
-
-        if failures:
-            all_failures.extend(failures)
-
-        # Collect plugin log info (deferred — written after reading shell entries)
-        plugin_label = f"{plugin_info.name}@{plugin_info.version}" if plugin_info.version else plugin_info.name
-        plugin_log_entries = plugin_action_entries + plugin_ok_entries
-        deferred_plugin_logs.append((plugin_data_dir, plugin_label, plugin_log_entries))
-
-        # Add plugin section to display
-        plugin_display_header = f"{plugin_info.marketplace}:{plugin_info.name}@{plugin_info.version}" if plugin_info.marketplace else plugin_label
-        display_sections.append((plugin_display_header, list(plugin_action_entries), list(plugin_ok_entries)))
 
     # Step 5: Read shell log entries BEFORE writing any engine entries to the log.
     # Plugin log writes are deferred to step 6 to avoid the bootstrap plugin's
@@ -218,9 +197,12 @@ def main():
     else:
         shell_content = ""  # Console mode: shell already printed its entries
 
-    # Step 6: Write all log entries (bootstrap + plugins) — after reading shell entries
-    # Skip in console mode — no file writes
-    bootstrap_log_entries = bootstrap_action_entries + bootstrap_ok_entries
+    # Step 6: Write log entries (bootstrap + plugins) — after reading shell entries
+    # Skip in console mode — no file writes.
+    # Only include ok_entries when log_success is true — otherwise they leak back
+    # through shell_content on the next run (the log reader can't distinguish
+    # ok vs action entries, so they bypass the log_success display filter).
+    bootstrap_log_entries = bootstrap_action_entries + (bootstrap_ok_entries if log_success else [])
     if bootstrap_log_entries and not args.console:
         write_log_block(data_dir, bootstrap_label, bootstrap_log_entries, start_time=start_time)
     for plugin_data_dir, plugin_label, plugin_log_entries in deferred_plugin_logs:
@@ -265,6 +247,140 @@ def main():
     elif display_content:
         emit_success_response(display_content, label=bootstrap_label, output_file=output_file)
     # else: nothing to show — silent exit (no file written in background mode)
+
+
+def _bootstrap_single_plugin(
+    plugin_info, current_os, data_dir, all_failures,
+    log_success, display_sections, deferred_plugin_logs, args,
+):
+    """Process a single plugin's bootstrap.json manifest.
+
+    Extracted from the Step 4 loop body to allow reuse in Step 4b (Phase 2 re-scan).
+    Mutates the shared containers in place (same pattern as the original inline code).
+    """
+    plugin_manifest_path = os.path.join(plugin_info.install_path, "bootstrap.json")
+    if not os.path.isfile(plugin_manifest_path):
+        return
+
+    # Per-plugin data dir and cache
+    plugin_data_dir = os.path.join(
+        os.path.dirname(data_dir), plugin_info.name
+    )
+    os.makedirs(plugin_data_dir, exist_ok=True)
+
+    with open(plugin_manifest_path, "r") as f:
+        plugin_manifest = json.load(f)
+
+    # Per-plugin entry lists (written to plugin's own log)
+    plugin_action_entries = []
+    plugin_ok_entries = []
+
+    # Project config phase (per-CWD discovery, before config phase)
+    project_config_section = plugin_manifest.get("project_config")
+    if project_config_section:
+        _process_project_config(
+            project_config_section, plugin_data_dir, plugin_info.install_path,
+            plugin_action_entries, ok_entries=plugin_ok_entries, plugin_name=plugin_info.name,
+        )
+
+    # Config phase
+    config_section = plugin_manifest.get("config")
+    if config_section:
+        config_failures = _process_config(
+            config_section, plugin_data_dir, plugin_info.install_path,
+            plugin_action_entries, ok_entries=plugin_ok_entries, plugin_name=plugin_info.name,
+        )
+        if config_failures:
+            all_failures.extend(config_failures)
+
+    action_entries = []
+    ok_entries = []
+    failures = _process_manifest(
+        plugin_manifest, current_os, plugin_data_dir, plugin_info.install_path,
+        action_entries, ok_entries, plugin_name=plugin_info.name,
+    )
+    plugin_action_entries.extend(action_entries)
+    plugin_ok_entries.extend(ok_entries)
+
+    if failures:
+        all_failures.extend(failures)
+
+    # Collect plugin log info (deferred — written after reading shell entries)
+    plugin_label = f"{plugin_info.name}@{plugin_info.version}" if plugin_info.version else plugin_info.name
+    plugin_log_entries = plugin_action_entries + (plugin_ok_entries if log_success else [])
+    deferred_plugin_logs.append((plugin_data_dir, plugin_label, plugin_log_entries))
+
+    # Add plugin section to display
+    plugin_display_header = f"{plugin_info.marketplace}:{plugin_info.name}@{plugin_info.version}" if plugin_info.marketplace else plugin_label
+    display_sections.append((plugin_display_header, list(plugin_action_entries), list(plugin_ok_entries)))
+
+
+def _load_enabled_refs(project_dir=None):
+    """Build the set of enabled plugin refs from Claude Code settings + production registry.
+
+    Reads settings files in precedence order (later overrides earlier):
+      1. ~/.claude/settings.json         (user scope)
+      2. ~/.claude/settings.local.json   (user local overrides)
+      3. <project_dir>/.claude/settings.json        (project scope)
+      4. <project_dir>/.claude/settings.local.json  (project local overrides)
+
+    A plugin is enabled if its enabledPlugins entry has a final value of True.
+    Also includes all plugins found in the production installed_plugins.json registry.
+
+    Scope is handled naturally: user-scoped plugins appear in user settings (always
+    included); project-scoped plugins appear in project settings (included only when
+    that project is the active --project-dir).
+
+    Returns:
+        Set of normalized refs (plugin@marketplace), or None if no sources exist
+        (falls back to no filter to preserve the original behavior).
+    """
+    from .plugin_resolve import parse_plugin_ref
+
+    def _normalize(ref):
+        marketplace, name = parse_plugin_ref(ref)
+        return f"{name}@{marketplace}" if marketplace else name
+
+    # Collect settings files in ascending precedence
+    home = os.environ.get("HOME") or os.path.expanduser("~")
+    claude_home = os.path.join(home, ".claude")
+    settings_paths = [
+        os.path.join(claude_home, "settings.json"),
+        os.path.join(claude_home, "settings.local.json"),
+    ]
+    if project_dir:
+        project_claude = os.path.join(project_dir, ".claude")
+        settings_paths.append(os.path.join(project_claude, "settings.json"))
+        settings_paths.append(os.path.join(project_claude, "settings.local.json"))
+
+    merged_enabled = {}
+    any_settings_found = False
+    for path in settings_paths:
+        try:
+            with open(path, "r") as f:
+                data = json.load(f)
+            ep = data.get("enabledPlugins", {})
+            if isinstance(ep, dict):
+                merged_enabled.update(ep)
+                any_settings_found = True
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            pass
+
+    refs = {_normalize(ref) for ref, val in merged_enabled.items() if val}
+
+    # Also include all plugins in the production registry as a secondary source
+    prod_registry_path = os.path.expanduser("~/.claude/plugins/installed_plugins.json")
+    try:
+        with open(prod_registry_path, "r") as f:
+            registry = json.load(f)
+        for ref in registry.get("plugins", {}):
+            refs.add(_normalize(ref))
+        any_settings_found = True
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        pass
+
+    # If no sources found at all, return None to preserve original (no-filter) behavior
+    return refs if any_settings_found else None
 
 
 def _load_layered_manifests(project_dir, data_dir=None):

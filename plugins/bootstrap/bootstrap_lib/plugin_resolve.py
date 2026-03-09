@@ -68,7 +68,7 @@ def resolve_plugin(registry_path: str, plugin_ref: str, base_dir: str) -> Option
     return PluginInfo(name=name, install_path=install_path, version=version, marketplace=marketplace)
 
 
-def list_enabled_plugins(config: dict, registry_path: str, base_dir: str):
+def list_enabled_plugins(config: dict, registry_path: str, base_dir: str, enabled_refs=None):
     """Auto-discover plugins that have bootstrap.json.
 
     Uses no_bootstrap for opt-out and bootstrap_cache to avoid repeated filesystem scans.
@@ -77,6 +77,9 @@ def list_enabled_plugins(config: dict, registry_path: str, base_dir: str):
         config: Bootstrap config dict (with "no_bootstrap" and "bootstrap_cache" lists)
         registry_path: Path to installed_plugins.json
         base_dir: Base directory for resolving relative paths
+        enabled_refs: Optional set of normalized plugin refs (plugin@marketplace) to include.
+            If None, all registry plugins are considered (production layout behavior).
+            If provided, plugins not in the set are skipped (dev layout filter).
 
     Returns:
         Tuple of (List[PluginInfo], cache_changed: bool)
@@ -109,6 +112,13 @@ def list_enabled_plugins(config: dict, registry_path: str, base_dir: str):
         if ref in no_bootstrap:
             continue
 
+        # Apply enabled_refs filter (dev layout only — skips plugins not enabled in Claude Code)
+        marketplace, name = parse_plugin_ref(ref)
+        if enabled_refs is not None:
+            normalized = f"{name}@{marketplace}" if marketplace else name
+            if normalized not in enabled_refs:
+                continue
+
         # Resolve install path
         entry = entries[0]
         install_path = entry.get("installPath", "")
@@ -117,8 +127,6 @@ def list_enabled_plugins(config: dict, registry_path: str, base_dir: str):
             install_path = os.path.normpath(os.path.join(base_dir, install_path))
         else:
             install_path = os.path.normpath(install_path)
-
-        marketplace, name = parse_plugin_ref(ref)
         plugin_info = PluginInfo(name=name, install_path=install_path, version=version, marketplace=marketplace)
         bootstrap_json = os.path.join(install_path, "bootstrap.json")
 

@@ -8,6 +8,10 @@ cat <<'EOF'
 {
   "continue": true,
   "suppressOutput": false,
-  "systemMessage": "UserPromptSubmit - User"
+  "systemMessage": "UserPromptSubmit - User",
+  "hookSpecificOutput": {
+    "hookEventName": "UserPromptSubmit",
+    "additionalContext": "UserPromptSubmit - Claude"
+  }
 }
 EOF

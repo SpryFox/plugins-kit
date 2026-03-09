@@ -127,6 +127,23 @@ class TestEngineBackground:
         display_file = os.path.join(data_dir, "bootstrap_display.pending")
         assert not os.path.isfile(display_file)
 
+    def test_ok_entries_not_shown_on_second_run(self, data_dir, tmp_path):
+        """Ok entries written to the log on run N must not appear in run N+1's display.
+
+        Regression: the log-reader used by the engine read back ok entries from
+        the previous run (because they were unconditionally written to the log),
+        bypassing the log_success filter and showing them via shell_content.
+        """
+        fake_root = _make_minimal_root(tmp_path)
+        # First run: silent (no display file)
+        run_engine(data_dir, plugin_root=fake_root, extra_args=["--background"])
+        display_file = os.path.join(data_dir, "bootstrap_display.pending")
+        assert not os.path.isfile(display_file), "first run should be silent"
+
+        # Second run: ok entries from run 1 must not leak into run 2's display
+        run_engine(data_dir, plugin_root=fake_root, extra_args=["--background"])
+        assert not os.path.isfile(display_file), "second run must also be silent (no ok-entry leak)"
+
     def test_console_mode_unaffected(self, data_dir, tmp_path):
         """--console still prints to stdout regardless of --background."""
         fake_root = _make_minimal_root(tmp_path)
