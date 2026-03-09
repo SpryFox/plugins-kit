@@ -27,9 +27,17 @@ property reading, and data extraction. Scripts work with or without the Editor o
 
 ## Running Scripts
 
+**Important:** Always use the plugin's venv Python to run `ue_runner.py`. This venv has `upyrc` pre-installed for fast remote execution to a running Editor. Using system Python causes `upyrc` to be missing, degrading to slower commandlet-only mode.
+
 ```bash
-python ${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/ue_runner.py script.py
-python ${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/ue_runner.py script.py --copy-output ./results/
+# Windows
+~/.claude/plugins/data/plugins-kit/unreal-kit/.venv/Scripts/python.exe ${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/ue_runner.py script.py
+
+# macOS / Linux
+~/.claude/plugins/data/plugins-kit/unreal-kit/.venv/bin/python3 ${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/ue_runner.py script.py
+
+# With output copy
+~/.claude/plugins/data/plugins-kit/unreal-kit/.venv/Scripts/python.exe ${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/ue_runner.py script.py --copy-output ./results/
 ```
 
 The runner auto-detects whether the Editor is open and picks the best execution method.
@@ -130,6 +138,10 @@ results['map_data'] = {str(k): str(v) for k, v in map_prop.items()}
 ```
 
 ## Dependencies
+
+### Host-side dependencies (plugin venv)
+
+The runner (`ue_runner.py`) needs `upyrc` and `pyyaml` on the host. These are pre-installed in the plugin venv at `~/.claude/plugins/data/plugins-kit/unreal-kit/.venv/` by the bootstrap system. Always invoke the runner with this venv's Python (see [Running Scripts](#running-scripts)).
 
 ### UE-side dependencies (`requirements.yaml`)
 
