@@ -1,15 +1,8 @@
 """Git dependency clone validation and remediation."""
 
 import os
-import shutil
 import subprocess
 from typing import List, NamedTuple, Optional
-
-
-def _git_exe() -> str:
-    """Return absolute path to git executable (resolves MSYS2 paths on Windows)."""
-    path = shutil.which("git")
-    return path if path else "git"
 
 
 class GitDepCheckResult(NamedTuple):
@@ -70,7 +63,7 @@ def check_git_dep(
     if commit:
         try:
             result = subprocess.run(
-                [_git_exe(), "-C", target_path, "rev-parse", "HEAD"],
+                ["git", "-C", target_path, "rev-parse", "HEAD"],
                 capture_output=True, text=True, timeout=10,
             )
             current_sha = result.stdout.strip()
@@ -94,7 +87,7 @@ def check_git_dep(
         # Check branch
         try:
             result = subprocess.run(
-                [_git_exe(), "-C", target_path, "rev-parse", "--abbrev-ref", "HEAD"],
+                ["git", "-C", target_path, "rev-parse", "--abbrev-ref", "HEAD"],
                 capture_output=True, text=True, timeout=10,
             )
             current_branch = result.stdout.strip()
@@ -125,38 +118,37 @@ def check_git_dep(
 
 def clone_git_dep(url: str, branch: str, target_path: str, sparse_paths=None, commit=None) -> tuple:
     """Clone a git dependency. Returns (success, message)."""
-    git = _git_exe()
     try:
         if sparse_paths:
             # Sparse checkout: clone with no-checkout, set sparse paths, checkout
             result = subprocess.run(
-                [git, "clone", "--no-checkout", "--branch", branch, url, target_path],
+                ["git", "clone", "--no-checkout", "--branch", branch, url, target_path],
                 capture_output=True, text=True, timeout=120,
             )
             if result.returncode != 0:
                 return False, result.stderr.strip() or "clone failed"
             result = subprocess.run(
-                [git, "-C", target_path, "sparse-checkout", "set"] + sparse_paths,
+                ["git", "-C", target_path, "sparse-checkout", "set"] + sparse_paths,
                 capture_output=True, text=True, timeout=30,
             )
             if result.returncode != 0:
                 return False, result.stderr.strip() or "sparse-checkout set failed"
             result = subprocess.run(
-                [git, "-C", target_path, "checkout", branch],
+                ["git", "-C", target_path, "checkout", branch],
                 capture_output=True, text=True, timeout=30,
             )
             if result.returncode != 0:
                 return False, result.stderr.strip() or "checkout failed"
         else:
             result = subprocess.run(
-                [git, "clone", "--branch", branch, url, target_path],
+                ["git", "clone", "--branch", branch, url, target_path],
                 capture_output=True, text=True, timeout=120,
             )
             if result.returncode != 0:
                 return False, result.stderr.strip() or "clone failed"
         if commit:
             result = subprocess.run(
-                [git, "-C", target_path, "checkout", commit],
+                ["git", "-C", target_path, "checkout", commit],
                 capture_output=True, text=True, timeout=30,
             )
             if result.returncode != 0:
@@ -170,7 +162,7 @@ def pull_git_dep(target_path: str) -> tuple:
     """Pull latest changes in an existing git dep. Returns (success, message)."""
     try:
         result = subprocess.run(
-            [_git_exe(), "-C", target_path, "pull"],
+            ["git", "-C", target_path, "pull"],
             capture_output=True, text=True, timeout=60,
         )
         if result.returncode == 0:
