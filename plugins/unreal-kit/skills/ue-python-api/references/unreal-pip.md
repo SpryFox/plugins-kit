@@ -42,14 +42,14 @@ and editor restarts.
 Scripts don't call unreal_pip directly. Instead, they use the bootstrap helper:
 
 ```python
-import sys
-# ${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api = plugin's ue-python-api skill directory
-sys.path.insert(0, '${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/lib')
+import sys, os
+sys.path.insert(0, os.path.expanduser('~/.claude/plugins/data/plugins-kit/unreal-kit/lib'))
+sys.path.insert(0, os.path.expanduser('~/.claude/plugins/data/plugins-kit/unreal-kit/github/unreal-pip'))
 from bootstrap import ensure_dependencies
 ensure_dependencies()
 ```
 
-This reads `requirements.yaml` at the skill root, checks what's installed, and uses
+This reads `lib/requirements.yaml` from the data directory, checks what's installed, and uses
 unreal_pip to install anything missing. The bootstrap parser doesn't need pyyaml itself
 (handles the chicken-and-egg problem with a simple line parser).
 

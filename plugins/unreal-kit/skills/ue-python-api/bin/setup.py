@@ -28,11 +28,12 @@ from urllib.request import Request, urlopen
 # ---------------------------------------------------------------------------
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
-LIB_DIR = SKILL_DIR / "lib"
+PLUGIN_DIR = SKILL_DIR.parent.parent
+LIB_DIR = PLUGIN_DIR / "lib"
 STUBS_DIR = SKILL_DIR / "stubs"
 STATUS_FILE = SKILL_DIR / "setup-status.yaml"
 
-# Add lib/ to import path
+# Add lib/ to import path (at plugin root)
 if str(LIB_DIR) not in sys.path:
     sys.path.insert(0, str(LIB_DIR))
 

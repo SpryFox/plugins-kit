@@ -2,12 +2,13 @@
 UE Python dependency bootstrap.
 
 Call ensure_dependencies() at the top of any script that needs external packages.
-Reads requirements from the skill's requirements.yaml and uses unreal_pip to install
+Reads requirements from lib/requirements.yaml and uses unreal_pip to install
 any missing packages into UE's site-packages.
 
 Usage in scripts:
-    import sys
-    sys.path.insert(0, '${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/lib')  # SKILL_DIR = plugin's ue-python-api skill path
+    import sys, os
+    sys.path.insert(0, os.path.expanduser('~/.claude/plugins/data/plugins-kit/unreal-kit/lib'))
+    sys.path.insert(0, os.path.expanduser('~/.claude/plugins/data/plugins-kit/unreal-kit/github/unreal-pip'))
     from bootstrap import ensure_dependencies
     ensure_dependencies()
 
@@ -17,10 +18,9 @@ Usage in scripts:
 import sys
 from pathlib import Path
 
-# Skill root (parent of lib/)
-SKILL_DIR = Path(__file__).resolve().parent.parent
-LIB_DIR = SKILL_DIR / 'lib'
-REQUIREMENTS_FILE = SKILL_DIR / 'requirements.yaml'
+# lib/ directory where this file lives — synced to data dir by bootstrap
+LIB_DIR = Path(__file__).resolve().parent
+REQUIREMENTS_FILE = LIB_DIR / 'requirements.yaml'
 
 
 def ensure_dependencies():

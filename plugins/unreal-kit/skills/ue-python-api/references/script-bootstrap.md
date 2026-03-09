@@ -18,8 +18,9 @@ Scripts running inside UE Editor need packages like `pyyaml`, but UE's embedded 
 Scripts call `ensure_dependencies()` at the top:
 
 ```python
-import sys
-sys.path.insert(0, '${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/lib')
+import sys, os
+sys.path.insert(0, os.path.expanduser('~/.claude/plugins/data/plugins-kit/unreal-kit/lib'))
+sys.path.insert(0, os.path.expanduser('~/.claude/plugins/data/plugins-kit/unreal-kit/github/unreal-pip'))
 from bootstrap import ensure_dependencies
 ensure_dependencies()
 

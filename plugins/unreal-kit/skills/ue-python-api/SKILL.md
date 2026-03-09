@@ -66,7 +66,8 @@ All patterns below use the YAML output approach.
 ### Script Template
 ```python
 import sys, os
-sys.path.insert(0, '${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/lib')
+sys.path.insert(0, os.path.expanduser('~/.claude/plugins/data/plugins-kit/unreal-kit/lib'))
+sys.path.insert(0, os.path.expanduser('~/.claude/plugins/data/plugins-kit/unreal-kit/github/unreal-pip'))
 from bootstrap import ensure_dependencies
 ensure_dependencies()
 
@@ -148,14 +149,14 @@ The runner (`ue_runner.py`) needs `upyrc` and `pyyaml` on the host. These are pr
 Scripts running inside UE may need third-party packages. Use the bootstrap pattern:
 
 ```python
-import sys
-# ${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api resolves to the plugin's ue-python-api skill directory
-sys.path.insert(0, '${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/lib')
+import sys, os
+sys.path.insert(0, os.path.expanduser('~/.claude/plugins/data/plugins-kit/unreal-kit/lib'))
+sys.path.insert(0, os.path.expanduser('~/.claude/plugins/data/plugins-kit/unreal-kit/github/unreal-pip'))
 from bootstrap import ensure_dependencies
 ensure_dependencies()
 ```
 
-Add packages to `requirements.yaml`:
+Add packages to `lib/requirements.yaml` (synced to data dir by bootstrap):
 ```yaml
 packages:
   - pyyaml

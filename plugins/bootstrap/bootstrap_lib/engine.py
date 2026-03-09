@@ -696,6 +696,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
             dep_def["url"],
             dep_def["branch"],
             dep_def.get("sparse_paths"),
+            dep_def.get("commit"),
         )
         if result.passed:
             ok_entries.append(f"{prefix}git {result.repo_name}: ok - {result.message}")
@@ -703,10 +704,22 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
             from .git_dep_check import clone_git_dep, pull_git_dep
             import os as _os
             target_path = result.target_path
+            pinned_commit = dep_def.get("commit")
             if not _os.path.isdir(target_path):
                 # Not cloned — clone it
                 action_entries.append(f"{prefix}git {result.repo_name}: not cloned, cloning from {dep_def['url']}")
-                ok, msg = clone_git_dep(dep_def["url"], dep_def["branch"], target_path, dep_def.get("sparse_paths"))
+                ok, msg = clone_git_dep(dep_def["url"], dep_def["branch"], target_path, dep_def.get("sparse_paths"), pinned_commit)
+            elif pinned_commit:
+                # Exists but wrong commit — fetch and checkout
+                action_entries.append(f"{prefix}git {result.repo_name}: {result.message}, checking out {pinned_commit[:7]}")
+                try:
+                    import subprocess as _sp2
+                    _sp2.run(["git", "-C", target_path, "fetch"], capture_output=True, timeout=60)
+                    r = _sp2.run(["git", "-C", target_path, "checkout", pinned_commit], capture_output=True, text=True, timeout=30)
+                    ok = r.returncode == 0
+                    msg = f"checked out {pinned_commit[:7]}" if ok else (r.stderr.strip() or "checkout failed")
+                except (_sp2.SubprocessError, OSError) as e:
+                    ok, msg = False, str(e)
             else:
                 # Exists but wrong branch or broken — pull
                 action_entries.append(f"{prefix}git {result.repo_name}: {result.message}, pulling")
@@ -723,6 +736,27 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                     "remediation_cmd": result.remediation_cmd,
                     "plugin": plugin_name,
                 })
+
+    # Sync files to data directory
+    for sync_def in manifest.get("sync_to_data", []):
+        src_rel = sync_def["src"]
+        dst_rel = sync_def["dst"]
+        src = os.path.join(plugin_root, src_rel)
+        dst = os.path.join(data_dir, dst_rel)
+        if not os.path.isdir(src):
+            action_entries.append(f"{prefix}sync {src_rel} -> {dst_rel}: FAILED - source not found")
+            failures.append({
+                "type": "sync_to_data",
+                "src": src_rel,
+                "dst": dst_rel,
+                "message": f"source directory not found: {src}",
+                "plugin": plugin_name,
+            })
+            continue
+        import shutil
+        os.makedirs(dst, exist_ok=True)
+        shutil.copytree(src, dst, dirs_exist_ok=True)
+        action_entries.append(f"{prefix}sync {src_rel} -> {dst_rel}: ok")
 
     # Check marketplace entries (before json_entries — marketplaces must be cloned
     # before we merge fields like autoUpdate into known_marketplaces.json)
@@ -1227,6 +1261,8 @@ def emit_failure_response(failures, current_os, log_content, label="bootstrap", 
             agent_lines.append(f"{i}. Add marketplace {f['name']}{plugin_tag}: {f['message']}")
         elif f["type"] == "plugin":
             agent_lines.append(f"{i}. Install plugin {f['ref']}{plugin_tag}: {f['message']}")
+        elif f["type"] == "sync_to_data":
+            agent_lines.append(f"{i}. Sync {f['src']} -> {f['dst']}{plugin_tag}: {f['message']}")
 
     agent_lines.append("\nAfter fixing, type 'fix-all' or 'fixed' to re-run bootstrap, or restart Claude Code.")
     agent_msg = "\n".join(agent_lines)

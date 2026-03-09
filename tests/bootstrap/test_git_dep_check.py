@@ -5,7 +5,7 @@ import subprocess
 
 import pytest
 
-from bootstrap_lib.git_dep_check import GitDepCheckResult, check_git_dep, _extract_repo_name
+from bootstrap_lib.git_dep_check import GitDepCheckResult, check_git_dep, _extract_repo_name, _build_clone_cmd
 
 
 class TestExtractRepoName:
@@ -116,3 +116,105 @@ class TestCheckGitDep:
 
         expected = os.path.join(str(tmp_path), "github", "Hello-World")
         assert result.target_path == expected
+
+
+class TestCommitPinning:
+    """Tests for commit SHA pinning in git dependencies."""
+
+    @staticmethod
+    def _git_env():
+        return {
+            **os.environ,
+            "GIT_AUTHOR_NAME": "test",
+            "GIT_AUTHOR_EMAIL": "test@test.com",
+            "GIT_COMMITTER_NAME": "test",
+            "GIT_COMMITTER_EMAIL": "test@test.com",
+        }
+
+    def _init_repo_with_commits(self, target, branch="main"):
+        """Create a git repo with two commits, return (first_sha, second_sha)."""
+        env = self._git_env()
+        subprocess.run(["git", "init", str(target)], capture_output=True, check=True)
+        subprocess.run(
+            ["git", "-C", str(target), "checkout", "-b", branch],
+            capture_output=True, check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(target), "commit", "--allow-empty", "-m", "first"],
+            capture_output=True, check=True, env=env,
+        )
+        r1 = subprocess.run(
+            ["git", "-C", str(target), "rev-parse", "HEAD"],
+            capture_output=True, text=True, check=True,
+        )
+        first_sha = r1.stdout.strip()
+
+        subprocess.run(
+            ["git", "-C", str(target), "commit", "--allow-empty", "-m", "second"],
+            capture_output=True, check=True, env=env,
+        )
+        r2 = subprocess.run(
+            ["git", "-C", str(target), "rev-parse", "HEAD"],
+            capture_output=True, text=True, check=True,
+        )
+        second_sha = r2.stdout.strip()
+        return first_sha, second_sha
+
+    def test_commit_pinning_matches(self, tmp_path):
+        """Passes when HEAD matches pinned commit."""
+        target = tmp_path / "github" / "my-repo"
+        target.mkdir(parents=True)
+        first_sha, second_sha = self._init_repo_with_commits(target)
+
+        # Check out the first commit
+        subprocess.run(
+            ["git", "-C", str(target), "checkout", first_sha],
+            capture_output=True, check=True,
+        )
+
+        result = check_git_dep(
+            str(tmp_path), "https://github.com/example/my-repo", "main",
+            commit=first_sha,
+        )
+
+        assert result.passed
+        assert first_sha[:7] in result.message
+
+    def test_commit_mismatch(self, tmp_path):
+        """Fails when HEAD differs from pinned commit."""
+        target = tmp_path / "github" / "my-repo"
+        target.mkdir(parents=True)
+        first_sha, second_sha = self._init_repo_with_commits(target)
+
+        # HEAD is at second_sha, but we pin to first_sha
+        result = check_git_dep(
+            str(tmp_path), "https://github.com/example/my-repo", "main",
+            commit=first_sha,
+        )
+
+        assert not result.passed
+        assert first_sha[:7] in result.message
+        assert "fetch" in result.remediation_cmd
+        assert "checkout" in result.remediation_cmd
+
+    def test_commit_not_cloned(self, tmp_path):
+        """Not-cloned failure includes checkout step in remediation."""
+        result = check_git_dep(
+            str(tmp_path), "https://github.com/example/my-repo", "main",
+            commit="abc1234567890",
+        )
+
+        assert not result.passed
+        assert "not cloned" in result.message
+        assert "checkout abc1234567890" in result.remediation_cmd
+
+    def test_build_clone_cmd_with_commit(self):
+        """Clone command includes checkout step when commit is specified."""
+        cmd = _build_clone_cmd(
+            "https://github.com/example/repo.git",
+            "main",
+            "/tmp/test",
+            commit="abc123",
+        )
+        assert "git clone --branch main" in cmd
+        assert "&& git -C /tmp/test checkout abc123" in cmd

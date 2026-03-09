@@ -25,10 +25,8 @@ def autodetect(config: Dict[str, Any], config_path: str) -> bool:
 
     Returns True if any config values were updated.
     """
-    # Add skill lib to path
-    skill_lib = os.path.join(
-        os.path.dirname(__file__), "skills", "ue-python-api", "lib"
-    )
+    # Add lib to path
+    skill_lib = os.path.join(os.path.dirname(__file__), "lib")
     if skill_lib not in sys.path:
         sys.path.insert(0, skill_lib)
 

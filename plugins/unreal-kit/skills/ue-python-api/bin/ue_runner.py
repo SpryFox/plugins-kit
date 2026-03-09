@@ -21,9 +21,10 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-# Add lib/ to path (sibling of bin/)
+# Add lib/ to path (at plugin root: bin/ -> skills/ue-python-api/ -> unreal-kit/lib/)
 _SKILL_DIR = Path(__file__).resolve().parent.parent
-_LIB_DIR = _SKILL_DIR / "lib"
+_PLUGIN_DIR = _SKILL_DIR.parent.parent
+_LIB_DIR = _PLUGIN_DIR / "lib"
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 

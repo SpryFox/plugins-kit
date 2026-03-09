@@ -126,7 +126,9 @@ Both can be combined: time-throttle the remote check, content-hash the local set
 
 **Two-tier venv management.** First checks if the existing venv is functional (Tier 1: directory exists, Python runs, packages importable) without needing uv. Only falls back to `uv sync` (Tier 2) if the venv is missing or broken. This removes the hard uv dependency for sessions where the venv is already good.
 
-**Persistent storage.** The venv and cloned git repos live in `~/.claude/plugins/data/<plugin>/` (outside the plugin cache), so they survive cache refreshes when the plugin updates.
+**Persistent storage.** The venv and cloned git repos live in `~/.claude/plugins/data/<plugin>/` (outside the plugin cache), so they survive cache refreshes when the plugin updates. The `sync_to_data` manifest operation copies plugin source files to the data directory at the same stable paths, so scripts can reference them via `os.path.expanduser()` without embedding versioned cache paths.
+
+**Commit pinning for git_deps.** Git dependencies can optionally specify a `commit` SHA to pin to a specific version. After cloning, the engine checks out the pinned commit. On subsequent runs, it verifies HEAD matches the expected SHA. If mismatched, it fetches and checks out the correct commit.
 
 **Remediation, not auto-fix.** When something is missing, the hook emits structured JSON with the exact install command into Claude's `additionalContext`. The user can fix it themselves or tell Claude to do it.
 

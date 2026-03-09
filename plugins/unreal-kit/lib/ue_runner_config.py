@@ -15,8 +15,8 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-SKILL_DIR = Path(__file__).resolve().parent.parent
-SKILL_CONFIG_PATH = SKILL_DIR / "ue_runner_config.yaml"
+_PLUGIN_DIR = Path(__file__).resolve().parent.parent
+SKILL_CONFIG_PATH = _PLUGIN_DIR / "skills" / "ue-python-api" / "ue_runner_config.yaml"
 
 PROJECT_CONFIG_NAME = ".claude/unreal-kit.yaml"
 

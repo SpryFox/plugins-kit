@@ -8,8 +8,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This repo is a **Claude Code plugin marketplace** — it extends Claude Code with skills, commands, and hooks via the `.claude-plugin/marketplace.json` manifest. Plugins are loaded either via `--plugin-dir` (local development) or `enabledPlugins` in settings (production installs from the remote repo).
 
-**Related repository**: The **update01** marketplace (`~/Dev/update01`) is a separate deployment of the same bootstrap system. Changes to shared bootstrap code (engine, hooks, libs) must be applied to both repos.
-
 ## Architecture
 
 ```
@@ -36,11 +34,11 @@ plugins-kit/                          # Marketplace root
       defaults/                       # Default config template
     unreal-kit/                       # The UE plugin
       .claude-plugin/plugin.json      # Plugin manifest
+      lib/                            # Shared Python libraries (synced to data dir by bootstrap)
       skills/
         ue-python-api/                # The main skill
           SKILL.md                    # Skill definition (loaded by Claude Code)
           bin/                        # Entry points (runner + setup)
-          lib/                        # Shared Python libraries
           scripts/                    # Utility scripts
           stubs/                      # UE Python API stubs (generated, gitignored)
           references/                 # Detailed docs loaded conditionally by SKILL.md
@@ -118,9 +116,9 @@ plugins/unreal-kit/skills/ue-python-api/bin/ue-runner.cmd --setup
 Scripts run inside UE's embedded Python (`import unreal`). Key patterns:
 
 - Output goes to `<Project>/Saved/PythonOutput/` as YAML — the runner auto-detects new files
-- Use `${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/lib` path prefix for imports from this skill
-- Call `ensure_dependencies()` before importing packages listed in `requirements.yaml`
-- `lib/unreal_pip.py` and `lib/bootstrap.py` only run inside UE Editor (they `import unreal`)
+- Use `os.path.expanduser('~/.claude/plugins/data/plugins-kit/unreal-kit/lib')` for `sys.path.insert` — these are stable, version-independent paths synced by bootstrap
+- Call `ensure_dependencies()` before importing packages listed in `lib/requirements.yaml`
+- `lib/bootstrap.py` and `unreal_pip.py` (from git_deps) only run inside UE Editor (they `import unreal`)
 - All other `lib/` and `bin/` modules are host-side (system Python, stdlib only)
 
 ## Development Workflow

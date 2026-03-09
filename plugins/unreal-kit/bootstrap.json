@@ -27,6 +27,16 @@
       }
     }
   ],
+  "git_deps": [
+    {
+      "url": "https://github.com/hannesdelbeke/unreal-pip.git",
+      "branch": "main",
+      "commit": "c3b924797ada53b22c17e18101d0d29713766e0a"
+    }
+  ],
+  "sync_to_data": [
+    {"src": "lib", "dst": "lib"}
+  ],
   "pypi_packages": [
     {
       "package": "unreal-stub",

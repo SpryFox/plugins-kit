@@ -18,6 +18,7 @@ def check_git_dep(
     url: str,
     branch: str,
     sparse_paths: Optional[List[str]] = None,
+    commit: Optional[str] = None,
 ) -> GitDepCheckResult:
     """Check if a git dependency is cloned correctly.
 
@@ -26,6 +27,7 @@ def check_git_dep(
         url: Git repository URL
         branch: Expected branch name
         sparse_paths: Optional list of paths for sparse checkout
+        commit: Optional commit SHA to pin to (checked out after clone)
 
     Returns:
         GitDepCheckResult with pass/fail and optional remediation command
@@ -34,7 +36,7 @@ def check_git_dep(
     target_path = os.path.join(data_dir, "github", repo_name)
 
     # Build remediation command
-    remediation = _build_clone_cmd(url, branch, target_path, sparse_paths)
+    remediation = _build_clone_cmd(url, branch, target_path, sparse_paths, commit)
 
     # Check directory exists
     if not os.path.isdir(target_path):
@@ -57,41 +59,66 @@ def check_git_dep(
             remediation_cmd=remediation,
         )
 
-    # Check branch
-    try:
-        result = subprocess.run(
-            ["git", "-C", target_path, "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, timeout=10,
-        )
-        current_branch = result.stdout.strip()
-        if current_branch != branch:
+    # If commit pinning, check HEAD matches expected SHA
+    if commit:
+        try:
+            result = subprocess.run(
+                ["git", "-C", target_path, "rev-parse", "HEAD"],
+                capture_output=True, text=True, timeout=10,
+            )
+            current_sha = result.stdout.strip()
+            if not current_sha.startswith(commit[:7]):
+                return GitDepCheckResult(
+                    passed=False,
+                    message=f"{repo_name} at {current_sha[:7]}, expected {commit[:7]}",
+                    repo_name=repo_name,
+                    target_path=target_path,
+                    remediation_cmd=f"git -C {target_path} fetch && git -C {target_path} checkout {commit}",
+                )
+        except (subprocess.SubprocessError, OSError):
             return GitDepCheckResult(
                 passed=False,
-                message=f"{repo_name} on branch {current_branch}, expected {branch}",
+                message=f"could not check commit for {repo_name}",
                 repo_name=repo_name,
                 target_path=target_path,
-                remediation_cmd=f"git -C {target_path} checkout {branch}",
+                remediation_cmd=remediation,
             )
-    except (subprocess.SubprocessError, OSError):
-        return GitDepCheckResult(
-            passed=False,
-            message=f"could not check branch for {repo_name}",
-            repo_name=repo_name,
-            target_path=target_path,
-            remediation_cmd=remediation,
-        )
+    else:
+        # Check branch
+        try:
+            result = subprocess.run(
+                ["git", "-C", target_path, "rev-parse", "--abbrev-ref", "HEAD"],
+                capture_output=True, text=True, timeout=10,
+            )
+            current_branch = result.stdout.strip()
+            if current_branch != branch:
+                return GitDepCheckResult(
+                    passed=False,
+                    message=f"{repo_name} on branch {current_branch}, expected {branch}",
+                    repo_name=repo_name,
+                    target_path=target_path,
+                    remediation_cmd=f"git -C {target_path} checkout {branch}",
+                )
+        except (subprocess.SubprocessError, OSError):
+            return GitDepCheckResult(
+                passed=False,
+                message=f"could not check branch for {repo_name}",
+                repo_name=repo_name,
+                target_path=target_path,
+                remediation_cmd=remediation,
+            )
 
     return GitDepCheckResult(
         passed=True,
-        message=f"{repo_name} cloned on {branch}",
+        message=f"{repo_name} cloned on {branch}" + (f" at {commit[:7]}" if commit else ""),
         repo_name=repo_name,
         target_path=target_path,
     )
 
 
-def clone_git_dep(url: str, branch: str, target_path: str, sparse_paths=None) -> tuple:
+def clone_git_dep(url: str, branch: str, target_path: str, sparse_paths=None, commit=None) -> tuple:
     """Clone a git dependency. Returns (success, message)."""
-    cmd = _build_clone_cmd(url, branch, target_path, sparse_paths)
+    cmd = _build_clone_cmd(url, branch, target_path, sparse_paths, commit)
     try:
         result = subprocess.run(
             cmd, shell=True, capture_output=True, text=True, timeout=120,
@@ -131,15 +158,20 @@ def _build_clone_cmd(
     branch: str,
     target_path: str,
     sparse_paths: Optional[List[str]] = None,
+    commit: Optional[str] = None,
 ) -> str:
     """Build the git clone command string."""
     if sparse_paths:
         # Sparse checkout: clone with no-checkout, set sparse paths, checkout
         paths_str = " ".join(sparse_paths)
-        return (
+        cmd = (
             f"git clone --no-checkout --branch {branch} {url} {target_path} && "
             f"cd {target_path} && "
             f"git sparse-checkout set {paths_str} && "
             f"git checkout {branch}"
         )
-    return f"git clone --branch {branch} {url} {target_path}"
+    else:
+        cmd = f"git clone --branch {branch} {url} {target_path}"
+    if commit:
+        cmd += f" && git -C {target_path} checkout {commit}"
+    return cmd

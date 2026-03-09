@@ -18,8 +18,12 @@ A declarative configuration file covering automatable operations. The engine rea
     {
       "url": "https://github.com/octocat/Hello-World",
       "branch": "master",
-      "sparse_paths": ["README"]
+      "sparse_paths": ["README"],
+      "commit": "abc1234567890abcdef1234567890abcdef123456"
     }
+  ],
+  "sync_to_data": [
+    {"src": "lib", "dst": "lib"}
   ],
   "json_entries": [
     {
@@ -127,6 +131,7 @@ Each array type has an identity key used for deduplication during merge:
 | `git_deps` | `url` |
 | `json_entries` | `target` |
 | `ini_settings` | `file` + `section` |
+| `sync_to_data` | `src` + `dst` |
 | `pypi_packages` | `package` |
 
 ### Example

@@ -79,9 +79,9 @@ def _auto_detect():
     Returns (engine_dir, uproject) or (None, None) if not found.
     Imports ue_discovery from the skill's lib/ directory.
     """
-    # Find lib/ relative to this script: scripts/ -> skills/ue-python-api/lib/
+    # Find lib/ relative to this script: scripts/ -> ../lib/
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    lib_dir = os.path.join(script_dir, "..", "skills", "ue-python-api", "lib")
+    lib_dir = os.path.join(script_dir, "..", "lib")
     lib_dir = os.path.normpath(lib_dir)
 
     if lib_dir not in sys.path:
