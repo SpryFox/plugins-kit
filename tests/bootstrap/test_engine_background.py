@@ -49,11 +49,11 @@ def _make_minimal_root(tmp_path, config_overrides=None):
 
 class TestEngineBackground:
     def test_background_writes_display_file(self, data_dir, tmp_path):
-        """Engine with --background creates bootstrap_display.json when there's output."""
+        """Engine with --background creates bootstrap_display.pending when there's output."""
         fake_root = _make_minimal_root(tmp_path, {"log_success_checks": True})
         result = run_engine(data_dir, plugin_root=fake_root, extra_args=["--background"])
         assert result.returncode == 0
-        display_file = os.path.join(data_dir, "bootstrap_display.json")
+        display_file = os.path.join(data_dir, "bootstrap_display.pending")
         assert os.path.isfile(display_file)
 
     def test_background_no_stdout(self, data_dir, tmp_path):
@@ -67,7 +67,7 @@ class TestEngineBackground:
         """Display file has Stop-hook-compliant JSON (no hookSpecificOutput)."""
         fake_root = _make_minimal_root(tmp_path, {"log_success_checks": True})
         run_engine(data_dir, plugin_root=fake_root, extra_args=["--background"])
-        display_file = os.path.join(data_dir, "bootstrap_display.json")
+        display_file = os.path.join(data_dir, "bootstrap_display.pending")
         with open(display_file) as f:
             response = json.load(f)
         assert response["continue"] is True
@@ -102,7 +102,7 @@ class TestEngineBackground:
         assert result.returncode == 0
         assert result.stdout.strip() == ""
 
-        display_file = os.path.join(data_dir, "bootstrap_display.json")
+        display_file = os.path.join(data_dir, "bootstrap_display.pending")
         assert os.path.isfile(display_file)
         with open(display_file) as f:
             response = json.load(f)
@@ -124,7 +124,7 @@ class TestEngineBackground:
         fake_root = _make_minimal_root(tmp_path)
         result = run_engine(data_dir, plugin_root=fake_root, extra_args=["--background"])
         assert result.returncode == 0
-        display_file = os.path.join(data_dir, "bootstrap_display.json")
+        display_file = os.path.join(data_dir, "bootstrap_display.pending")
         assert not os.path.isfile(display_file)
 
     def test_console_mode_unaffected(self, data_dir, tmp_path):
@@ -134,5 +134,5 @@ class TestEngineBackground:
         assert result.returncode == 0
         # Console mode prints plain text to stdout (verbose by default)
         # No display file should be created
-        display_file = os.path.join(data_dir, "bootstrap_display.json")
+        display_file = os.path.join(data_dir, "bootstrap_display.pending")
         assert not os.path.isfile(display_file)

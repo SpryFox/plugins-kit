@@ -248,7 +248,7 @@ def main():
     _update_display_marker(data_dir)
 
     # Step 8: Emit results
-    output_file = os.path.join(data_dir, "bootstrap_display.json") if args.background else None
+    output_file = os.path.join(data_dir, "bootstrap_display.pending") if args.background else None
     if all_failures:
         emit_failure_response(all_failures, current_os, display_content, label=bootstrap_label, output_file=output_file)
     elif display_content:

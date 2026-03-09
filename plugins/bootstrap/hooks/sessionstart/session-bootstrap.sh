@@ -39,7 +39,7 @@ PLUGIN_DATA="${HOME}/.claude/plugins/data/${MARKETPLACE_NAME}/bootstrap"
 # In normal mode, JSON is emitted immediately below, so the trap only needs
 # to write failure info to the display file for the Stop hook to surface.
 if [ -z "$FLAG_CONSOLE" ]; then
-    trap '[ -z "$HOOK_OUTPUT_EMITTED" ] && mkdir -p "$PLUGIN_DATA" && printf "{\"continue\": true, \"suppressOutput\": false, \"systemMessage\": \"%s: shell error\"}" "'"${BOOTSTRAP_LABEL}"'" > "$PLUGIN_DATA/bootstrap_display.json"' EXIT
+    trap '[ -z "$HOOK_OUTPUT_EMITTED" ] && mkdir -p "$PLUGIN_DATA" && printf "{\"continue\": true, \"suppressOutput\": false, \"systemMessage\": \"%s: shell error\"}" "'"${BOOTSTRAP_LABEL}"'" > "$PLUGIN_DATA/bootstrap_display.pending"' EXIT
 fi
 
 # --- Capture hook input from stdin and record start time ---
@@ -183,7 +183,7 @@ if [ -z "$PYTHON" ]; then
         log_entry "python3: FAILED - unsupported platform for auto-install ($OS)"
         flush_log
         mkdir -p "$PLUGIN_DATA"
-        printf '{"continue": true, "suppressOutput": false, "systemMessage": "%s -> python3 not found and platform not supported for auto-install. Install Python 3 manually.\\n\\n%s -> CRITICAL: python3 not found. Unsupported platform. Install Python 3.x manually."}\n' "${BOOTSTRAP_LABEL}" "${BOOTSTRAP_LABEL}" > "$PLUGIN_DATA/bootstrap_display.json"
+        printf '{"continue": true, "suppressOutput": false, "systemMessage": "%s -> python3 not found and platform not supported for auto-install. Install Python 3 manually.\\n\\n%s -> CRITICAL: python3 not found. Unsupported platform. Install Python 3.x manually."}\n' "${BOOTSTRAP_LABEL}" "${BOOTSTRAP_LABEL}" > "$PLUGIN_DATA/bootstrap_display.pending"
         exit 0
     fi
 
@@ -196,7 +196,7 @@ if [ -z "$PYTHON" ]; then
         log_entry "python3: FAILED - download error"
         flush_log
         mkdir -p "$PLUGIN_DATA"
-        printf '{"continue": true, "suppressOutput": false, "systemMessage": "%s -> python3 auto-install failed (download error). Install Python 3 manually.\\n\\n%s -> CRITICAL: python3 not found. Auto-install download failed. Install Python 3.x manually."}\n' "${BOOTSTRAP_LABEL}" "${BOOTSTRAP_LABEL}" > "$PLUGIN_DATA/bootstrap_display.json"
+        printf '{"continue": true, "suppressOutput": false, "systemMessage": "%s -> python3 auto-install failed (download error). Install Python 3 manually.\\n\\n%s -> CRITICAL: python3 not found. Auto-install download failed. Install Python 3.x manually."}\n' "${BOOTSTRAP_LABEL}" "${BOOTSTRAP_LABEL}" > "$PLUGIN_DATA/bootstrap_display.pending"
         exit 0
     fi
 

@@ -53,7 +53,7 @@ All manual operations represent a blocking condition where auto-configuration ca
 
 ## Display Timing
 
-Bootstrap results (including remediation instructions) surface on the **first Stop after the engine completes**, not at session start. The SessionStart hook emits suppressed JSON immediately and forks the engine to the background. A Stop hook checks for `bootstrap_display.json` on each turn and displays it once.
+Bootstrap results (including remediation instructions) surface on the **first Stop after the engine completes**, not at session start. The SessionStart hook emits suppressed JSON immediately and forks the engine to the background. A Stop hook checks for `bootstrap_display.pending` on each turn; if found, it emits the contents and renames the file to `bootstrap_display.displayed`.
 
 This means the user can start typing immediately. If the engine finishes before the first turn completes, results appear on that turn. If the engine is still running (e.g. slow marketplace fetch), results appear on the next turn after completion.
 
