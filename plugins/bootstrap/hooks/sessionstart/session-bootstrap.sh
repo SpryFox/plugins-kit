@@ -202,6 +202,36 @@ if [ -z "$PYTHON" ]; then
     fi
 fi
 
+# --- Persist PATH entries to Windows User PATH (registry) ---
+# On Windows, write ~/.local/bin and the standalone Python dir to the registry
+# so that future Claude Code sessions inherit them regardless of parent shell.
+if [[ "$OS" == MINGW* ]] || [[ "$OS" == MSYS* ]]; then
+    for _path_entry in "$LOCAL_BIN" "$STANDALONE_PYTHON_BIN"; do
+        _win_path=$(cygpath -w "$_path_entry" 2>/dev/null || echo "$_path_entry" | sed 's|/|\\|g')
+        _ps_result=$(powershell.exe -NoProfile -NonInteractive -Command "
+            \$entry = '$_win_path'
+            \$current = [Environment]::GetEnvironmentVariable('Path', 'User')
+            if (-not \$current) { \$current = '' }
+            \$parts = \$current -split ';' | Where-Object { \$_ -ne '' }
+            \$norm = \$entry.TrimEnd('\\')
+            \$found = \$false
+            foreach (\$p in \$parts) { if (\$p.TrimEnd('\\') -ieq \$norm) { \$found = \$true; break } }
+            if (-not \$found) {
+                \$newPath = (\$entry + ';' + \$current).TrimEnd(';')
+                [Environment]::SetEnvironmentVariable('Path', \$newPath, 'User')
+                Write-Output 'added'
+            } else {
+                Write-Output 'already_present'
+            }
+        " 2>/dev/null) || true
+        if [ "$_ps_result" = "added" ]; then
+            log_entry "PATH: added $_win_path to Windows User PATH (registry)"
+        elif [ "$LOG_SUCCESS_SHELL" = "true" ] && [ "$_ps_result" = "already_present" ]; then
+            log_entry "PATH: $_win_path already in Windows User PATH"
+        fi
+    done
+fi
+
 # --- Extract hook input fields for logging ---
 HOOK_SOURCE=""
 HOOK_SESSION_ID=""

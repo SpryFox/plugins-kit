@@ -1,8 +1,9 @@
 """Tests for bootstrap lib/path_check.py."""
 
 import os
+from unittest.mock import MagicMock, patch
 
-from bootstrap_lib.path_check import check_path_entry
+from bootstrap_lib.path_check import check_path_entry, _add_path_to_windows_registry
 
 
 class TestCheckPathEntry:
@@ -31,3 +32,65 @@ class TestCheckPathEntry:
             assert result.passed is True
         finally:
             os.environ["PATH"] = original_path
+
+
+class TestAddPathToWindowsRegistry:
+    """Tests for _add_path_to_windows_registry (mocked PowerShell)."""
+
+    @patch("subprocess.run")
+    def test_adds_new_entry(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="added\n")
+
+        ok, msg = _add_path_to_windows_registry("~/.local/bin")
+        assert ok is True
+        assert "added" in msg
+        assert "registry" in msg
+        assert mock_run.call_args[0][0][0] == "powershell.exe"
+
+    @patch("subprocess.run")
+    def test_already_present(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="already_present\n")
+
+        ok, msg = _add_path_to_windows_registry("~/.local/bin")
+        assert ok is True
+        assert "already" in msg
+
+    @patch("subprocess.run")
+    def test_powershell_failure(self, mock_run):
+        mock_run.side_effect = FileNotFoundError("powershell.exe not found")
+
+        ok, msg = _add_path_to_windows_registry("~/.local/bin")
+        assert ok is False
+        assert "failed" in msg
+
+    @patch("subprocess.run")
+    def test_powershell_nonzero_exit(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=1, stderr="some error")
+
+        ok, msg = _add_path_to_windows_registry("~/.local/bin")
+        assert ok is False
+        assert "exit 1" in msg
+
+
+class TestAddPathToShellConfigWindowsIntegration:
+    """Test that add_path_to_shell_config calls registry on Windows."""
+
+    @patch("bootstrap_lib.path_check._add_path_to_windows_registry")
+    def test_calls_registry_on_windows(self, mock_registry):
+        from bootstrap_lib.path_check import add_path_to_shell_config
+        mock_registry.return_value = (True, "added to registry")
+        # Simulate Windows environment
+        with patch.dict(os.environ, {"MSYSTEM": "MINGW64"}):
+            ok, msg = add_path_to_shell_config("/tmp/test_path_xyz_" + str(os.getpid()))
+        mock_registry.assert_called_once()
+
+    @patch("bootstrap_lib.path_check._add_path_to_windows_registry")
+    def test_skips_registry_on_non_windows(self, mock_registry):
+        from bootstrap_lib.path_check import add_path_to_shell_config
+        # Ensure MSYSTEM is not set and sys.platform is not win32
+        env = {k: v for k, v in os.environ.items() if k != "MSYSTEM"}
+        with patch.dict(os.environ, env, clear=True), \
+             patch("bootstrap_lib.path_check.sys") as mock_sys:
+            mock_sys.platform = "linux"
+            add_path_to_shell_config("/tmp/test_path_xyz_" + str(os.getpid()))
+        mock_registry.assert_not_called()
