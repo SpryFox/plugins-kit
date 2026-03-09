@@ -2,6 +2,7 @@
 
 import os
 import re
+from datetime import datetime, timedelta, timezone
 
 from bootstrap_lib.log import LOG_FILENAME, MAX_LOG_LINES, write_log_block
 
@@ -17,6 +18,7 @@ class TestWriteLogBlock:
         log_path = os.path.join(data_dir, LOG_FILENAME)
         with open(log_path) as f:
             lines = f.readlines()
+        # No start_time → no footer
         assert len(lines) == 3
         assert lines[0].startswith("--- Engine ")
         assert lines[0].strip().endswith(" ---")
@@ -59,3 +61,27 @@ class TestWriteLogBlock:
         assert len(lines) <= MAX_LOG_LINES
         # Newest entries should be kept
         assert "entry-" in lines[-1]
+
+    def test_footer_with_start_time(self, data_dir):
+        start = datetime.now(timezone.utc) - timedelta(seconds=2.5)
+        write_log_block(data_dir, "Engine", ["entry"], start_time=start)
+        log_path = os.path.join(data_dir, LOG_FILENAME)
+        with open(log_path) as f:
+            lines = f.readlines()
+        assert len(lines) == 3  # header + entry + footer
+        assert re.match(r"--- Engine done in \d+\.\ds ---", lines[2].strip())
+
+    def test_header_uses_start_time(self, data_dir):
+        start = datetime(2025, 6, 15, 12, 30, 0, tzinfo=timezone.utc)
+        write_log_block(data_dir, "Engine", ["entry"], start_time=start)
+        log_path = os.path.join(data_dir, LOG_FILENAME)
+        with open(log_path) as f:
+            lines = f.readlines()
+        assert "2025-06-15T12:30:00Z" in lines[0]
+
+    def test_no_footer_without_start_time(self, data_dir):
+        write_log_block(data_dir, "Engine", ["entry"])
+        log_path = os.path.join(data_dir, LOG_FILENAME)
+        with open(log_path) as f:
+            content = f.read()
+        assert "done in" not in content

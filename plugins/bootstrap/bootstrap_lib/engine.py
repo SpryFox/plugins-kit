@@ -17,9 +17,12 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime, timezone
 
 
 def main():
+    start_time = datetime.now(timezone.utc)
+
     parser = argparse.ArgumentParser(description="Bootstrap engine")
     parser.add_argument("--plugin-root", required=True, help="Path to bootstrap plugin root")
     parser.add_argument("--data-dir", required=True, help="Path to bootstrap data directory")
@@ -211,10 +214,10 @@ def main():
     # Skip in console mode — no file writes
     bootstrap_log_entries = bootstrap_action_entries + bootstrap_ok_entries
     if bootstrap_log_entries and not args.console:
-        write_log_block(data_dir, bootstrap_label, bootstrap_log_entries)
+        write_log_block(data_dir, bootstrap_label, bootstrap_log_entries, start_time=start_time)
     for plugin_data_dir, plugin_label, plugin_log_entries in deferred_plugin_logs:
         if plugin_log_entries and not args.console:
-            write_log_block(plugin_data_dir, plugin_label, plugin_log_entries)
+            write_log_block(plugin_data_dir, plugin_label, plugin_log_entries, start_time=start_time)
 
     # Step 7: Build display from sections — actions always, ok only if log_success
     # Each section with entries gets a header line
