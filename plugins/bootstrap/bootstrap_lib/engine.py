@@ -1212,8 +1212,9 @@ def _write_atomic(path, content):
 def emit_success_response(log_content, label="bootstrap", output_file=None):
     """Emit hook JSON showing bootstrap log to user and agent."""
     if output_file:
-        # Background mode: consumed by Stop hook, which only supports top-level fields
-        # (continue, suppressOutput, systemMessage). No hookSpecificOutput allowed.
+        # Background mode: consumed by Stop hook.
+        # `systemMessage` is user-facing only — Claude never sees it.
+        # Success doesn't need agent context, so no decision/reason needed.
         response = {
             "continue": True,
             "suppressOutput": False,
@@ -1269,12 +1270,13 @@ def emit_failure_response(failures, current_os, log_content, label="bootstrap", 
     agent_msg = "\n".join(agent_lines)
 
     if output_file:
-        # Background mode: consumed by Stop hook, which only supports top-level fields
-        # (continue, suppressOutput, systemMessage). No hookSpecificOutput allowed.
+        # Background mode: consumed by Stop hook.
+        # Stop hooks inject `reason` into Claude's context (when decision is "block").
+        # `systemMessage` is user-facing only — Claude never sees it.
         response = {
-            "continue": True,
-            "suppressOutput": False,
-            "systemMessage": f"{label}:\n{log_content}\n\n{agent_msg}",
+            "decision": "block",
+            "reason": agent_msg,
+            "systemMessage": f"{label}:\n{log_content}",
         }
         _write_atomic(output_file, json.dumps(response))
     else:

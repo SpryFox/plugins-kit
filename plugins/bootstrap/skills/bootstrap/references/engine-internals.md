@@ -81,14 +81,14 @@ plugins/installed_plugins.json               <- plugins-kit:bootstrap entry
 
 An optional protocol that bootstrap scripts can use to communicate with the engine. Scripts that use the protocol get structured features (fix-all aggregation, user messaging, re-run triggers). Scripts that don't use the protocol just run and return.
 
-The engine collects messages from all plugin scripts and emits a unified response:
+The engine collects messages from all plugin scripts and emits a unified response. The output format depends on the hook type:
 
-- **Agent message** (`additionalContext`): Instructions to Claude on what needs fixing and how
-- **User message** (`systemMessage`): Human-readable summary of what needs attention
+- **SessionStart** (foreground): `hookSpecificOutput.additionalContext` injects instructions into Claude's context. `systemMessage` shows a summary to the user.
+- **Stop** (background): `decision: "block"` + `reason` injects instructions into Claude's context and prevents Claude from stopping so it can act on them. `systemMessage` shows a summary to the user. Note: `systemMessage` alone is user-facing only — Claude never sees it.
 
 ## Execution Flow
 
-The engine accepts a `--background` flag. When set, output is written atomically to `bootstrap_display.pending` in the data directory instead of stdout. The Stop hook renames `.pending` to `.displayed` after emitting (handshake protocol). Background output uses only top-level fields (`continue`, `suppressOutput`, `systemMessage`) since it is consumed by the Stop hook, which does not support `hookSpecificOutput`. Non-background output (stdout, consumed by SessionStart hook) includes `hookSpecificOutput` with `hookEventName: "SessionStart"`. When there's nothing to display (silent success with `log_success_checks` off), no file is written.
+The engine accepts a `--background` flag. When set, output is written atomically to `bootstrap_display.pending` in the data directory instead of stdout. The Stop hook renames `.pending` to `.displayed` after emitting (handshake protocol). Background output uses Stop hook fields (`decision`, `reason`, `systemMessage`) — `hookSpecificOutput` is not valid for Stop hooks. On failure, `decision: "block"` + `reason` ensures Claude receives the fix-all instructions and continues working. On success, only `systemMessage` is emitted (user-facing log). Non-background output (stdout, consumed by SessionStart hook) includes `hookSpecificOutput` with `hookEventName: "SessionStart"`. When there's nothing to display (silent success with `log_success_checks` off), no file is written.
 
 1. **Auto-run phase**: Bootstrap runs on session start. For each tool check, the engine runs check -> remediate -> re-check:
    - Tool present -> log `<name>: passed`, continue

@@ -181,7 +181,7 @@ Plugins follow the Claude Code plugin spec:
 
 ### Hook Output JSON Schema
 
-Hook responses vary by hook type. **Only SessionStart, PreToolUse, and PermissionRequest** support `hookSpecificOutput` (with `hookEventName` and `additionalContext`). **Stop hooks** only support top-level fields: `continue`, `suppressOutput`, `systemMessage`, `decision`, `reason`. Background mode output (consumed by Stop hook) must NOT include `hookSpecificOutput`.
+Hook responses vary by hook type. **Only SessionStart, PreToolUse, and PermissionRequest** support `hookSpecificOutput` (with `hookEventName` and `additionalContext`). **Stop hooks** only support top-level fields: `continue`, `suppressOutput`, `systemMessage`, `decision`, `reason`. Background mode output (consumed by Stop hook) must NOT include `hookSpecificOutput`. **Important**: `systemMessage` is user-facing only — Claude never sees it. To inject context into Claude from a Stop hook, use `decision: "block"` + `reason` (the `reason` text is delivered to Claude as feedback).
 
 ### Plugin Cache and Registry Layout
 
