@@ -66,7 +66,7 @@ def autodetect(config: Dict[str, Any], config_path: str) -> bool:
     if config.get("uproject"):
         uproject_path = Path(config["uproject"])
         if uproject_path.is_file():
-            project_root = uproject_path.parent
+            project_root = Path.cwd()
             data = {"uproject": config["uproject"]}
             if config.get("engine_dir"):
                 data["engine_dir"] = config["engine_dir"]
