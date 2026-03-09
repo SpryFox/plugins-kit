@@ -738,6 +738,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                 })
 
     # Sync files to data directory
+    # Rule: successful outcomes -> ok_entries (verbose-only); failures/actions -> action_entries (always shown)
     for sync_def in manifest.get("sync_to_data", []):
         src_rel = sync_def["src"]
         dst_rel = sync_def["dst"]
@@ -756,7 +757,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
         import shutil
         os.makedirs(dst, exist_ok=True)
         shutil.copytree(src, dst, dirs_exist_ok=True)
-        action_entries.append(f"{prefix}sync {src_rel} -> {dst_rel}: ok")
+        ok_entries.append(f"{prefix}sync {src_rel} -> {dst_rel}: ok")
 
     # Check marketplace entries (before json_entries — marketplaces must be cloned
     # before we merge fields like autoUpdate into known_marketplaces.json)
