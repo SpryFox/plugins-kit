@@ -181,6 +181,10 @@ Plugins follow the Claude Code plugin spec:
 - **Skill discovery**: Claude Code scans `skills/` directories for `SKILL.md` files
 - **Variable expansion**: `${CLAUDE_PLUGIN_ROOT}` resolves to the plugin's install path at runtime
 
+### Hook Output JSON Schema
+
+Hook responses vary by hook type. **Only SessionStart, PreToolUse, and PermissionRequest** support `hookSpecificOutput` (with `hookEventName` and `additionalContext`). **Stop hooks** only support top-level fields: `continue`, `suppressOutput`, `systemMessage`, `decision`, `reason`. Background mode output (consumed by Stop hook) must NOT include `hookSpecificOutput`.
+
 ### Plugin Cache and Registry Layout
 
 Claude Code stores plugin data under `~/.claude/plugins/`:

@@ -10,7 +10,7 @@ Bootstrap uses a fire-and-forget model to avoid blocking session start:
 
 2. **Engine (background)**: Runs all checks (tools, venv, marketplace, plugins, etc.), writes results to `bootstrap.log`, and — if there's anything to display — writes display JSON atomically to `bootstrap_display.json` in the data directory. When everything passes silently, no display file is created.
 
-3. **Stop hook** (every turn, ~0ms when idle): Checks for `bootstrap_display.json`. If present, emits its contents (with `hookEventName: "Stop"`) and deletes the file. If absent, exits immediately with no output.
+3. **Stop hook** (every turn, ~0ms when idle): Checks for `bootstrap_display.json`. If present, emits its contents and deletes the file. If absent, exits immediately with no output. **Important**: Stop hooks only support top-level fields (`continue`, `suppressOutput`, `systemMessage`, `decision`, `reason`) — `hookSpecificOutput` is not valid for Stop hooks and will be rejected. All content (log + remediation instructions) is merged into `systemMessage`.
 
 This means users see bootstrap results on the first turn after the engine completes, rather than waiting for the engine before the session starts. Console mode (`--console`) bypasses this entirely and runs synchronously with plain text output.
 
@@ -88,7 +88,7 @@ The engine collects messages from all plugin scripts and emits a unified respons
 
 ## Execution Flow
 
-The engine accepts a `--background` flag. When set, output is written atomically to `bootstrap_display.json` in the data directory instead of stdout, and `hookEventName` is set to `"Stop"` (so the Stop hook can surface it). When there's nothing to display (silent success with `log_success_checks` off), no file is written.
+The engine accepts a `--background` flag. When set, output is written atomically to `bootstrap_display.json` in the data directory instead of stdout. Background output uses only top-level fields (`continue`, `suppressOutput`, `systemMessage`) since it is consumed by the Stop hook, which does not support `hookSpecificOutput`. Non-background output (stdout, consumed by SessionStart hook) includes `hookSpecificOutput` with `hookEventName: "SessionStart"`. When there's nothing to display (silent success with `log_success_checks` off), no file is written.
 
 1. **Auto-run phase**: Bootstrap runs on session start. For each tool check, the engine runs check -> remediate -> re-check:
    - Tool present -> log `<name>: passed`, continue

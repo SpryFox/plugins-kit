@@ -64,7 +64,7 @@ class TestEngineBackground:
         assert result.stdout.strip() == ""
 
     def test_background_success_format(self, data_dir, tmp_path):
-        """Display file has correct JSON structure with hookEventName: Stop."""
+        """Display file has Stop-hook-compliant JSON (no hookSpecificOutput)."""
         fake_root = _make_minimal_root(tmp_path, {"log_success_checks": True})
         run_engine(data_dir, plugin_root=fake_root, extra_args=["--background"])
         display_file = os.path.join(data_dir, "bootstrap_display.json")
@@ -72,11 +72,13 @@ class TestEngineBackground:
             response = json.load(f)
         assert response["continue"] is True
         assert response["suppressOutput"] is False
-        assert response["hookSpecificOutput"]["hookEventName"] == "Stop"
         assert "systemMessage" in response
+        assert "bootstrap complete" in response["systemMessage"]
+        # Stop hooks do NOT support hookSpecificOutput
+        assert "hookSpecificOutput" not in response
 
     def test_background_failure_format(self, data_dir, tmp_path):
-        """Display file includes remediation instructions on failure."""
+        """Display file includes remediation in systemMessage (no hookSpecificOutput)."""
         fake_root = tmp_path / "fake_plugin_bg"
         fake_root.mkdir()
         (fake_root / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
@@ -104,8 +106,18 @@ class TestEngineBackground:
         assert os.path.isfile(display_file)
         with open(display_file) as f:
             response = json.load(f)
-        assert response["hookSpecificOutput"]["hookEventName"] == "Stop"
-        assert "nonexistent_tool_xyz_abc" in response["hookSpecificOutput"]["additionalContext"]
+        # Stop hooks do NOT support hookSpecificOutput
+        assert "hookSpecificOutput" not in response
+        # Remediation instructions merged into systemMessage
+        assert "nonexistent_tool_xyz_abc" in response["systemMessage"]
+
+    def test_foreground_has_hook_specific_output(self, data_dir, tmp_path):
+        """Non-background (SessionStart) output retains hookSpecificOutput."""
+        fake_root = _make_minimal_root(tmp_path, {"log_success_checks": True})
+        result = run_engine(data_dir, plugin_root=fake_root)
+        assert result.returncode == 0
+        response = json.loads(result.stdout.strip())
+        assert response["hookSpecificOutput"]["hookEventName"] == "SessionStart"
 
     def test_background_silent_no_file(self, data_dir, tmp_path):
         """When everything is ok and log_success is false, no display file is created."""

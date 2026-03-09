@@ -1175,26 +1175,31 @@ def _write_atomic(path, content):
 
 def emit_success_response(log_content, label="bootstrap", output_file=None):
     """Emit hook JSON showing bootstrap log to user and agent."""
-    hook_event = "Stop" if output_file else "SessionStart"
-    response = {
-        "continue": True,
-        "suppressOutput": False,
-        "systemMessage": f"{label}:\n{log_content}",
-        "hookSpecificOutput": {
-            "hookEventName": hook_event,
-            "additionalContext": f"{label} -> bootstrap complete:\n{log_content}",
-        },
-    }
-    content = json.dumps(response)
     if output_file:
-        _write_atomic(output_file, content)
+        # Background mode: consumed by Stop hook, which only supports top-level fields
+        # (continue, suppressOutput, systemMessage). No hookSpecificOutput allowed.
+        response = {
+            "continue": True,
+            "suppressOutput": False,
+            "systemMessage": f"{label}:\n{log_content}\n\n{label} -> bootstrap complete:\n{log_content}",
+        }
+        _write_atomic(output_file, json.dumps(response))
     else:
-        print(content)
+        # SessionStart hook: supports hookSpecificOutput with hookEventName
+        response = {
+            "continue": True,
+            "suppressOutput": False,
+            "systemMessage": f"{label}:\n{log_content}",
+            "hookSpecificOutput": {
+                "hookEventName": "SessionStart",
+                "additionalContext": f"{label} -> bootstrap complete:\n{log_content}",
+            },
+        }
+        print(json.dumps(response))
 
 
 def emit_failure_response(failures, current_os, log_content, label="bootstrap", output_file=None):
     """Emit hook JSON with fix-all directives to stdout or file."""
-    hook_event = "Stop" if output_file else "SessionStart"
     agent_lines = [f"{label} -> Setup issues found. Fix in order:\n"]
 
     for i, f in enumerate(failures, 1):
@@ -1225,21 +1230,27 @@ def emit_failure_response(failures, current_os, log_content, label="bootstrap", 
     agent_lines.append("\nAfter fixing, type 'fix-all' or 'fixed' to re-run bootstrap, or restart Claude Code.")
     agent_msg = "\n".join(agent_lines)
 
-    response = {
-        "continue": True,
-        "suppressOutput": False,
-        "systemMessage": f"{label}:\n{log_content}",
-        "hookSpecificOutput": {
-            "hookEventName": hook_event,
-            "additionalContext": agent_msg,
-        },
-    }
-
-    content = json.dumps(response)
     if output_file:
-        _write_atomic(output_file, content)
+        # Background mode: consumed by Stop hook, which only supports top-level fields
+        # (continue, suppressOutput, systemMessage). No hookSpecificOutput allowed.
+        response = {
+            "continue": True,
+            "suppressOutput": False,
+            "systemMessage": f"{label}:\n{log_content}\n\n{agent_msg}",
+        }
+        _write_atomic(output_file, json.dumps(response))
     else:
-        print(content)
+        # SessionStart hook: supports hookSpecificOutput with hookEventName
+        response = {
+            "continue": True,
+            "suppressOutput": False,
+            "systemMessage": f"{label}:\n{log_content}",
+            "hookSpecificOutput": {
+                "hookEventName": "SessionStart",
+                "additionalContext": agent_msg,
+            },
+        }
+        print(json.dumps(response))
 
 
 if __name__ == "__main__":
