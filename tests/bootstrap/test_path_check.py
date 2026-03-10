@@ -76,21 +76,24 @@ class TestAddPathToShellConfigWindowsIntegration:
     """Test that add_path_to_shell_config calls registry on Windows."""
 
     @patch("bootstrap_lib.path_check._add_path_to_windows_registry")
-    def test_calls_registry_on_windows(self, mock_registry):
+    def test_calls_registry_on_windows(self, mock_registry, tmp_path):
         from bootstrap_lib.path_check import add_path_to_shell_config
         mock_registry.return_value = (True, "added to registry")
-        # Simulate Windows environment
-        with patch.dict(os.environ, {"MSYSTEM": "MINGW64"}):
+        # Use a fake RC file path to prevent writing to real ~/.bashrc
+        fake_bashrc = str(tmp_path / ".bashrc")
+        with patch.dict(os.environ, {"MSYSTEM": "MINGW64"}), \
+             patch("bootstrap_lib.path_check.os.path.expanduser", side_effect=lambda p: str(tmp_path / p.lstrip("~/")) if p.startswith("~") else p):
             ok, msg = add_path_to_shell_config("/tmp/test_path_xyz_" + str(os.getpid()))
         mock_registry.assert_called_once()
 
     @patch("bootstrap_lib.path_check._add_path_to_windows_registry")
-    def test_skips_registry_on_non_windows(self, mock_registry):
+    def test_skips_registry_on_non_windows(self, mock_registry, tmp_path):
         from bootstrap_lib.path_check import add_path_to_shell_config
         # Ensure MSYSTEM is not set and sys.platform is not win32
         env = {k: v for k, v in os.environ.items() if k != "MSYSTEM"}
         with patch.dict(os.environ, env, clear=True), \
-             patch("bootstrap_lib.path_check.sys") as mock_sys:
+             patch("bootstrap_lib.path_check.sys") as mock_sys, \
+             patch("bootstrap_lib.path_check.os.path.expanduser", side_effect=lambda p: str(tmp_path / p.lstrip("~/")) if p.startswith("~") else p):
             mock_sys.platform = "linux"
             add_path_to_shell_config("/tmp/test_path_xyz_" + str(os.getpid()))
         mock_registry.assert_not_called()

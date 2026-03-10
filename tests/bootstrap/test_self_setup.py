@@ -52,6 +52,8 @@ class TestProcessSelfSetup:
 
     def test_path_entry_added_to_env(self, tmp_path, monkeypatch):
         """Path entries are added to the current process PATH."""
+        from unittest.mock import patch
+
         test_path = str(tmp_path / "test_bin")
         os.makedirs(test_path, exist_ok=True)
         original_path = os.environ.get("PATH", "")
@@ -60,7 +62,9 @@ class TestProcessSelfSetup:
         self_setup = {"path_entries": [test_path]}
         action_entries = []
         ok_entries = []
-        _process_self_setup(self_setup, "windows", str(tmp_path), str(tmp_path), action_entries, ok_entries)
+        # Mock add_path_to_shell_config to prevent writing to real ~/.bashrc
+        with patch("bootstrap_lib.path_check.add_path_to_shell_config", return_value=(True, "mocked")):
+            _process_self_setup(self_setup, "windows", str(tmp_path), str(tmp_path), action_entries, ok_entries)
 
         assert test_path in os.environ["PATH"]
 

@@ -8,7 +8,8 @@ A declarative configuration file covering automatable operations. The engine rea
 {
   "tools": [
     {"name": "git"},
-    {"name": "uv", "install": {"darwin": "curl -LsSf https://astral.sh/uv/install.sh | sh", "linux": "curl -LsSf https://astral.sh/uv/install.sh | sh", "windows": "powershell -c \"irm https://astral.sh/uv/install.ps1 | iex\""}}
+    {"name": "uv", "install": {"darwin": "curl -LsSf https://astral.sh/uv/install.sh | sh", "linux": "curl -LsSf https://astral.sh/uv/install.sh | sh", "windows": "powershell -c \"irm https://astral.sh/uv/install.ps1 | iex\""}},
+    {"name": "node", "installPath": "~/.local/share/node", "install": {"macos": "brew install node"}}
   ],
   "path_entries": ["~/.local/bin"],
   "venv": {
@@ -83,6 +84,18 @@ Variable references are expanded by the engine from plugin context and config:
 | `${plugin_root}` | Plugin's install path |
 | `${data_dir}` | Plugin's data directory |
 | `${uproject_dir}` | From plugin config (if applicable) |
+
+## Tool `installPath`
+
+The optional `installPath` field on a tool entry tells the engine where the tool binary lives (or will live after install). This solves the chicken-and-egg problem where a tool is installed to a known directory that isn't in PATH yet at check time.
+
+```json
+{"name": "node", "installPath": "~/.local/share/node", "install": {"windows": "..."}}
+```
+
+- Supports `~` expansion
+- The engine checks `<installPath>/<name>` (and `<installPath>/<name>.exe` on Windows) before falling back to `shutil.which()`
+- The same `installPath` is used for the recheck after install
 
 ## Script Section
 

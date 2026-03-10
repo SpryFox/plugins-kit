@@ -466,7 +466,8 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
     for tool_def in self_setup.get("tools", []):
         name = tool_def["name"]
         install_cmds = tool_def.get("install", {})
-        result = check_tool(name, install_cmds, current_os)
+        tool_install_path = tool_def.get("installPath")
+        result = check_tool(name, install_cmds, current_os, install_path=tool_install_path)
 
         if result.passed:
             ok_entries.append(f"{p}{result.name}: ok - {result.message}")
@@ -477,7 +478,7 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
             from .tool_check import run_install
             ok, _output = run_install(result.install_cmd)
             if ok:
-                recheck = check_tool(name, install_cmds, current_os)
+                recheck = check_tool(name, install_cmds, current_os, install_path=tool_install_path)
                 if recheck.passed:
                     action_entries.append(f"{p}{result.name}: installed - ran `{result.install_cmd}`, now {recheck.message}")
                     continue
@@ -790,7 +791,8 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
     for tool_def in manifest.get("tools", []):
         name = tool_def["name"]
         install_cmds = tool_def.get("install", {})
-        result = check_tool(name, install_cmds, current_os)
+        tool_install_path = tool_def.get("installPath")
+        result = check_tool(name, install_cmds, current_os, install_path=tool_install_path)
 
         if result.passed:
             ok_entries.append(f"{prefix}{result.name}: ok - {result.message}")
@@ -802,7 +804,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
             from .tool_check import run_install
             ok, _output = run_install(result.install_cmd)
             if ok:
-                recheck = check_tool(name, install_cmds, current_os)
+                recheck = check_tool(name, install_cmds, current_os, install_path=tool_install_path)
                 if recheck.passed:
                     action_entries.append(f"{prefix}{result.name}: installed - ran `{result.install_cmd}`, now {recheck.message}")
                     continue  # no failure to record
