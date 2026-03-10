@@ -174,7 +174,9 @@ Plugins follow the Claude Code plugin spec:
 
 **Official docs**: https://code.claude.com/docs/en/hooks (canonical reference). When in doubt, fetch this URL — it is the source of truth.
 
-All hooks use the same JSON output format. On exit 0, stdout is parsed as JSON. Exit 2 = blocking error (stderr fed to Claude). Other exits = non-blocking error.
+On exit 0, stdout is parsed as JSON. Exit 2 = blocking error (stderr fed to Claude). Other exits = non-blocking error. JSON is only processed on exit 0.
+
+**Universal fields** (all events):
 
 | Field | Default | Description |
 |-------|---------|-------------|
@@ -182,29 +184,25 @@ All hooks use the same JSON output format. On exit 0, stdout is parsed as JSON. 
 | `stopReason` | none | Message shown to user when `continue` is `false`. Not shown to Claude |
 | `suppressOutput` | `false` | If `true`, hides stdout from verbose mode |
 | `systemMessage` | none | Shown to user only — Claude never sees it |
-| `decision` | none | `"block"` to block the action. `reason` field provides explanation to Claude |
-| `hookSpecificOutput.additionalContext` | none | Injected into Claude's context (Claude-facing). Works on all hook events |
-| `hookSpecificOutput.permissionDecision` | none | PreToolUse only: `"allow"`, `"deny"`, or `"ask"` |
-| `hookSpecificOutput.hookEventName` | none | SessionStart only: identifies the hook event |
 
-**Context routing summary**: `systemMessage` → user only. `hookSpecificOutput.additionalContext` → Claude only. `decision: "block"` + `reason` → Claude only. Plain text stdout → Claude (for SessionStart and UserPromptSubmit).
+**Event-specific decision control**:
 
-### Types of Hooks
+| Event | Decision pattern | To Claude |
+|-------|-----------------|-----------|
+| SessionStart | None | `hookSpecificOutput.additionalContext` or plain text stdout |
+| UserPromptSubmit | `decision: "block"` + `reason` | `hookSpecificOutput.additionalContext` or plain text stdout |
+| PreToolUse | `hookSpecificOutput.permissionDecision` (allow/deny/ask) | `hookSpecificOutput.additionalContext` |
+| PostToolUse | `decision: "block"` + `reason` | `hookSpecificOutput.additionalContext` |
+| PostToolUseFailure | None | `hookSpecificOutput.additionalContext` |
+| Stop / SubagentStop | `decision: "block"` + `reason` | `reason` only (no `hookSpecificOutput`) |
+| SubagentStart | None | `hookSpecificOutput.additionalContext` |
+| Notification | None | `hookSpecificOutput.additionalContext` |
+| PermissionRequest | `hookSpecificOutput.decision.behavior` (allow/deny) | — |
+| ConfigChange | `decision: "block"` + `reason` | — |
 
-| Event | When it fires |
-|-------|---------------|
-| SessionStart | Once when Claude Code starts a new session |
-| UserPromptSubmit | Before each user message is processed |
-| PreToolUse | Before a tool call executes (can allow/deny/modify) |
-| PostToolUse / PostToolUseFailure | After a tool call completes or fails |
-| Stop / SubagentStop | When Claude or a subagent finishes responding |
-| SubagentStart | When a subagent is launched |
-| Notification | When a notification is triggered |
-| TeammateIdle / TaskCompleted | Teammate lifecycle events (exit 2 blocks with stderr) |
-| ConfigChange | When configuration changes |
-| PermissionRequest | When a permission decision is needed |
+`hookSpecificOutput` always requires `hookEventName` set to the event name.
 
-**Background mode** (bootstrap-specific): The engine writes output to a pending file, which the Stop hook reads and outputs as its own stdout. All standard JSON fields work.
+**Background mode** (bootstrap-specific): The engine writes output to a pending file, which the UserPromptSubmit hook reads and outputs as its own stdout. Stop hooks do not support `hookSpecificOutput`, so UserPromptSubmit is used to inject `additionalContext` for Claude.
 
 ### Plugin Cache and Registry Layout
 
