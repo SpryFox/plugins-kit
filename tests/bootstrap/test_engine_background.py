@@ -64,7 +64,7 @@ class TestEngineBackground:
         assert result.stdout.strip() == ""
 
     def test_background_success_format(self, data_dir, tmp_path):
-        """Display file has Stop-hook-compliant JSON (no hookSpecificOutput)."""
+        """Display file has Stop-hook-compliant JSON with additionalContext for Claude."""
         fake_root = _make_minimal_root(tmp_path, {"log_success_checks": True})
         run_engine(data_dir, plugin_root=fake_root, extra_args=["--background"])
         display_file = os.path.join(data_dir, "bootstrap_display.pending")
@@ -74,11 +74,11 @@ class TestEngineBackground:
         assert response["suppressOutput"] is False
         assert "systemMessage" in response
         assert "bootstrap complete" in response["systemMessage"]
-        # Stop hooks do NOT support hookSpecificOutput
-        assert "hookSpecificOutput" not in response
+        # additionalContext makes log visible to Claude (not just the user)
+        assert "bootstrap complete" in response["hookSpecificOutput"]["additionalContext"]
 
     def test_background_failure_format(self, data_dir, tmp_path):
-        """Display file includes remediation in systemMessage (no hookSpecificOutput)."""
+        """Display file includes remediation for Claude via additionalContext."""
         fake_root = tmp_path / "fake_plugin_bg"
         fake_root.mkdir()
         (fake_root / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
@@ -106,10 +106,10 @@ class TestEngineBackground:
         assert os.path.isfile(display_file)
         with open(display_file) as f:
             response = json.load(f)
-        # Stop hooks do NOT support hookSpecificOutput
-        assert "hookSpecificOutput" not in response
-        # Remediation instructions merged into systemMessage
+        # User sees log + fix instructions in systemMessage
         assert "nonexistent_tool_xyz_abc" in response["systemMessage"]
+        # Claude sees log + fix directives via additionalContext
+        assert "nonexistent_tool_xyz_abc" in response["hookSpecificOutput"]["additionalContext"]
 
     def test_foreground_has_hook_specific_output(self, data_dir, tmp_path):
         """Non-background (SessionStart) output retains hookSpecificOutput."""

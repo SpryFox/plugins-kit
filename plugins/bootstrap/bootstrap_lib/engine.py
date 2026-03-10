@@ -1420,12 +1420,14 @@ def emit_success_response(log_content, label="bootstrap", output_file=None):
     """Emit hook JSON showing bootstrap log to user and agent."""
     if output_file:
         # Background mode: consumed by Stop hook.
-        # `systemMessage` is user-facing only — Claude never sees it.
-        # Success doesn't need agent context, so no decision/reason needed.
+        # `systemMessage` is user-facing, `additionalContext` is Claude-facing.
         response = {
             "continue": True,
             "suppressOutput": False,
             "systemMessage": f"{label} -> bootstrap complete:\n{log_content}",
+            "hookSpecificOutput": {
+                "additionalContext": f"{label} -> bootstrap complete:\n{log_content}",
+            },
         }
         _write_atomic(output_file, json.dumps(response))
     else:
@@ -1478,12 +1480,17 @@ def emit_failure_response(failures, current_os, log_content, label="bootstrap", 
 
     if output_file:
         # Background mode: consumed by Stop hook.
-        # Stop hooks inject `reason` into Claude's context (when decision is "block").
-        # `systemMessage` is user-facing only — Claude never sees it.
+        # Stop hooks: `reason` blocks and provides fix directives to Claude,
+        # `additionalContext` gives Claude the full log context,
+        # `systemMessage` is user-facing only.
+        user_msg = "Tell Claude 'fix-all' to auto-fix, or 'fixed' after manual fixes."
         response = {
             "decision": "block",
             "reason": agent_msg,
-            "systemMessage": f"{label}:\n{log_content}",
+            "systemMessage": f"{label} -> Setup issues found. Fix in order:\n{log_content}\n\n{user_msg}",
+            "hookSpecificOutput": {
+                "additionalContext": f"{label} -> bootstrap complete:\n{log_content}\n\n{agent_msg}",
+            },
         }
         _write_atomic(output_file, json.dumps(response))
     else:
