@@ -64,7 +64,7 @@ class TestEngineBackground:
         assert result.stdout.strip() == ""
 
     def test_background_success_format(self, data_dir, tmp_path):
-        """Display file has Stop-hook-compliant JSON with additionalContext for Claude."""
+        """Display file has UserPromptSubmit-compliant JSON with additionalContext for Claude."""
         fake_root = _make_minimal_root(tmp_path, {"log_success_checks": True})
         run_engine(data_dir, plugin_root=fake_root, extra_args=["--background"])
         display_file = os.path.join(data_dir, "bootstrap_display.pending")
@@ -74,7 +74,8 @@ class TestEngineBackground:
         assert response["suppressOutput"] is False
         assert "systemMessage" in response
         assert "bootstrap complete" in response["systemMessage"]
-        # additionalContext makes log visible to Claude (not just the user)
+        # hookSpecificOutput with hookEventName for UserPromptSubmit validation
+        assert response["hookSpecificOutput"]["hookEventName"] == "UserPromptSubmit"
         assert "bootstrap complete" in response["hookSpecificOutput"]["additionalContext"]
 
     def test_background_failure_format(self, data_dir, tmp_path):
@@ -108,6 +109,8 @@ class TestEngineBackground:
             response = json.load(f)
         # User sees log + fix instructions in systemMessage
         assert "nonexistent_tool_xyz_abc" in response["systemMessage"]
+        # hookSpecificOutput with hookEventName for UserPromptSubmit validation
+        assert response["hookSpecificOutput"]["hookEventName"] == "UserPromptSubmit"
         # Claude sees log + fix directives via additionalContext
         assert "nonexistent_tool_xyz_abc" in response["hookSpecificOutput"]["additionalContext"]
 

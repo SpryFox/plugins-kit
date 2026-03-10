@@ -1419,13 +1419,14 @@ def _write_atomic(path, content):
 def emit_success_response(log_content, label="bootstrap", output_file=None):
     """Emit hook JSON showing bootstrap log to user and agent."""
     if output_file:
-        # Background mode: consumed by Stop hook.
+        # Background mode: consumed by UserPromptSubmit hook.
         # `systemMessage` is user-facing, `additionalContext` is Claude-facing.
         response = {
             "continue": True,
             "suppressOutput": False,
             "systemMessage": f"{label} -> bootstrap complete:\n{log_content}",
             "hookSpecificOutput": {
+                "hookEventName": "UserPromptSubmit",
                 "additionalContext": f"{label} -> bootstrap complete:\n{log_content}",
             },
         }
@@ -1479,9 +1480,8 @@ def emit_failure_response(failures, current_os, log_content, label="bootstrap", 
     agent_msg = "\n".join(agent_lines)
 
     if output_file:
-        # Background mode: consumed by Stop hook.
-        # Stop hooks: `reason` blocks and provides fix directives to Claude,
-        # `additionalContext` gives Claude the full log context,
+        # Background mode: consumed by UserPromptSubmit hook.
+        # `additionalContext` gives Claude the full log + fix directives,
         # `systemMessage` is user-facing only.
         user_msg = "Tell Claude 'fix-all' to auto-fix, or 'fixed' after manual fixes."
         response = {
@@ -1489,6 +1489,7 @@ def emit_failure_response(failures, current_os, log_content, label="bootstrap", 
             "reason": agent_msg,
             "systemMessage": f"{label} -> Setup issues found. Fix in order:\n{log_content}\n\n{user_msg}",
             "hookSpecificOutput": {
+                "hookEventName": "UserPromptSubmit",
                 "additionalContext": f"{label} -> bootstrap complete:\n{log_content}\n\n{agent_msg}",
             },
         }
