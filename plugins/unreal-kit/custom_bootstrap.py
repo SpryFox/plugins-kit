@@ -21,9 +21,12 @@ def autodetect() -> Optional[Dict[str, str]]:
     if skill_lib not in sys.path:
         sys.path.insert(0, skill_lib)
 
-    from ue_discovery import find_uproject_from_cwd, find_engine_dir
+    from ue_discovery import find_uproject_files, find_engine_dir
 
-    uproject = find_uproject_from_cwd()
+    # Search CWD only (no walk-up) — autodetect runs from the project root,
+    # so walking up would find unrelated .uproject files in parent dirs.
+    found = find_uproject_files(Path.cwd().resolve(), max_depth=2)
+    uproject = found[0] if found else None
     if not uproject:
         return None
 
