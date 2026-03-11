@@ -21,6 +21,8 @@ The bootstrap engine has two distinct setup phases:
 1. **Self-setup** (step 3): Engine prerequisites — tools, PATH entries, and venv — declared in `config.json` under `self_setup`. These make the engine itself runnable (e.g. uv, git, PyYAML). Processed before any `bootstrap.json`.
 2. **Plugin bootstrap** (step 4): Ecosystem management — marketplaces and plugins — declared in each plugin's `bootstrap.json`. The engine auto-discovers which installed plugins need bootstrapping by scanning for `bootstrap.json` in each plugin's install path (resolved from `plugins/installed_plugins.json`).
 
+   **Dev layout note**: When running the engine directly against the source tree (e.g. `python plugins/bootstrap/engine/bootstrap_engine.py --plugin-root plugins/bootstrap ...`), `plugins/installed_plugins.json` does not exist. `list_enabled_plugins()` returns `[], False` and sibling plugins (unreal-kit, test-plugin, local-review-kit) are not auto-discovered. This is expected and not part of any real dev workflow — the engine runs cleanly with no plugin output.
+
 Discovery results are cached in `plugins/data/plugins-kit/bootstrap/config.json` under `bootstrap_cache` to avoid repeated filesystem scans — entries are added on first discovery and removed if `bootstrap.json` disappears (e.g. after a plugin update). Users can permanently opt out a plugin by adding its ref to `no_bootstrap` in that config file.
 
 ### Step 4 Processing Order

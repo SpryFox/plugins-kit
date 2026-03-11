@@ -14,7 +14,6 @@ This repo is a **Claude Code plugin marketplace** — it extends Claude Code wit
 plugins-kit/                          # Marketplace root
   .claude-plugin/marketplace.json     # Marketplace manifest (lists all plugins)
   plugins/
-    installed_plugins.json            # Plugin registry
     bootstrap/                        # Bootstrap plugin (always enabled)
       .claude-plugin/plugin.json      # Plugin manifest
       bootstrap.json                  # Bootstrap plugin's own manifest

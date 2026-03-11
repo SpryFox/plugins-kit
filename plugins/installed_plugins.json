@@ -1,7 +1,0 @@
-{
-  "plugins": {
-    "plugins-kit:unreal-kit": [{"installPath": "./unreal-kit", "version": "0.1.0"}],
-    "plugins-kit:test-plugin": [{"installPath": "./test-plugin", "version": "0.1.0"}],
-    "plugins-kit:local-review-kit": [{"installPath": "./local-review-kit", "version": "0.1.0"}]
-  }
-}
