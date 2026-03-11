@@ -5,11 +5,12 @@ project-scoped phases (config required_fields, ini_settings) should be skipped.
 """
 
 import os
+from unittest.mock import patch
 
 import pytest
 
 from bootstrap_lib.config_check import load_yaml_config, save_yaml_config
-from bootstrap_lib.engine import _process_config, _process_manifest
+from bootstrap_lib.engine import _process_config, _process_manifest, _process_project_config
 
 
 def _make_config_section(plugin_root, defaults_source=None):
@@ -118,6 +119,81 @@ class TestProcessConfigProjectGating:
         )
 
         assert len(failures) > 0
+
+
+class TestProcessProjectConfigDetection:
+    def test_stale_config_with_missing_fields_and_autodetect_none_returns_false(self, tmp_path):
+        """Stale .claude/unreal-kit.yaml exists (missing engine_dir) but autodetect
+        returns None (no .uproject in CWD) -> should return False, not True."""
+        plugin_root = str(tmp_path / "plugin")
+        os.makedirs(plugin_root)
+        plugin_data_dir = str(tmp_path / "data")
+        os.makedirs(plugin_data_dir)
+
+        # Simulate stale project config: uproject set, engine_dir missing
+        project_config_dir = tmp_path / ".claude"
+        project_config_dir.mkdir()
+        project_config_path = project_config_dir / "unreal-kit.yaml"
+        save_yaml_config(str(project_config_path), {"uproject": "/some/old/Project.uproject"})
+
+        section = {
+            "file": ".claude/unreal-kit.yaml",
+            "required_fields": ["uproject", "engine_dir"],
+            "autodetect": "custom_bootstrap.py autodetect",
+        }
+
+        action_entries = []
+        ok_entries = []
+
+        orig_dir = os.getcwd()
+        os.chdir(str(tmp_path))
+        try:
+            with patch("bootstrap_lib.config_check.run_project_autodetect", return_value=None) as mock_ad:
+                result = _process_project_config(
+                    section, plugin_data_dir, plugin_root,
+                    action_entries, ok_entries=ok_entries, plugin_name="test",
+                )
+        finally:
+            os.chdir(orig_dir)
+
+        assert result is False, "Should return False when autodetect finds no project in CWD"
+        assert any("no project detected" in e for e in ok_entries)
+
+    def test_stale_config_all_fields_present_returns_true(self, tmp_path):
+        """Stale config with ALL required fields set -> return True (config phase will validate)."""
+        plugin_root = str(tmp_path / "plugin")
+        os.makedirs(plugin_root)
+        plugin_data_dir = str(tmp_path / "data")
+        os.makedirs(plugin_data_dir)
+
+        project_config_dir = tmp_path / ".claude"
+        project_config_dir.mkdir()
+        project_config_path = project_config_dir / "unreal-kit.yaml"
+        save_yaml_config(str(project_config_path), {
+            "uproject": "/some/Project.uproject",
+            "engine_dir": "/some/engine",
+        })
+
+        section = {
+            "file": ".claude/unreal-kit.yaml",
+            "required_fields": ["uproject", "engine_dir"],
+            "autodetect": "custom_bootstrap.py autodetect",
+        }
+
+        action_entries = []
+        ok_entries = []
+
+        orig_dir = os.getcwd()
+        os.chdir(str(tmp_path))
+        try:
+            result = _process_project_config(
+                section, plugin_data_dir, plugin_root,
+                action_entries, ok_entries=ok_entries, plugin_name="test",
+            )
+        finally:
+            os.chdir(orig_dir)
+
+        assert result is True
 
 
 class TestProcessManifestProjectGating:

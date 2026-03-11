@@ -756,7 +756,12 @@ def _process_project_config(project_config_section, plugin_data_dir, plugin_root
                         project_data[field] = detected[field]
                 save_yaml_config(project_config_path, project_data)
                 action_entries.append(f"project config: updated {project_config_path}")
-            # If autodetect returned None, fall through — config phase fix-all handles it
+            else:
+                # Autodetect returned None — no active project in CWD
+                # Stale config file exists but no project is present
+                if ok_entries is not None:
+                    ok_entries.append("project config: no project detected (stale config)")
+                return False
         else:
             if ok_entries is not None:
                 ok_entries.append(f"project config: ok - {project_config_path}")
