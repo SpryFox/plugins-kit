@@ -8,6 +8,7 @@ dist/
 build/
 .claude/*
 !.claude/bootstrap.json
+!.claude/rules/
 .claude/bootstrap.local.json
 uv.lock
 tmp/

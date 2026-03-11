@@ -141,6 +141,32 @@ Only run the full suite (`uv run --extra dev pytest -v`) when explicitly asked o
 
 **Downstream consumers with git dependencies** (e.g., update04): If another project depends on `bootstrap` as a Python git dependency (`bootstrap @ git+https://...`), also bump `bootstrap`'s Python package version in `plugins/bootstrap/pyproject.toml`. Without a package version bump, `uv sync` may consider the installed copy satisfied and skip reinstallation even after the lockfile changes.
 
+### update04 — the bootstrap bootstrapper
+
+**Repository**: `kitaekatt/update04` (local: `~/Dev/update04`)
+
+**Purpose**: update04 is a separate marketplace that exists to fix chicken-and-egg problems in plugins-kit. If bootstrap is broken in a way that prevents it from updating itself, update04 provides an independent code path that can repair the situation.
+
+**How it works**: update04 contains a single plugin ("update") whose job is to ensure plugins-kit marketplace is registered and the bootstrap plugin is installed. Its `update_engine.py` is a thin facade that imports `_process_manifest` from `bootstrap_lib` and delegates all real work to it.
+
+**Library dependency**: update04 declares `bootstrap` as a Python git dependency in its `pyproject.toml`:
+```
+bootstrap @ git+https://github.com/kitaekatt/plugins-kit.git#subdirectory=plugins/bootstrap
+```
+This installs `bootstrap_lib` into update04's own venv. The venv lives at `~/.claude/plugins/data/update04/update/.venv` and is separate from the bootstrap plugin's cache.
+
+**Three version numbers matter when publishing fixes**:
+1. `plugins/bootstrap/.claude-plugin/plugin.json` — plugin version (triggers cache refresh)
+2. `.claude-plugin/marketplace.json` — marketplace listing (must match plugin.json)
+3. `plugins/bootstrap/pyproject.toml` — Python package version (triggers `uv sync` reinstall in update04's venv)
+
+All three must be bumped for a fix to reach both plugins-kit consumers and update04. After bumping, regenerate update04's lockfile:
+```bash
+cd ~/Dev/update04/plugins/update
+uv lock --upgrade-package bootstrap
+```
+Then bump update04's own version in both `plugin.json` and `marketplace.json`, commit, and push.
+
 **Keep architecture docs current** — when modifying bootstrap behavior, update the bootstrap skill references (`plugins/bootstrap/skills/bootstrap/references/`) to reflect the changes. These are the source of truth for how the system works.
 
 **Anti-pattern: silent bootstrap operations.** Every bootstrap check must log its outcome — `ok_entries` when passing (verbose-only), `action_entries` when remediating (always visible). Adding a check that creates files, clones repos, or writes config without emitting a log entry is a bug. See the "Every check must log its outcome" principle in [engine-internals.md](plugins/bootstrap/skills/bootstrap/references/engine-internals.md).
