@@ -536,17 +536,21 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
             if local_bin not in env.get("PATH", ""):
                 env["PATH"] = local_bin + os.pathsep + env.get("PATH", "")
             try:
-                _sp.run(
+                proc = _sp.run(
                     [uv_bin, "sync", "--project", plugin_root],
                     env=env, capture_output=True, timeout=120,
                 )
-                if not result.passed:
+                if proc.returncode != 0:
+                    stderr_text = (proc.stderr or b"").decode("utf-8", errors="replace").strip()
+                    action_entries.append(f"{p}venv: uv sync failed (exit {proc.returncode}): {stderr_text[:200]}")
+                elif not result.passed:
                     action_entries.append(f"{p}venv: synced via `{uv_cmd}`")
                 # Re-check after sync
                 result = check_venv(data_dir, plugin_root, check_imports)
-            except (_sp.SubprocessError, OSError):
-                if not result.passed:
-                    action_entries.append(f"{p}venv: uv sync failed")
+            except (_sp.SubprocessError, OSError) as exc:
+                action_entries.append(f"{p}venv: uv sync error: {exc}")
+        else:
+            action_entries.append(f"{p}venv: uv not found on PATH or in ~/.local/bin")
 
         if result.passed:
             ok_entries.append(f"{p}venv: ok - {result.message}")
@@ -870,7 +874,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                 if local_bin not in env.get("PATH", ""):
                     env["PATH"] = local_bin + os.pathsep + env.get("PATH", "")
                 try:
-                    _sp.run(
+                    proc = _sp.run(
                         [uv_bin, "sync", "--project", plugin_root],
                         env=env, capture_output=True, timeout=120,
                     )
@@ -878,8 +882,15 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                     result = check_venv(data_dir, plugin_root, check_imports)
                     if result.passed:
                         action_entries.append(f"{prefix}venv: created")
-                except (_sp.SubprocessError, OSError):
-                    pass  # Fall through to failure handling
+                    elif proc.returncode != 0:
+                        stderr_text = (proc.stderr or b"").decode("utf-8", errors="replace").strip()
+                        action_entries.append(f"{prefix}venv: uv sync failed (exit {proc.returncode}): {stderr_text[:200]}")
+                    else:
+                        action_entries.append(f"{prefix}venv: uv sync completed but re-check failed: {result.message}")
+                except (_sp.SubprocessError, OSError) as exc:
+                    action_entries.append(f"{prefix}venv: uv sync error: {exc}")
+            else:
+                action_entries.append(f"{prefix}venv: uv not found on PATH or in ~/.local/bin")
 
         if result.passed:
             ok_entries.append(f"{prefix}venv: ok - {result.message}")
