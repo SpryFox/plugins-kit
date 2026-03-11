@@ -114,6 +114,7 @@ def main():
         failures = _process_manifest(
             layered_manifest, current_os, data_dir, plugin_root,
             action_entries, ok_entries, plugin_name="config",
+            project_dir=args.project_dir,
         )
         prefixed_action = [f"config: {e}" for e in action_entries]
         prefixed_ok = [f"config: {e}" for e in ok_entries]
@@ -299,6 +300,7 @@ def _bootstrap_single_plugin(
     failures = _process_manifest(
         plugin_manifest, current_os, plugin_data_dir, plugin_info.install_path,
         action_entries, ok_entries, plugin_name=plugin_info.name,
+        project_dir=getattr(args, 'project_dir', None),
     )
     plugin_action_entries.extend(action_entries)
     plugin_ok_entries.extend(ok_entries)
@@ -772,7 +774,7 @@ def _process_project_config(project_config_section, plugin_data_dir, plugin_root
     return []
 
 
-def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entries, ok_entries, plugin_name="bootstrap"):
+def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entries, ok_entries, plugin_name="bootstrap", project_dir=None):
     """Process a single plugin's bootstrap manifest. Returns list of failures.
 
     Entries are split into two lists:
@@ -1040,33 +1042,23 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                 })
                 continue
 
-        from .marketplace_lifecycle import enable_plugin_in_claude, disable_plugin_in_claude, check_plugin_enabled, check_plugin_version, update_plugin, check_plugin_scope, uninstall_plugin
+        from .marketplace_lifecycle import enable_plugin_in_claude, disable_plugin_in_claude, check_plugin_enabled, check_plugin_enabled_at_scope, check_plugin_version, update_plugin
 
-        # Check scope mismatch (only for already-installed plugins)
+        # Ensure plugin is enabled at desired scope (reads settings file directly,
+        # not installed_plugins.json which can have stale scope metadata)
         if install_result.passed:
-            scope_result = check_plugin_scope(plugin_ref, desired_scope)
-            if not scope_result.matches and scope_result.installed_scope:
-                action_entries.append(f"{prefix}plugin {plugin_ref}: scope mismatch ({scope_result.message}), reinstalling at {desired_scope} scope")
-                uninst = uninstall_plugin(plugin_ref, scope=scope_result.installed_scope)
-                if uninst.passed:
-                    reinst = install_plugin(plugin_ref, scope=desired_scope)
-                    if reinst.passed:
-                        action_entries.append(f"{prefix}plugin {plugin_ref}: reinstalled at {desired_scope} scope")
-                    else:
-                        action_entries.append(f"{prefix}plugin {plugin_ref}: reinstall failed - {reinst.message}")
-                        failures.append({
-                            "type": "plugin",
-                            "ref": plugin_ref,
-                            "message": f"scope reinstall failed: {reinst.message}",
-                            "plugin": plugin_name,
-                        })
-                        continue
+            scope_check = check_plugin_enabled_at_scope(plugin_ref, desired_scope, project_dir)
+            if not scope_check.passed:
+                action_entries.append(f"{prefix}plugin {plugin_ref}: {scope_check.message}, installing at {desired_scope} scope")
+                reinst = install_plugin(plugin_ref, scope=desired_scope)
+                if reinst.passed:
+                    action_entries.append(f"{prefix}plugin {plugin_ref}: installed at {desired_scope} scope")
                 else:
-                    action_entries.append(f"{prefix}plugin {plugin_ref}: uninstall from {scope_result.installed_scope} failed - {uninst.message}")
+                    action_entries.append(f"{prefix}plugin {plugin_ref}: install at {desired_scope} failed - {reinst.message}")
                     failures.append({
                         "type": "plugin",
                         "ref": plugin_ref,
-                        "message": f"scope uninstall failed: {uninst.message}",
+                        "message": f"scope install failed: {reinst.message}",
                         "plugin": plugin_name,
                     })
                     continue
@@ -1083,12 +1075,12 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                     else:
                         action_entries.append(f"{prefix}plugin {plugin_ref}: update failed - {upd_result.message}")
 
-            # Check enabled state in settings.json
-            enabled_result = check_plugin_enabled(plugin_ref)
+            # Check enabled state at desired scope
+            enabled_result = check_plugin_enabled_at_scope(plugin_ref, desired_scope, project_dir)
             if enabled_result.passed:
                 ok_entries.append(f"{prefix}plugin {plugin_ref}: ok")
             else:
-                action_entries.append(f"{prefix}plugin {plugin_ref}: installed but not enabled, running `claude plugin enable {cli_ref}`")
+                action_entries.append(f"{prefix}plugin {plugin_ref}: installed but not enabled at {desired_scope} scope, running `claude plugin enable {cli_ref}`")
                 en_result = enable_plugin_in_claude(plugin_ref)
                 if en_result.passed:
                     action_entries.append(f"{prefix}plugin {plugin_ref}: enabled (added '{cli_ref}' to settings.json enabledPlugins)")

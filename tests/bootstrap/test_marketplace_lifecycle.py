@@ -13,6 +13,7 @@ from bootstrap_lib.marketplace_lifecycle import (
     _version_greater,
     check_marketplace_current,
     check_marketplace_exists,
+    check_plugin_enabled_at_scope,
     check_plugin_installed,
     check_plugin_scope,
     update_marketplace,
@@ -326,8 +327,69 @@ class TestCheckPluginScope:
         assert result.matches is True
 
 
+class TestCheckPluginEnabledAtScope:
+    """Tests for check_plugin_enabled_at_scope — reading settings files directly."""
+
+    def test_enabled_at_user_scope(self, tmp_path, monkeypatch):
+        settings = tmp_path / ".claude" / "settings.json"
+        settings.parent.mkdir(parents=True)
+        settings.write_text(json.dumps({"enabledPlugins": {"bootstrap@plugins-kit": True}}))
+        monkeypatch.setenv("HOME", str(tmp_path))
+        result = check_plugin_enabled_at_scope("plugins-kit:bootstrap", "user")
+        assert result.passed is True
+        assert "user scope" in result.message
+
+    def test_not_enabled_at_user_scope(self, tmp_path, monkeypatch):
+        settings = tmp_path / ".claude" / "settings.json"
+        settings.parent.mkdir(parents=True)
+        settings.write_text(json.dumps({"enabledPlugins": {}}))
+        monkeypatch.setenv("HOME", str(tmp_path))
+        result = check_plugin_enabled_at_scope("plugins-kit:bootstrap", "user")
+        assert result.passed is False
+        assert "not enabled at user scope" in result.message
+
+    def test_enabled_at_project_scope(self, tmp_path, monkeypatch):
+        project_dir = tmp_path / "myproject"
+        settings = project_dir / ".claude" / "settings.json"
+        settings.parent.mkdir(parents=True)
+        settings.write_text(json.dumps({"enabledPlugins": {"bootstrap@plugins-kit": True}}))
+        monkeypatch.setenv("HOME", str(tmp_path))
+        result = check_plugin_enabled_at_scope("plugins-kit:bootstrap", "project", str(project_dir))
+        assert result.passed is True
+        assert "project scope" in result.message
+
+    def test_project_scope_without_project_dir(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        result = check_plugin_enabled_at_scope("plugins-kit:bootstrap", "project")
+        assert result.passed is False
+        assert "missing project_dir" in result.message
+
+    def test_no_settings_file(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        result = check_plugin_enabled_at_scope("plugins-kit:bootstrap", "user")
+        assert result.passed is False
+
+    def test_enabled_at_user_not_at_project(self, tmp_path, monkeypatch):
+        """Plugin enabled at user scope but not project scope."""
+        # User settings has the plugin
+        user_settings = tmp_path / ".claude" / "settings.json"
+        user_settings.parent.mkdir(parents=True)
+        user_settings.write_text(json.dumps({"enabledPlugins": {"bootstrap@plugins-kit": True}}))
+        # Project settings does NOT have the plugin
+        project_dir = tmp_path / "myproject"
+        project_settings = project_dir / ".claude" / "settings.json"
+        project_settings.parent.mkdir(parents=True)
+        project_settings.write_text(json.dumps({"enabledPlugins": {}}))
+        monkeypatch.setenv("HOME", str(tmp_path))
+
+        user_result = check_plugin_enabled_at_scope("plugins-kit:bootstrap", "user")
+        assert user_result.passed is True
+        project_result = check_plugin_enabled_at_scope("plugins-kit:bootstrap", "project", str(project_dir))
+        assert project_result.passed is False
+
+
 class TestScopeRemediation:
-    """Tests for scope mismatch remediation in the engine."""
+    """Tests for scope remediation in the engine — ensure-at-desired-scope pattern."""
 
     @staticmethod
     def _setup_engine_path():
@@ -338,53 +400,8 @@ class TestScopeRemediation:
         if engine_dir not in sys.path:
             sys.path.insert(0, engine_dir)
 
-    def test_scope_mismatch_triggers_reinstall(self, tmp_path, monkeypatch):
-        """Plugin at wrong scope gets uninstalled and reinstalled at correct scope."""
-        self._setup_engine_path()
-
-        # installed_plugins.json with project scope
-        ip = tmp_path / ".claude" / "plugins" / "installed_plugins.json"
-        ip.parent.mkdir(parents=True)
-        ip.write_text(json.dumps({
-            "version": 2,
-            "plugins": {
-                "bootstrap@plugins-kit": [{"scope": "project", "version": "0.5.4", "installPath": "/cache"}]
-            }
-        }))
-        # settings.json with plugin enabled
-        settings = tmp_path / ".claude" / "settings.json"
-        settings.write_text(json.dumps({"enabledPlugins": {"bootstrap@plugins-kit": True}}))
-        monkeypatch.setenv("HOME", str(tmp_path))
-        monkeypatch.setenv("USERPROFILE", str(tmp_path))
-
-        manifest = {
-            "plugins": [
-                {"ref": "plugins-kit:bootstrap", "enabled": True, "scope": "user"}
-            ]
-        }
-
-        from bootstrap_lib.engine import _process_manifest
-        action_entries = []
-        ok_entries = []
-
-        with patch("bootstrap_lib.marketplace_lifecycle.uninstall_plugin",
-                    return_value=LifecycleResult(passed=True, ref="plugins-kit:bootstrap", message="uninstalled")) as mock_uninst, \
-             patch("bootstrap_lib.marketplace_lifecycle.install_plugin",
-                    return_value=LifecycleResult(passed=True, ref="plugins-kit:bootstrap", message="installed")) as mock_inst, \
-             patch("bootstrap_lib.marketplace_lifecycle.check_plugin_version") as mock_ver:
-            mock_ver.return_value = type("R", (), {"up_to_date": True})()
-            _process_manifest(
-                manifest, "windows", str(tmp_path / "data"), str(tmp_path / "root"),
-                action_entries, ok_entries, plugin_name="test",
-            )
-            mock_uninst.assert_called_once_with("plugins-kit:bootstrap", scope="project")
-            mock_inst.assert_called_once_with("plugins-kit:bootstrap", scope="user")
-
-        assert any("scope mismatch" in e for e in action_entries)
-        assert any("reinstalled at user scope" in e for e in action_entries)
-
-    def test_correct_scope_no_reinstall(self, tmp_path, monkeypatch):
-        """Plugin at correct scope does not trigger reinstall."""
+    def test_enabled_at_desired_scope_no_action(self, tmp_path, monkeypatch):
+        """Plugin already enabled at desired scope → no install action needed."""
         self._setup_engine_path()
 
         ip = tmp_path / ".claude" / "plugins" / "installed_plugins.json"
@@ -410,13 +427,103 @@ class TestScopeRemediation:
         action_entries = []
         ok_entries = []
 
-        with patch("bootstrap_lib.marketplace_lifecycle.uninstall_plugin") as mock_uninst, \
+        with patch("bootstrap_lib.marketplace_lifecycle.install_plugin") as mock_inst, \
              patch("bootstrap_lib.marketplace_lifecycle.check_plugin_version") as mock_ver:
             mock_ver.return_value = type("R", (), {"up_to_date": True})()
             _process_manifest(
                 manifest, "windows", str(tmp_path / "data"), str(tmp_path / "root"),
                 action_entries, ok_entries, plugin_name="test",
             )
-            mock_uninst.assert_not_called()
+            mock_inst.assert_not_called()
 
+        assert not any("installing at" in e for e in action_entries)
+
+    def test_not_enabled_at_desired_scope_triggers_install(self, tmp_path, monkeypatch):
+        """Plugin not enabled at desired scope → install at that scope (no uninstall)."""
+        self._setup_engine_path()
+
+        # Plugin is in the registry (installed) but NOT in user settings
+        ip = tmp_path / ".claude" / "plugins" / "installed_plugins.json"
+        ip.parent.mkdir(parents=True)
+        ip.write_text(json.dumps({
+            "version": 2,
+            "plugins": {
+                "bootstrap@plugins-kit": [{"scope": "project", "version": "0.5.4", "installPath": "/cache"}]
+            }
+        }))
+        # User settings does NOT have the plugin enabled
+        settings = tmp_path / ".claude" / "settings.json"
+        settings.parent.mkdir(parents=True, exist_ok=True)
+        settings.write_text(json.dumps({"enabledPlugins": {}}))
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+
+        manifest = {
+            "plugins": [
+                {"ref": "plugins-kit:bootstrap", "enabled": True, "scope": "user"}
+            ]
+        }
+
+        from bootstrap_lib.engine import _process_manifest
+        action_entries = []
+        ok_entries = []
+
+        with patch("bootstrap_lib.marketplace_lifecycle.install_plugin",
+                    return_value=LifecycleResult(passed=True, ref="plugins-kit:bootstrap", message="installed")) as mock_inst, \
+             patch("bootstrap_lib.marketplace_lifecycle.check_plugin_version") as mock_ver:
+            mock_ver.return_value = type("R", (), {"up_to_date": True})()
+            _process_manifest(
+                manifest, "windows", str(tmp_path / "data"), str(tmp_path / "root"),
+                action_entries, ok_entries, plugin_name="test",
+            )
+            # Install at desired scope, no uninstall
+            mock_inst.assert_called_once_with("plugins-kit:bootstrap", scope="user")
+
+        assert any("not enabled at user scope" in e for e in action_entries)
+        assert any("installed at user scope" in e for e in action_entries)
+
+    def test_stale_registry_scope_no_uninstall(self, tmp_path, monkeypatch):
+        """Registry says 'project' but plugin is enabled at user scope → no action.
+
+        This is the exact scenario from the bug report: installed_plugins.json
+        has stale scope metadata, but the settings file shows the truth.
+        """
+        self._setup_engine_path()
+
+        # Registry claims project scope (stale)
+        ip = tmp_path / ".claude" / "plugins" / "installed_plugins.json"
+        ip.parent.mkdir(parents=True)
+        ip.write_text(json.dumps({
+            "version": 2,
+            "plugins": {
+                "bootstrap@plugins-kit": [{"scope": "project", "version": "0.5.4", "installPath": "/cache"}]
+            }
+        }))
+        # But user settings HAS it enabled (truth)
+        settings = tmp_path / ".claude" / "settings.json"
+        settings.write_text(json.dumps({"enabledPlugins": {"bootstrap@plugins-kit": True}}))
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+
+        manifest = {
+            "plugins": [
+                {"ref": "plugins-kit:bootstrap", "enabled": True, "scope": "user"}
+            ]
+        }
+
+        from bootstrap_lib.engine import _process_manifest
+        action_entries = []
+        ok_entries = []
+
+        with patch("bootstrap_lib.marketplace_lifecycle.install_plugin") as mock_inst, \
+             patch("bootstrap_lib.marketplace_lifecycle.check_plugin_version") as mock_ver:
+            mock_ver.return_value = type("R", (), {"up_to_date": True})()
+            _process_manifest(
+                manifest, "windows", str(tmp_path / "data"), str(tmp_path / "root"),
+                action_entries, ok_entries, plugin_name="test",
+            )
+            mock_inst.assert_not_called()
+
+        # No scope-related action entries
+        assert not any("installing at" in e for e in action_entries)
         assert not any("scope mismatch" in e for e in action_entries)

@@ -372,6 +372,37 @@ def check_plugin_enabled(plugin_ref: str) -> LifecycleResult:
     return LifecycleResult(passed=False, ref=plugin_ref, message="not enabled")
 
 
+def check_plugin_enabled_at_scope(plugin_ref: str, scope: str, project_dir: str = None) -> LifecycleResult:
+    """Check if a plugin is enabled at a specific scope by reading the settings file directly.
+
+    Instead of trusting installed_plugins.json (which can have stale scope metadata),
+    this reads the actual settings file for the requested scope.
+
+    Args:
+        plugin_ref: Plugin reference in marketplace:plugin format
+        scope: Desired scope (user, project)
+        project_dir: Project directory (required for project scope)
+    """
+    cli_ref = _to_cli_ref(plugin_ref)
+    home = os.environ.get("HOME") or os.path.expanduser("~")
+
+    if scope == "user":
+        settings_path = os.path.join(home, ".claude", "settings.json")
+    elif scope == "project" and project_dir:
+        settings_path = os.path.join(project_dir, ".claude", "settings.json")
+    else:
+        return LifecycleResult(passed=False, ref=plugin_ref, message=f"unknown scope '{scope}' or missing project_dir")
+
+    try:
+        with open(settings_path, "r") as f:
+            data = json.load(f)
+        if data.get("enabledPlugins", {}).get(cli_ref) is True:
+            return LifecycleResult(passed=True, ref=plugin_ref, message=f"enabled at {scope} scope")
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        pass
+    return LifecycleResult(passed=False, ref=plugin_ref, message=f"not enabled at {scope} scope")
+
+
 def enable_plugin_in_claude(plugin_ref: str) -> LifecycleResult:
     """Enable a plugin in Claude Code via `claude plugin enable`."""
     cli_ref = _to_cli_ref(plugin_ref)
