@@ -46,7 +46,7 @@ def autodetect():
             action_entries, ok_entries=ok_entries, plugin_name="test",
         )
 
-        assert result == []
+        assert result is True
         # Project config file created
         project_config_path = os.path.join(str(project_dir), ".claude", "unreal-kit.yaml")
         assert os.path.isfile(project_config_path)
@@ -131,7 +131,7 @@ def autodetect():
             action_entries, ok_entries=ok_entries, plugin_name="test",
         )
 
-        assert result == []
+        assert result is False
         project_config_path = os.path.join(str(project_dir), ".claude", "unreal-kit.yaml")
         assert not os.path.exists(project_config_path)
 

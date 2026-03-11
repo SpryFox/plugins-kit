@@ -278,9 +278,11 @@ def _bootstrap_single_plugin(
     plugin_ok_entries = []
 
     # Project config phase (per-CWD discovery, before config phase)
+    # project_detected: True when project found or no project_config section (non-gated plugin)
+    project_detected = True
     project_config_section = plugin_manifest.get("project_config")
     if project_config_section:
-        _process_project_config(
+        project_detected = _process_project_config(
             project_config_section, plugin_data_dir, plugin_info.install_path,
             plugin_action_entries, ok_entries=plugin_ok_entries, plugin_name=plugin_info.name,
         )
@@ -291,6 +293,7 @@ def _bootstrap_single_plugin(
         config_failures = _process_config(
             config_section, plugin_data_dir, plugin_info.install_path,
             plugin_action_entries, ok_entries=plugin_ok_entries, plugin_name=plugin_info.name,
+            project_detected=project_detected,
         )
         if config_failures:
             all_failures.extend(config_failures)
@@ -301,6 +304,7 @@ def _bootstrap_single_plugin(
         plugin_manifest, current_os, plugin_data_dir, plugin_info.install_path,
         action_entries, ok_entries, plugin_name=plugin_info.name,
         project_dir=getattr(args, 'project_dir', None),
+        project_detected=project_detected,
     )
     plugin_action_entries.extend(action_entries)
     plugin_ok_entries.extend(ok_entries)
@@ -639,11 +643,14 @@ def _process_project_venv(venv_def, project_dir):
     return action_entries, ok_entries, failures
 
 
-def _process_config(config_section, plugin_data_dir, plugin_root, action_entries, ok_entries=None, plugin_name=""):
+def _process_config(config_section, plugin_data_dir, plugin_root, action_entries, ok_entries=None, plugin_name="", project_detected=True):
     """Process the config section of a plugin manifest.
 
     Runs outside the cache gate — config can change between sessions.
     Returns list of failures (missing config fields).
+
+    When project_detected is False, still copies defaults and runs autodetect,
+    but skips required_fields validation (no project = no config failures).
     """
     from .config_check import config_init, config_validate, run_autodetect, load_yaml_config, save_yaml_config
 
@@ -682,6 +689,14 @@ def _process_config(config_section, plugin_data_dir, plugin_root, action_entries
             pass  # Autodetect errors are non-fatal
 
     # 4. Validate required fields (apply defaults, collect missing)
+    # Skip validation when no project detected — required fields are project-scoped
+    if not project_detected:
+        if ok_entries is not None:
+            ok_entries.append("config: skipped required_fields (no project detected)")
+        else:
+            action_entries.append("config: skipped required_fields (no project detected)")
+        return []
+
     config, missing = config_validate(config, required_fields, config_path)
 
     # Write back if defaults were applied
@@ -716,7 +731,8 @@ def _process_project_config(project_config_section, plugin_data_dir, plugin_root
     """Process the project_config section of a plugin manifest.
 
     Discovers or reads per-project config (in CWD), syncs values to the data-dir config.
-    Returns empty list (failures are handled by the config phase's fix-all).
+    Returns True if a project was detected (config exists or autodetect succeeded),
+    False if no project was found (autodetect returned None / no file / no autodetect).
     """
     from .config_check import load_yaml_config, save_yaml_config, run_project_autodetect
 
@@ -754,9 +770,13 @@ def _process_project_config(project_config_section, plugin_data_dir, plugin_root
                 action_entries.append(f"project config: created {project_config_path}")
                 project_data = detected
             else:
-                return []  # Nothing detected — config phase fix-all handles it
+                if ok_entries is not None:
+                    ok_entries.append("project config: no project detected")
+                return False  # Nothing detected — downstream phases should skip project-scoped work
         else:
-            return []  # No file, no autodetect — nothing to do
+            if ok_entries is not None:
+                ok_entries.append("project config: no project detected")
+            return False  # No file, no autodetect — nothing to do
 
     # Sync discovered values to data-dir config
     data_config_path = os.path.join(plugin_data_dir, "config.yaml")
@@ -775,15 +795,17 @@ def _process_project_config(project_config_section, plugin_data_dir, plugin_root
     if changed:
         save_yaml_config(data_config_path, data_config)
 
-    return []
+    return True
 
 
-def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entries, ok_entries, plugin_name="bootstrap", project_dir=None):
+def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entries, ok_entries, plugin_name="bootstrap", project_dir=None, project_detected=True):
     """Process a single plugin's bootstrap manifest. Returns list of failures.
 
     Entries are split into two lists:
     - action_entries: actions performed, failures, conditions not met (always displayed)
     - ok_entries: checks that passed (only displayed if log_success is true)
+
+    When project_detected is False, project-scoped primitives (ini_settings) are skipped.
     """
     from .tool_check import check_tool
     from .path_check import check_path_entry
@@ -1131,8 +1153,10 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
     config = _load_plugin_config(data_dir)
     variables = build_variables(plugin_root, data_dir, config)
 
-    # Check INI settings
-    for ini_def in manifest.get("ini_settings", []):
+    # Check INI settings (project-scoped — skip when no project detected)
+    if not project_detected and manifest.get("ini_settings"):
+        ok_entries.append(f"{prefix}ini_settings: skipped (no project detected)")
+    for ini_def in (manifest.get("ini_settings", []) if project_detected else []):
         ini_file = resolve_vars(ini_def["file"], variables)
         if ini_file is None:
             ok_entries.append(f"{prefix}ini {ini_def['file']}: skipped (unresolved vars)")
