@@ -40,7 +40,7 @@
     {
       "name": "bootstrap",
       "description": "Centralized bootstrap engine for Claude Code plugins",
-      "version": "0.8.7",
+      "version": "0.8.8",
       "author": {
         "name": "Christina"
       },

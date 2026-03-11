@@ -148,7 +148,7 @@ if [[ "$OS" == MINGW* ]] || [[ "$OS" == MSYS* ]]; then
     STANDALONE_PYTHON="${STANDALONE_DIR}/python/python.exe"
 else
     WANT_PYTHON="${LOCAL_BIN}/python3"
-    STANDALONE_PYTHON="${STANDALONE_DIR}/python/install/bin/python3"
+    STANDALONE_PYTHON="${STANDALONE_DIR}/python/bin/python3"
 fi
 
 # Check 1: our python is in place and works
