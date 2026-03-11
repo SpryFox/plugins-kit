@@ -1517,8 +1517,6 @@ def emit_failure_response(failures, current_os, log_content, label="bootstrap", 
         # `systemMessage` is user-facing only.
         user_msg = "Tell Claude 'fix-all' to auto-fix, or 'fixed' after manual fixes."
         response = {
-            "decision": "block",
-            "reason": agent_msg,
             "systemMessage": f"{label} -> Setup issues found. Fix in order:\n{log_content}\n\n{user_msg}",
             "hookSpecificOutput": {
                 "hookEventName": "UserPromptSubmit",
