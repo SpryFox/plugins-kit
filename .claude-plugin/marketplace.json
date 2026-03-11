@@ -9,7 +9,7 @@
     {
       "name": "unreal-kit",
       "description": "Unreal Engine Python API automation: asset inspection, reference graph traversal, script execution, and data extraction",
-      "version": "0.3.1",
+      "version": "0.3.2",
       "author": {
         "name": "Christina"
       },
@@ -30,7 +30,7 @@
     {
       "name": "test-plugin",
       "description": "Test plugin exercising all 5 bootstrap steps including Claude-driven config setup",
-      "version": "0.1.1",
+      "version": "0.1.4",
       "author": {
         "name": "Christina"
       },
@@ -40,7 +40,7 @@
     {
       "name": "bootstrap",
       "description": "Centralized bootstrap engine for Claude Code plugins",
-      "version": "0.8.4",
+      "version": "0.8.6",
       "author": {
         "name": "Christina"
       },

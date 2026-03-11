@@ -126,14 +126,20 @@ uv run --extra dev pytest tests/bootstrap/test_marketplace_lifecycle.py::TestChe
 
 Only run the full suite (`uv run --extra dev pytest -v`) when explicitly asked or before a release.
 
-**Publishing changes** — the plugin cache (`~/.claude/plugins/cache/`) syncs from the remote repository, not the local working copy. Local edits won't take effect until published. To publish:
+**Publishing changes** — the plugin cache (`~/.claude/plugins/cache/`) syncs from the remote repository, not the local working copy. Local edits won't take effect on consumer machines until published. To publish:
 
-1. Bump the plugin version in `.claude-plugin/plugin.json` (the cache keys on version — same version = same code)
-2. Commit all changes (including the version bump)
+1. Bump the plugin version in both files — they must match:
+   - `plugins/<name>/.claude-plugin/plugin.json` (the plugin's own manifest)
+   - `.claude-plugin/marketplace.json` (the marketplace-level listing)
+2. Commit all changes (including both version bumps)
 3. Push to the remote repository
 4. Restart Claude Code — it will pull the new version into the cache
 
-The cache will NOT refresh without a version bump, even if you push new commits. Never copy files directly into the plugin cache — always use this publish flow.
+**Why both files**: Claude Code uses the `marketplace.json` version to decide whether to fetch a new cache entry. If you only bump `plugin.json` but not `marketplace.json`, consumers won't see the update. A pre-commit hook (`scripts/pre-commit-version-check.sh`) blocks commits when these versions diverge.
+
+**The cache keys on version** — same version = same code. The cache will NOT refresh without a version bump, even if you push new commits. This means you must bump the version and push to test any fix on a consumer machine. Never copy files directly into the plugin cache — always use this publish flow.
+
+**Downstream consumers with git dependencies** (e.g., update04): If another project depends on `bootstrap` as a Python git dependency (`bootstrap @ git+https://...`), also bump `bootstrap`'s Python package version in `plugins/bootstrap/pyproject.toml`. Without a package version bump, `uv sync` may consider the installed copy satisfied and skip reinstallation even after the lockfile changes.
 
 **Keep architecture docs current** — when modifying bootstrap behavior, update the bootstrap skill references (`plugins/bootstrap/skills/bootstrap/references/`) to reflect the changes. These are the source of truth for how the system works.
 
