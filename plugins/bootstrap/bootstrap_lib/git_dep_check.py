@@ -4,6 +4,10 @@ import os
 import subprocess
 from typing import List, NamedTuple, Optional
 
+# Suppress interactive credential prompts for HTTPS remotes.
+# Public repos work anonymously; prompting would block non-interactive sessions.
+_GIT_ENV = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+
 
 class GitDepCheckResult(NamedTuple):
     passed: bool
@@ -123,33 +127,33 @@ def clone_git_dep(url: str, branch: str, target_path: str, sparse_paths=None, co
             # Sparse checkout: clone with no-checkout, set sparse paths, checkout
             result = subprocess.run(
                 ["git", "clone", "--no-checkout", "--branch", branch, url, target_path],
-                capture_output=True, text=True, timeout=120,
+                capture_output=True, text=True, timeout=120, env=_GIT_ENV,
             )
             if result.returncode != 0:
                 return False, result.stderr.strip() or "clone failed"
             result = subprocess.run(
                 ["git", "-C", target_path, "sparse-checkout", "set"] + sparse_paths,
-                capture_output=True, text=True, timeout=30,
+                capture_output=True, text=True, timeout=30, env=_GIT_ENV,
             )
             if result.returncode != 0:
                 return False, result.stderr.strip() or "sparse-checkout set failed"
             result = subprocess.run(
                 ["git", "-C", target_path, "checkout", branch],
-                capture_output=True, text=True, timeout=30,
+                capture_output=True, text=True, timeout=30, env=_GIT_ENV,
             )
             if result.returncode != 0:
                 return False, result.stderr.strip() or "checkout failed"
         else:
             result = subprocess.run(
                 ["git", "clone", "--branch", branch, url, target_path],
-                capture_output=True, text=True, timeout=120,
+                capture_output=True, text=True, timeout=120, env=_GIT_ENV,
             )
             if result.returncode != 0:
                 return False, result.stderr.strip() or "clone failed"
         if commit:
             result = subprocess.run(
                 ["git", "-C", target_path, "checkout", commit],
-                capture_output=True, text=True, timeout=30,
+                capture_output=True, text=True, timeout=30, env=_GIT_ENV,
             )
             if result.returncode != 0:
                 return False, result.stderr.strip() or f"checkout {commit} failed"
@@ -163,7 +167,7 @@ def pull_git_dep(target_path: str) -> tuple:
     try:
         result = subprocess.run(
             ["git", "-C", target_path, "pull"],
-            capture_output=True, text=True, timeout=60,
+            capture_output=True, text=True, timeout=60, env=_GIT_ENV,
         )
         if result.returncode == 0:
             return True, "pulled latest"

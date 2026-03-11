@@ -35,10 +35,13 @@ def _run_claude(args: list, timeout: int = 120) -> tuple:
     claude = _find_claude_cli()
     if not claude:
         return False, "", "claude CLI not found"
+    # Suppress git credential prompts so marketplace updates don't block
+    # non-interactive sessions when using HTTPS remotes.
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
     try:
         result = subprocess.run(
             [claude] + args,
-            capture_output=True, text=True, timeout=timeout,
+            capture_output=True, text=True, timeout=timeout, env=env,
         )
         return result.returncode == 0, result.stdout, result.stderr
     except (subprocess.SubprocessError, OSError) as e:
