@@ -1053,7 +1053,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                 })
                 continue
 
-        from .marketplace_lifecycle import enable_plugin_in_claude, disable_plugin_in_claude, check_plugin_enabled, check_plugin_enabled_at_scope, check_plugin_version, update_plugin
+        from .marketplace_lifecycle import enable_plugin_in_claude, disable_plugin_in_claude, check_plugin_enabled, check_plugin_enabled_at_scope, check_plugin_version, update_plugin, ensure_registry_scope
 
         # Ensure plugin is enabled at desired scope (reads settings file directly,
         # not installed_plugins.json which can have stale scope metadata)
@@ -1073,6 +1073,11 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                         "plugin": plugin_name,
                     })
                     continue
+
+            # Sync installed_plugins.json scope to match desired scope.
+            # CLI commands (update, uninstall) read scope from this file and
+            # fail if it's stale. Fix the data before running those commands.
+            ensure_registry_scope(plugin_ref, desired_scope)
 
         if enabled:
             # Check if version is up to date (only for already-installed plugins)

@@ -16,6 +16,7 @@ from bootstrap_lib.marketplace_lifecycle import (
     check_plugin_enabled_at_scope,
     check_plugin_installed,
     check_plugin_scope,
+    ensure_registry_scope,
     update_marketplace,
 )
 
@@ -527,3 +528,48 @@ class TestScopeRemediation:
         # No scope-related action entries
         assert not any("installing at" in e for e in action_entries)
         assert not any("scope mismatch" in e for e in action_entries)
+
+
+class TestEnsureRegistryScope:
+    """Tests for ensure_registry_scope — fixing stale scope in installed_plugins.json."""
+
+    def _write_registry(self, tmp_path, monkeypatch, plugins_data):
+        ip = tmp_path / ".claude" / "plugins" / "installed_plugins.json"
+        ip.parent.mkdir(parents=True, exist_ok=True)
+        ip.write_text(json.dumps({"version": 2, "plugins": plugins_data}))
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        return ip
+
+    def test_fixes_stale_scope(self, tmp_path, monkeypatch):
+        """Registry says 'project', desired is 'user' → updates to 'user'."""
+        ip = self._write_registry(tmp_path, monkeypatch, {
+            "bootstrap@plugins-kit": [{"scope": "project", "version": "0.8.4"}]
+        })
+        result = ensure_registry_scope("plugins-kit:bootstrap", "user")
+        assert result is True
+        data = json.loads(ip.read_text())
+        assert data["plugins"]["bootstrap@plugins-kit"][0]["scope"] == "user"
+
+    def test_already_correct_scope(self, tmp_path, monkeypatch):
+        """Registry already has correct scope → no change needed."""
+        ip = self._write_registry(tmp_path, monkeypatch, {
+            "bootstrap@plugins-kit": [{"scope": "user", "version": "0.8.4"}]
+        })
+        result = ensure_registry_scope("plugins-kit:bootstrap", "user")
+        assert result is True
+        data = json.loads(ip.read_text())
+        assert data["plugins"]["bootstrap@plugins-kit"][0]["scope"] == "user"
+
+    def test_plugin_not_in_registry(self, tmp_path, monkeypatch):
+        """Plugin not in registry → returns True (nothing to fix)."""
+        self._write_registry(tmp_path, monkeypatch, {})
+        result = ensure_registry_scope("plugins-kit:bootstrap", "user")
+        assert result is True
+
+    def test_no_registry_file(self, tmp_path, monkeypatch):
+        """No registry file → returns False."""
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        result = ensure_registry_scope("plugins-kit:bootstrap", "user")
+        assert result is False

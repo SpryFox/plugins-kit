@@ -254,6 +254,35 @@ def update_plugin(plugin_ref: str, scope: str = "user") -> LifecycleResult:
     return LifecycleResult(passed=False, ref=plugin_ref, message=f"update failed: {stderr.strip()}")
 
 
+def ensure_registry_scope(plugin_ref: str, desired_scope: str) -> bool:
+    """Ensure installed_plugins.json has the correct scope for a plugin.
+
+    The CLI reads scope from this file for update/uninstall commands.
+    If the scope is stale (e.g., says 'project' when the plugin is actually
+    at 'user' scope), CLI commands fail. This fixes the data before we run them.
+
+    Returns True if the scope was already correct or was updated.
+    """
+    cli_ref = _to_cli_ref(plugin_ref)
+    ip_path = os.path.expanduser("~/.claude/plugins/installed_plugins.json")
+    try:
+        with open(ip_path, "r") as f:
+            data = json.load(f)
+        plugins = data.get("plugins", {})
+        entries = plugins.get(cli_ref) or plugins.get(plugin_ref)
+        if not entries:
+            return True  # not in registry, nothing to fix
+        for entry in entries:
+            if entry.get("scope") != desired_scope:
+                entry["scope"] = desired_scope
+        with open(ip_path, "w") as f:
+            json.dump(data, f, indent=2)
+            f.write("\n")
+        return True
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return False
+
+
 def _to_cli_ref(plugin_ref: str) -> str:
     """Convert marketplace:plugin to plugin@marketplace format for CLI."""
     if ":" in plugin_ref:
