@@ -123,7 +123,12 @@ def check_marketplace_current(name: str) -> LifecycleResult:
 
 
 def update_marketplace(name: str = "") -> LifecycleResult:
-    """Update a marketplace via `claude plugin marketplace update`."""
+    """Update a marketplace via `claude plugin marketplace update`.
+
+    Falls back to `git pull` when the CLI fails with "already exists" — a known
+    Claude Code CLI bug where `plugin marketplace update` attempts `git clone`
+    into a directory that already contains the marketplace clone.
+    """
     args = ["plugin", "marketplace", "update"]
     if name:
         args.append(name)
@@ -131,6 +136,29 @@ def update_marketplace(name: str = "") -> LifecycleResult:
     ref = name or "all"
     if ok:
         return LifecycleResult(passed=True, ref=ref, message="marketplace updated")
+
+    # Fallback: if the CLI tried to clone into an existing directory, git pull directly.
+    if "already exists" in stderr and name:
+        km_path = os.path.expanduser("~/.claude/plugins/known_marketplaces.json")
+        try:
+            with open(km_path, "r") as f:
+                km_data = json.load(f)
+            install_loc = km_data.get(name, {}).get("installLocation", "")
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            install_loc = ""
+
+        if install_loc:
+            try:
+                pull = subprocess.run(
+                    ["git", "pull"],
+                    cwd=install_loc, capture_output=True, text=True, timeout=60,
+                )
+                if pull.returncode == 0:
+                    return LifecycleResult(passed=True, ref=ref, message="marketplace updated (git pull fallback)")
+                return LifecycleResult(passed=False, ref=ref, message=f"git pull fallback failed: {pull.stderr.strip()}")
+            except (subprocess.SubprocessError, OSError) as e:
+                return LifecycleResult(passed=False, ref=ref, message=f"git pull fallback error: {e}")
+
     return LifecycleResult(passed=False, ref=ref, message=f"update failed: {stderr.strip()}")
 
 

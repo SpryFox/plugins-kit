@@ -530,6 +530,93 @@ class TestScopeRemediation:
         assert not any("scope mismatch" in e for e in action_entries)
 
 
+class TestUpdateMarketplaceFallback:
+    """Tests for update_marketplace CLI fallback when directory already exists."""
+
+    def _write_known_marketplaces(self, tmp_path, monkeypatch, install_location):
+        km = tmp_path / ".claude" / "plugins" / "known_marketplaces.json"
+        km.parent.mkdir(parents=True, exist_ok=True)
+        km.write_text(json.dumps({
+            "my-market": {
+                "source": {"source": "git", "url": "https://example.com"},
+                "installLocation": str(install_location),
+            }
+        }))
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+
+    def test_should_fallback_to_git_pull_when_cli_fails_with_already_exists(self, tmp_path, monkeypatch):
+        """When CLI update fails with 'already exists', git pull the install location directly."""
+        install_dir = tmp_path / "marketplaces" / "my-market"
+        install_dir.mkdir(parents=True)
+        self._write_known_marketplaces(tmp_path, monkeypatch, install_dir)
+
+        already_exists_error = (
+            "✘ Failed to update marketplace(s): Failed to refresh marketplace 'my-market': "
+            "Failed to clone marketplace repository: fatal: destination path "
+            f"'{install_dir}' already exists and is not an empty directory."
+        )
+
+        with patch("bootstrap_lib.marketplace_lifecycle._run_claude",
+                   return_value=(False, "", already_exists_error)), \
+             patch("bootstrap_lib.marketplace_lifecycle.subprocess.run") as mock_run:
+            mock_run.return_value = type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+            result = update_marketplace("my-market")
+
+        assert result.passed is True
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args
+        assert call_args[0][0] == ["git", "pull"]
+        assert str(install_dir) in str(call_args[1].get("cwd", ""))
+
+    def test_should_return_failure_when_cli_fails_without_already_exists(self, tmp_path, monkeypatch):
+        """Non-'already exists' CLI failures propagate as failures (no git fallback)."""
+        install_dir = tmp_path / "marketplaces" / "my-market"
+        install_dir.mkdir(parents=True)
+        self._write_known_marketplaces(tmp_path, monkeypatch, install_dir)
+
+        with patch("bootstrap_lib.marketplace_lifecycle._run_claude",
+                   return_value=(False, "", "network timeout")), \
+             patch("bootstrap_lib.marketplace_lifecycle.subprocess.run") as mock_run:
+            result = update_marketplace("my-market")
+
+        assert result.passed is False
+        mock_run.assert_not_called()
+
+    def test_should_return_failure_when_git_pull_fails_in_fallback(self, tmp_path, monkeypatch):
+        """If git pull also fails during fallback, return failure."""
+        install_dir = tmp_path / "marketplaces" / "my-market"
+        install_dir.mkdir(parents=True)
+        self._write_known_marketplaces(tmp_path, monkeypatch, install_dir)
+
+        already_exists_error = "already exists and is not an empty directory"
+
+        with patch("bootstrap_lib.marketplace_lifecycle._run_claude",
+                   return_value=(False, "", already_exists_error)), \
+             patch("bootstrap_lib.marketplace_lifecycle.subprocess.run") as mock_run:
+            mock_run.return_value = type("R", (), {"returncode": 1, "stdout": "", "stderr": "merge conflict"})()
+            result = update_marketplace("my-market")
+
+        assert result.passed is False
+        assert "merge conflict" in result.message or "git pull" in result.message
+
+    def test_should_return_failure_when_install_location_not_found(self, tmp_path, monkeypatch):
+        """If CLI fails with 'already exists' but installLocation unknown, return failure."""
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        # No known_marketplaces.json written
+
+        already_exists_error = "already exists and is not an empty directory"
+
+        with patch("bootstrap_lib.marketplace_lifecycle._run_claude",
+                   return_value=(False, "", already_exists_error)), \
+             patch("bootstrap_lib.marketplace_lifecycle.subprocess.run") as mock_run:
+            result = update_marketplace("my-market")
+
+        assert result.passed is False
+        mock_run.assert_not_called()
+
+
 class TestEnsureRegistryScope:
     """Tests for ensure_registry_scope — fixing stale scope in installed_plugins.json."""
 
