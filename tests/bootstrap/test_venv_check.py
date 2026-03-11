@@ -3,7 +3,6 @@
 import os
 import stat
 import subprocess
-import sys
 from unittest.mock import patch
 
 import pytest
@@ -36,7 +35,7 @@ class TestCheckVenv:
         # Create a real venv using the current Python
         venv_dir = tmp_path / "data" / ".venv"
         subprocess.run(
-            [sys.executable, "-m", "venv", str(venv_dir)],
+            ["uv", "venv", str(venv_dir)],
             check=True, capture_output=True,
         )
 
@@ -51,7 +50,7 @@ class TestCheckVenv:
         """Returns failure when an import doesn't work in the venv."""
         venv_dir = tmp_path / "data" / ".venv"
         subprocess.run(
-            [sys.executable, "-m", "venv", str(venv_dir)],
+            ["uv", "venv", str(venv_dir)],
             check=True, capture_output=True,
         )
 
@@ -68,7 +67,7 @@ class TestCheckVenv:
         """Passes when no imports to check."""
         venv_dir = tmp_path / "data" / ".venv"
         subprocess.run(
-            [sys.executable, "-m", "venv", str(venv_dir)],
+            ["uv", "venv", str(venv_dir)],
             check=True, capture_output=True,
         )
 
