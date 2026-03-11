@@ -132,4 +132,50 @@ else
 fi
 echo
 
+# 6. Check installed plugins and versions
+echo "--- Installed plugins ---"
+REGISTRY="$HOME/.claude/plugins/installed_plugins.json"
+if [ -f "$REGISTRY" ]; then
+    python3 -c "
+import json, sys
+with open(sys.argv[1]) as f:
+    data = json.load(f)
+for ref, entries in data.get('plugins', {}).items():
+    for e in entries:
+        scope = e.get('scope', '?')
+        version = e.get('version', '?')
+        path = e.get('installPath', '?')
+        print(f'  {ref} scope={scope} version={version}')
+        print(f'    path: {path}')
+" "$REGISTRY" 2>&1 || echo "  (failed to parse registry)"
+else
+    echo "  Registry not found at: $REGISTRY"
+fi
+echo
+
+# 7. Check cached plugin versions
+echo "--- Cached plugin versions ---"
+CACHE_DIR="$HOME/.claude/plugins/cache"
+if [ -d "$CACHE_DIR" ]; then
+    for marketplace in "$CACHE_DIR"/*/; do
+        [ -d "$marketplace" ] || continue
+        mkt_name=$(basename "$marketplace")
+        for plugin_dir in "$marketplace"*/; do
+            [ -d "$plugin_dir" ] || continue
+            plugin_name=$(basename "$plugin_dir")
+            for version_dir in "$plugin_dir"*/; do
+                [ -d "$version_dir" ] || continue
+                ver=$(basename "$version_dir")
+                pj="$version_dir/.claude-plugin/plugin.json"
+                if [ -f "$pj" ]; then
+                    echo "  $mkt_name:$plugin_name cached=$ver"
+                fi
+            done
+        done
+    done
+else
+    echo "  Cache not found at: $CACHE_DIR"
+fi
+echo
+
 echo "=== Done ==="
