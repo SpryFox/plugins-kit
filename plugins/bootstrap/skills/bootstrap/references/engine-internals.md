@@ -154,6 +154,17 @@ Autodetect functions support this by returning a dict with `{"changed": bool, "a
 
 **Remediation, not auto-fix.** When something is missing, the hook emits structured JSON with the exact install command into Claude's `additionalContext`. The user can fix it themselves or tell Claude to do it.
 
+## Plugin Cache Lifecycle
+
+The bootstrap engine's marketplace and plugin remediation commands (`claude plugin marketplace update`, `claude plugin update`) interact with Claude Code's plugin cache system. Key behaviors (verified against Claude Code 2.1.74):
+
+- **Version is the sole cache key.** Cache path is `cache/<marketplace>/<plugin>/<version>/`. Same version string = same cached files, even if the marketplace repo has newer commits.
+- **Auto-update runs at every session start** when `autoUpdate: true` in `known_marketplaces.json`. There is no cooldown. It only runs at session start — not mid-session.
+- **Version bump required for updates.** Auto-update compares the version string, not the git SHA. A version bump in `plugin.json` (and `marketplace.json`) is required for existing users to receive updates.
+- **Fresh installs use HEAD.** A fresh install copies from the marketplace's current HEAD, cached under whatever version `plugin.json` declares. Between releases, this can diverge from what existing users have cached.
+
+See [PLUGIN-BEHAVIOR-GUIDE.md](~/.claude/docs/guides/PLUGIN-BEHAVIOR-GUIDE.md) for full verified behaviors and evidence.
+
 ## Shared Library
 
 Python library providing check-and-remediate primitives for common operations. These are the same primitives the engine calls when processing manifest entries — scripts can call them directly for custom workflows.

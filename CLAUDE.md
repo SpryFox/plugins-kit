@@ -125,18 +125,28 @@ uv run --extra dev pytest tests/bootstrap/test_marketplace_lifecycle.py::TestChe
 
 Only run the full suite (`uv run --extra dev pytest -v`) when explicitly asked or before a release.
 
-**Publishing changes** — the plugin cache (`~/.claude/plugins/cache/`) syncs from the remote repository, not the local working copy. Local edits won't take effect on consumer machines until published. To publish:
+**Local development** — use `--plugin-dir` to test plugins from the working copy:
+
+```bash
+claude --plugin-dir ~/Dev/plugins-kit/plugins/my-plugin
+```
+
+`--plugin-dir` loads the plugin directly from disk (no cache copy) and makes no persistent changes — it doesn't modify `installed_plugins.json`, the cache, or `known_marketplaces.json`. Ending the session reverts to the marketplace-installed version. Use `/reload-plugins` to pick up file changes within a session (hooks require a full restart).
+
+**Publishing changes** — the plugin cache syncs from the remote repository's default branch, not the local working copy. Develop on the `dev` branch; merge to `master` only when releasing a version bump. This prevents silent divergence (fresh installs between releases getting HEAD code cached under the old version string). To publish:
 
 1. Bump the plugin version in both files — they must match:
    - `plugins/<name>/.claude-plugin/plugin.json` (the plugin's own manifest)
    - `.claude-plugin/marketplace.json` (the marketplace-level listing)
-2. Commit all changes (including both version bumps)
-3. Push to the remote repository
-4. Restart Claude Code — it will pull the new version into the cache
+2. Merge `dev` to `master` and push
+3. Users with `autoUpdate: true` receive the update on next session start
+4. Users without auto-update run `/plugin marketplace update` then `/plugin update`
 
 **Why both files**: Claude Code uses the `marketplace.json` version to decide whether to fetch a new cache entry. If you only bump `plugin.json` but not `marketplace.json`, consumers won't see the update. A pre-commit hook (`scripts/pre-commit-version-check.sh`) blocks commits when these versions diverge.
 
-**The cache keys on version** — same version = same code. The cache will NOT refresh without a version bump, even if you push new commits. This means you must bump the version and push to test any fix on a consumer machine. Never copy files directly into the plugin cache — always use this publish flow.
+**The cache keys on version** — same version = same code. The cache will NOT refresh without a version bump, even if you push new commits. Fresh installs between releases copy HEAD code under the old version string, creating **silent divergence** — two users on the "same version" with different code. The dev-branch strategy above prevents this. Never copy files directly into the plugin cache — always use this publish flow.
+
+**Don't omit the version field** hoping for rolling updates. Claude Code substitutes a truncated git SHA, which becomes a static cache key at install time — identical behavior to a version string, with worse readability.
 
 **Downstream consumers with git dependencies** (e.g., update04): If another project depends on `bootstrap` as a Python git dependency (`bootstrap @ git+https://...`), also bump `bootstrap`'s Python package version in `plugins/bootstrap/pyproject.toml`. Without a package version bump, `uv sync` may consider the installed copy satisfied and skip reinstallation even after the lockfile changes.
 
