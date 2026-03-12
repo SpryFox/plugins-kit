@@ -136,7 +136,7 @@ echo
 echo "--- Installed plugins ---"
 REGISTRY="$HOME/.claude/plugins/installed_plugins.json"
 if [ -f "$REGISTRY" ]; then
-    python3 -c "
+    uv run python -c "
 import json, sys
 with open(sys.argv[1]) as f:
     data = json.load(f)

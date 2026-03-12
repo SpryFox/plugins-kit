@@ -22,7 +22,7 @@ while IFS=$'\t' read -r name mkt_version source; do
         continue
     fi
 
-    plugin_version=$(python3 -c "
+    plugin_version=$(uv run python -c "
 import json, sys
 data = json.load(open(sys.argv[1]))
 print(data.get('version', ''))
@@ -31,7 +31,7 @@ print(data.get('version', ''))
     if [ -n "$plugin_version" ] && [ "$mkt_version" != "$plugin_version" ]; then
         MISMATCHES+=("  $name: marketplace.json=$mkt_version  plugin.json=$plugin_version")
     fi
-done < <(python3 -c "
+done < <(uv run python -c "
 import json, sys
 data = json.load(open(sys.argv[1]))
 for p in data.get('plugins', []):

@@ -20,7 +20,8 @@ sep() { echo "──────────────────────
 
 json_field() {
     # Simple JSON string field extractor (no jq dependency)
-    python -c "
+    # Uses uv run python to avoid Windows Store python stub issue
+    uv run python -c "
 import json, sys
 data = json.load(open(sys.argv[1]))
 keys = sys.argv[2].split('.')
@@ -37,7 +38,7 @@ print(data if data is not None else '')
 installed_field() {
     # Extract field from installed_plugins.json for a given plugin key
     local plugin_key="$1" field="$2"
-    python -c "
+    uv run python -c "
 import json, sys
 data = json.load(open(sys.argv[1]))
 plugins = data.get('plugins', data) if isinstance(data, dict) else {}
@@ -52,7 +53,7 @@ else:
 marketplace_plugin_version() {
     # Extract version for a named plugin from marketplace.json
     local manifest="$1" plugin_name="$2"
-    python -c "
+    uv run python -c "
 import json, sys
 data = json.load(open(sys.argv[1]))
 for p in data.get('plugins', []):
