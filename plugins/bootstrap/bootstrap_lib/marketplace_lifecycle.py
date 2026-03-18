@@ -6,7 +6,6 @@ marketplace and plugin management (add, remove, update, install, etc.).
 
 import json
 import os
-import shutil
 import subprocess
 from typing import NamedTuple, Optional
 
@@ -26,8 +25,15 @@ class VersionCheckResult(NamedTuple):
 
 
 def _find_claude_cli() -> Optional[str]:
-    """Find the claude CLI binary."""
-    return shutil.which("claude")
+    """Find the claude CLI binary via CLAUDE_REAL_BIN.
+
+    This env var is set by Claude Code at runtime, so it is always available
+    when the bootstrap engine runs inside a session.
+    """
+    real_bin = os.environ.get("CLAUDE_REAL_BIN")
+    if real_bin and os.path.isfile(real_bin):
+        return real_bin
+    return None
 
 
 def _run_claude(args: list, timeout: int = 120) -> tuple:

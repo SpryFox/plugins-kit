@@ -70,8 +70,9 @@ class TestPullGitDepNoPrompt:
 class TestRunClaudeNoPrompt:
     def test_run_claude_sets_git_terminal_prompt(self) -> None:
         """_run_claude must pass GIT_TERMINAL_PROMPT=0 so claude's git ops don't prompt."""
-        with patch("bootstrap_lib.marketplace_lifecycle.shutil.which", return_value="/usr/bin/claude"):
-            with patch("bootstrap_lib.marketplace_lifecycle.subprocess.run") as mock_run:
+        with patch.dict(os.environ, {"CLAUDE_REAL_BIN": "/usr/bin/claude"}), \
+             patch("os.path.isfile", return_value=True), \
+             patch("bootstrap_lib.marketplace_lifecycle.subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
                 _run_claude(["plugin", "marketplace", "update"])
                 env = mock_run.call_args.kwargs.get("env")
