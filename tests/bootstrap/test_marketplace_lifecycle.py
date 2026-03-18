@@ -10,6 +10,8 @@ import pytest
 from bootstrap_lib.marketplace_lifecycle import (
     LifecycleResult,
     ScopeCheckResult,
+    _find_claude_cli,
+    _run_claude,
     _version_greater,
     check_marketplace_current,
     check_marketplace_exists,
@@ -19,6 +21,48 @@ from bootstrap_lib.marketplace_lifecycle import (
     ensure_registry_scope,
     update_marketplace,
 )
+
+
+class TestFindClaudeCli:
+    """Tests for _find_claude_cli — CLAUDE_REAL_BIN env var lookup."""
+
+    def test_returns_path_when_env_set_and_file_exists(self, tmp_path, monkeypatch):
+        fake_bin = tmp_path / "claude"
+        fake_bin.write_text("#!/bin/sh\n")
+        monkeypatch.setenv("CLAUDE_REAL_BIN", str(fake_bin))
+        assert _find_claude_cli() == str(fake_bin)
+
+    def test_returns_none_when_env_not_set(self, monkeypatch):
+        monkeypatch.delenv("CLAUDE_REAL_BIN", raising=False)
+        assert _find_claude_cli() is None
+
+    def test_returns_none_when_env_set_but_file_missing(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_REAL_BIN", str(tmp_path / "nonexistent"))
+        assert _find_claude_cli() is None
+
+    def test_returns_none_when_env_is_empty(self, monkeypatch):
+        monkeypatch.setenv("CLAUDE_REAL_BIN", "")
+        assert _find_claude_cli() is None
+
+
+class TestRunClaude:
+    """Tests for _run_claude — CLI invocation via _find_claude_cli."""
+
+    def test_returns_failure_when_cli_not_found(self, monkeypatch):
+        monkeypatch.delenv("CLAUDE_REAL_BIN", raising=False)
+        ok, stdout, stderr = _run_claude(["plugin", "list"])
+        assert ok is False
+        assert "claude CLI not found" in stderr
+
+    def test_invokes_binary_from_env(self, tmp_path, monkeypatch):
+        fake_bin = tmp_path / "claude"
+        fake_bin.write_text("#!/bin/sh\n")
+        monkeypatch.setenv("CLAUDE_REAL_BIN", str(fake_bin))
+        with patch("bootstrap_lib.marketplace_lifecycle.subprocess.run") as mock_run:
+            mock_run.return_value = type("R", (), {"returncode": 0, "stdout": "ok", "stderr": ""})()
+            ok, stdout, stderr = _run_claude(["plugin", "list"])
+        assert ok is True
+        assert mock_run.call_args[0][0][0] == str(fake_bin)
 
 
 class TestCheckMarketplaceExists:
