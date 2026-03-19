@@ -32,7 +32,7 @@ class TestUnrealKitManifestStructure:
         assert config["file"] == "config.yaml"
         assert "uproject" in config["required_fields"]
         assert "engine_dir" in config["required_fields"]
-        assert "autodetect" in config
+        assert "autodetect" in manifest["project_config"]
 
     def test_has_ini_settings(self, manifest):
         assert len(manifest["ini_settings"]) >= 1
@@ -131,8 +131,7 @@ class TestCustomBootstrapScript:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
 
-        # In a tmp dir with no .uproject files, autodetect should return False
-        config = {"uproject": "", "engine_dir": ""}
-        result = module.autodetect(config, "/tmp/config.yaml")
-        # May be True or False depending on CWD, but should not raise
-        assert isinstance(result, bool)
+        # In a tmp dir with no .uproject files, autodetect should return None or a dict
+        result = module.autodetect()
+        # May be None or dict depending on CWD, but should not raise
+        assert result is None or isinstance(result, dict)

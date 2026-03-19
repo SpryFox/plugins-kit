@@ -34,7 +34,7 @@ class TestSyncToData:
         assert (data_dir / "lib" / "helper.py").exists()
         assert (data_dir / "lib" / "bootstrap.py").read_text() == "# bootstrap module"
         assert failures == []
-        assert any("sync" in e.lower() and "ok" in e for e in action_entries)
+        assert any("sync" in e.lower() and "ok" in e for e in ok_entries)
 
     def test_sync_overwrites_existing(self, tmp_path):
         """Sync overwrites old content in dst."""
