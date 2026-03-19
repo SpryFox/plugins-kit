@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -13,12 +14,21 @@ BOOTSTRAP_ROOT = os.path.normpath(
 ENGINE_SCRIPT = os.path.join(BOOTSTRAP_ROOT, "engine", "bootstrap_engine.py")
 
 
-def run_engine(data_dir, plugin_root=BOOTSTRAP_ROOT):
+def _env_with_home(home_dir):
+    """Build a subprocess env dict with HOME/USERPROFILE overridden."""
+    env = dict(os.environ)
+    env["HOME"] = str(home_dir)
+    env["USERPROFILE"] = str(home_dir)
+    return env
+
+
+def run_engine(data_dir, plugin_root=BOOTSTRAP_ROOT, env=None):
     """Run the bootstrap engine as a subprocess."""
     return subprocess.run(
         [sys.executable, ENGINE_SCRIPT, "--plugin-root", plugin_root, "--data-dir", data_dir],
         capture_output=True,
         text=True,
+        env=env,
     )
 
 
@@ -29,6 +39,7 @@ def make_fake_bootstrap_root(tmp_path, manifest=None):
     (fake_root / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
     (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
     (fake_root / "defaults").symlink_to(os.path.join(BOOTSTRAP_ROOT, "defaults"))
+    (fake_root / "pyproject.toml").symlink_to(Path(BOOTSTRAP_ROOT) / "pyproject.toml")
 
     if manifest is None:
         manifest = {"tools": [], "path_entries": []}
@@ -68,7 +79,9 @@ class TestEngineConfigPhase:
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
-        result = run_engine(data_dir, plugin_root=fake_root)
+        home_dir = tmp_path / "home"
+        home_dir.mkdir()
+        result = run_engine(data_dir, plugin_root=fake_root, env=_env_with_home(home_dir))
         assert result.returncode == 0
 
         # Config should be copied to plugin data dir
@@ -106,7 +119,9 @@ class TestEngineConfigPhase:
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
-        result = run_engine(data_dir, plugin_root=fake_root)
+        home_dir = tmp_path / "home"
+        home_dir.mkdir()
+        result = run_engine(data_dir, plugin_root=fake_root, env=_env_with_home(home_dir))
         assert result.returncode == 0
         assert result.stdout.strip() != ""
 
@@ -145,7 +160,9 @@ class TestEngineConfigPhase:
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
-        result = run_engine(data_dir, plugin_root=fake_root)
+        home_dir = tmp_path / "home"
+        home_dir.mkdir()
+        result = run_engine(data_dir, plugin_root=fake_root, env=_env_with_home(home_dir))
         assert result.returncode == 0
         # No failures means no additionalContext (or no fix-all content)
         if result.stdout.strip():
@@ -183,11 +200,13 @@ class TestEngineConfigPhase:
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
+        home_dir = tmp_path / "home"
+        home_dir.mkdir()
         # First run — populates cache
-        run_engine(data_dir, plugin_root=fake_root)
+        run_engine(data_dir, plugin_root=fake_root, env=_env_with_home(home_dir))
 
         # Second run — cache hit for tools/venv/git, but config still runs
-        result = run_engine(data_dir, plugin_root=fake_root)
+        result = run_engine(data_dir, plugin_root=fake_root, env=_env_with_home(home_dir))
         assert result.returncode == 0
         # Config failure should still be reported
         if result.stdout.strip():
@@ -233,7 +252,9 @@ class TestEngineConfigPhase:
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
-        result = run_engine(data_dir, plugin_root=fake_root)
+        home_dir = tmp_path / "home"
+        home_dir.mkdir()
+        result = run_engine(data_dir, plugin_root=fake_root, env=_env_with_home(home_dir))
         assert result.returncode == 0
         # No fix-all since autodetect filled the field
         if result.stdout.strip():
@@ -287,7 +308,9 @@ class TestEngineConfigPhase:
         with open(os.path.join(data_dir, "config.json"), "w") as f:
             json.dump(config, f)
 
-        result = run_engine(data_dir, plugin_root=fake_root)
+        home_dir = tmp_path / "home"
+        home_dir.mkdir()
+        result = run_engine(data_dir, plugin_root=fake_root, env=_env_with_home(home_dir))
         assert result.returncode == 0
 
         # Verify autodetect ran and updated the value even though it was already set

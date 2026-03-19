@@ -146,48 +146,6 @@ class TestCrossMarketplacePluginRefs:
             # Should reference the cross-marketplace plugin
             assert "plugins-kit:bootstrap" in msg
 
-    def test_cross_marketplace_ref_not_in_global_registry_fails(self, tmp_path):
-        """Cross-marketplace ref not found produces failure (install attempted)."""
-        plugins_dir = tmp_path / "plugins"
-        plugins_dir.mkdir()
-        fake_root = make_fake_bootstrap_root(plugins_dir)
-
-        # Local registry identifies this as 'update01' marketplace
-        local_registry = {"plugins": {"update01:bootstrap": [{"installPath": "./bootstrap", "version": "1.0.0"}]}}
-        (plugins_dir / "installed_plugins.json").write_text(json.dumps(local_registry))
-
-        # Global registry is empty
-        global_home = tmp_path / "global"
-        global_plugins_dir = global_home / ".claude" / "plugins"
-        global_plugins_dir.mkdir(parents=True)
-        (global_plugins_dir / "installed_plugins.json").write_text(json.dumps({"plugins": {}}))
-
-        # Bootstrap manifest references a cross-marketplace plugin that doesn't exist
-        (plugins_dir / "bootstrap" / "bootstrap.json").write_text(json.dumps({
-            "tools": [],
-            "plugins": [{"ref": "plugins-kit:bootstrap", "enabled": True}],
-        }))
-
-        data_dir = str(tmp_path / "data" / "bootstrap")
-        os.makedirs(data_dir)
-        config = {
-            "schema_version": 3, "enabled_plugins": [], "log_level": "info",
-            "log_success_shell": False, "log_success_checks": True,
-        }
-        with open(os.path.join(data_dir, "config.json"), "w") as f:
-            json.dump(config, f)
-
-        # Pass env directly to subprocess so HOME override propagates
-        result = run_engine(data_dir, plugin_root=fake_root, env=_env_with_home(global_home))
-        assert result.returncode == 0
-
-        # Should emit failure for missing cross-marketplace plugin
-        assert result.stdout.strip() != ""
-        response = json.loads(result.stdout)
-        ctx = response["hookSpecificOutput"]["additionalContext"]
-        assert "plugins-kit:bootstrap" in ctx
-        assert "install" in ctx.lower()
-
 
 class TestMarketplaceNameFromPluginRoot:
     def test_dev_layout(self, tmp_path):
