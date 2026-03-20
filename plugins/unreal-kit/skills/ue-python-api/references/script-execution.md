@@ -37,12 +37,25 @@ Run scripts without opening the full editor UI:
 UnrealEditor-Cmd.exe "C:/path/to/project.uproject" -ExecutePythonScript="C:/path/to/script.py"
 ```
 
-**Use case:** CI/CD, batch processing, automated asset audits.
+**Use case:** CI/CD, batch processing, automated asset audits — and the default mode when the terminal runner detects no running Editor.
 
-**Caveats:**
-- No UI is available — don't use editor widgets
-- Some editor subsystems may not be initialized
-- Asset registry may need explicit scanning
+**What works in commandlet mode:**
+- Asset loading and saving (`EditorAssetLibrary.load_asset`, `save_loaded_asset`)
+- Asset listing and searching (`EditorAssetLibrary.list_assets`)
+- Asset registry queries and filtering (`AssetRegistryHelpers.get_asset_registry()`)
+- Property reading and writing (`get_editor_property`, `set_editor_property`)
+- Reference graph traversal (dependencies, referencers)
+- DataTable queries
+- Blueprint inspection
+- Asset renaming, deleting, duplicating
+
+**What requires an open Editor (does NOT work in commandlet mode):**
+- `EditorUtilityLibrary.get_selected_assets()` / `get_selected_actors()` — needs an active selection
+- `EditorLevelLibrary.get_all_level_actors()` — needs an open level viewport
+- `ScopedSlowTask.make_dialog()` — no UI to show progress bar (the task itself still works, just no dialog)
+- Editor Utility Widgets
+- PIE (Play in Editor)
+- Any operation that reads from or writes to the active viewport
 
 ## 5. Editor Utility Widgets (Python + UI)
 
