@@ -42,10 +42,14 @@ property reading, and data extraction. Scripts work with or without the Editor o
 
 The runner auto-detects whether the Editor is open and picks the best execution method.
 
+> **Editor is NOT required.** When the Editor is closed, the runner launches a headless commandlet that starts a UE process, loads the project, and runs the script. Asset loading, registry queries, property reading/writing, reference graph traversal, and saving all work in commandlet mode. The only operations that require an open Editor are those needing a live UI context: getting the user's current selection, manipulating actors in an open level viewport, showing progress dialogs, and PIE (Play in Editor).
+
 **Output detection:** Scripts that write YAML to `<Project>/Saved/PythonOutput/` will have their
 output automatically detected and reported. Use `--copy-output` to pull results to a local directory.
 
 ## Essential Classes
+
+> **Naming note:** The `Editor` prefix in class names like `EditorAssetLibrary` is a UE C++ naming convention — it does NOT mean these classes require the Editor to be running. They work in commandlet (headless) mode too. The exception is `EditorUtilityLibrary`, which queries the user's active selection and therefore requires a running Editor with a UI.
 
 | Class | Purpose |
 |-------|---------|

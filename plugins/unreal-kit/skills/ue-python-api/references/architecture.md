@@ -14,9 +14,9 @@ The terminal runner (`ue_runner.py`) supports two execution modes and auto-detec
 | Editor open? | Method | How it works |
 |--------------|--------|-------------|
 | Yes | Remote execution | Sends script to the running Editor via UDP multicast (`upyrc` library). The Editor's `PythonScriptPlugin` executes the script in-process. |
-| No | Headless commandlet | Launches `UnrealEditor-Cmd.exe -run=pythonscript -script=<path>`. Starts a headless Editor instance, runs the script, and exits. |
+| No | Headless commandlet | Launches `UnrealEditor-Cmd.exe -run=pythonscript -script=<path>`. Starts a headless UE process, loads the project, runs the script, and exits. |
 
-Remote execution is slightly faster since the Editor is already loaded. The commandlet must load the engine from scratch.
+Remote execution is faster since the Editor is already loaded. The commandlet must load the engine from scratch but has access to the same asset APIs — loading, saving, registry queries, property access, and reference graph traversal all work. Only operations that require a live UI context (active selection, open viewport, progress dialogs) need the Editor. See `references/script-execution.md` §4 for the full capability breakdown.
 
 ### Manual execution methods
 
