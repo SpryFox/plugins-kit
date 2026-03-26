@@ -83,9 +83,20 @@ def run_ue_script(
     if force_mode != "commandlet":
         result = _try_remote(script_path, config)
         if result is not None:
-            if copy_output_to and result.output_file:
-                result.output_file = _copy_output(result.output_file, copy_output_to)
-            return result
+            # Remote connected but script errored — fall back to commandlet
+            # unless the user explicitly forced remote mode.
+            # Common cause: assets not loaded in Editor memory (e.g. TMap
+            # properties returning None) that commandlet handles because it
+            # loads all assets from disk.
+            if not result.success and force_mode != "remote" and not errors:
+                _warn(
+                    f"Remote script error, retrying via commandlet...\n"
+                    f"  Remote error: {result.error}"
+                )
+            else:
+                if copy_output_to and result.output_file:
+                    result.output_file = _copy_output(result.output_file, copy_output_to)
+                return result
         if force_mode == "remote":
             return RunResult(
                 success=False,
