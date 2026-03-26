@@ -52,20 +52,35 @@ fi
 HOOK_START_EPOCH=$(date +%s 2>/dev/null || echo "0")
 
 # --- Session guard: prevent double invocation in same session ---
-# Claude Code may fire the same SessionStart hook twice. Guard using session_id.
+# Two-layer guard: session_id (if available) AND timestamp-based cooldown.
+# Non-blocking hooks may not receive stdin, so session_id alone is insufficient.
 if [ -n "$HOOK_INPUT" ]; then
     _GUARD_SID=$(echo "$HOOK_INPUT" | grep -o '"session_id"[[:space:]]*:[[:space:]]*"[^"]*"' | grep -o '"[^"]*"$' | tr -d '"' || true)
 fi
+_GUARD_FILE="$PLUGIN_DATA/last_session_id"
+_COOLDOWN_FILE="$PLUGIN_DATA/last_run_epoch"
+_COOLDOWN_SECS=300  # 5-minute cooldown between runs
+mkdir -p "$PLUGIN_DATA"
+
+# Layer 1: session_id guard (works when stdin is available)
 if [ -n "${_GUARD_SID:-}" ]; then
-    _GUARD_FILE="$PLUGIN_DATA/last_session_id"
     if [ -f "$_GUARD_FILE" ] && [ "$(cat "$_GUARD_FILE" 2>/dev/null)" = "$_GUARD_SID" ]; then
-        # Already ran for this session — silent exit
         HOOK_OUTPUT_EMITTED=1
         exit 0
     fi
-    mkdir -p "$PLUGIN_DATA"
     printf '%s' "$_GUARD_SID" > "$_GUARD_FILE"
 fi
+
+# Layer 2: timestamp cooldown (works regardless of stdin)
+if [ -f "$_COOLDOWN_FILE" ]; then
+    _LAST_RUN=$(cat "$_COOLDOWN_FILE" 2>/dev/null || echo "0")
+    _NOW=$(date +%s 2>/dev/null || echo "0")
+    if [ $((_NOW - _LAST_RUN)) -lt $_COOLDOWN_SECS ]; then
+        HOOK_OUTPUT_EMITTED=1
+        exit 0
+    fi
+fi
+printf '%s' "$HOOK_START_EPOCH" > "$_COOLDOWN_FILE"
 
 # --- Emit hook JSON immediately (fire-and-forget) ---
 # In normal mode, emit JSON now so Claude Code doesn't block waiting for engine output.
