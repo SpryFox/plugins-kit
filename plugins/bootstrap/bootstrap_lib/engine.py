@@ -84,6 +84,25 @@ def main():
     version_suffix = f"@{version}" if version else ""
     bootstrap_label = f"{marketplace_name}:{boot_plugin_name}{version_suffix}" if marketplace_name else f"{boot_plugin_name}{version_suffix}"
 
+    # Step 2b: Version change detection
+    action_entries = []
+    ok_entries = []
+    if version:
+        last_version_file = os.path.join(data_dir, "last_version")
+        try:
+            with open(last_version_file, "r") as f:
+                last_version = f.read().strip()
+        except FileNotFoundError:
+            last_version = ""
+        if last_version and last_version != version:
+            action_entries.append(f"updated: {last_version} -> {version}")
+        elif not last_version:
+            action_entries.append(f"installed: {version}")
+        os.makedirs(data_dir, exist_ok=True)
+        with open(last_version_file, "w") as f:
+            f.write(version)
+    bootstrap_action_entries.extend(action_entries)
+
     # Step 3: Self-setup (tools, PATH, venv from config.self_setup) — runs every session
     self_setup = config.get("self_setup", {})
     action_entries = []
@@ -276,6 +295,21 @@ def _bootstrap_single_plugin(
     # Per-plugin entry lists (written to plugin's own log)
     plugin_action_entries = []
     plugin_ok_entries = []
+
+    # Version change detection
+    if plugin_info.version:
+        last_version_file = os.path.join(plugin_data_dir, "last_version")
+        try:
+            with open(last_version_file, "r") as f:
+                last_version = f.read().strip()
+        except FileNotFoundError:
+            last_version = ""
+        if last_version and last_version != plugin_info.version:
+            plugin_action_entries.append(f"updated: {last_version} -> {plugin_info.version}")
+        elif not last_version:
+            plugin_action_entries.append(f"installed: {plugin_info.version}")
+        with open(last_version_file, "w") as f:
+            f.write(plugin_info.version)
 
     # Project config phase (per-CWD discovery, before config phase)
     # project_detected: True when project found or no project_config section (non-gated plugin)
