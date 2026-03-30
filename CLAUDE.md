@@ -148,33 +148,33 @@ claude --plugin-dir ~/Dev/plugins-kit/plugins/my-plugin
 
 **Don't omit the version field** hoping for rolling updates. Claude Code substitutes a truncated git SHA, which becomes a static cache key at install time — identical behavior to a version string, with worse readability.
 
-**Downstream consumers with git dependencies** (e.g., update04): If another project depends on `bootstrap` as a Python git dependency (`bootstrap @ git+https://...`), also bump `bootstrap`'s Python package version in `plugins/bootstrap/pyproject.toml`. Without a package version bump, `uv sync` may consider the installed copy satisfied and skip reinstallation even after the lockfile changes.
+**Downstream consumers with git dependencies** (e.g., update06): If another project depends on `bootstrap` as a Python git dependency (`bootstrap @ git+https://...`), also bump `bootstrap`'s Python package version in `plugins/bootstrap/pyproject.toml`. Without a package version bump, `uv sync` may consider the installed copy satisfied and skip reinstallation even after the lockfile changes.
 
-### update04 — the bootstrap bootstrapper
+### update06 — the bootstrap bootstrapper
 
-**Repository**: `kitaekatt/update04` (local: `~/Dev/update04`)
+**Repository**: `kitaekatt/update06` (local: `~/Dev/update06`)
 
-**Purpose**: update04 is a separate marketplace that exists to fix chicken-and-egg problems in plugins-kit. If bootstrap is broken in a way that prevents it from updating itself, update04 provides an independent code path that can repair the situation.
+**Purpose**: update06 is a separate marketplace that exists to fix chicken-and-egg problems in plugins-kit. If bootstrap is broken in a way that prevents it from updating itself, update06 provides an independent code path that can repair the situation.
 
-**How it works**: update04 contains a single plugin ("update") whose job is to ensure plugins-kit marketplace is registered and the bootstrap plugin is installed. Its `update_engine.py` is a thin facade that imports `_process_manifest` from `bootstrap_lib` and delegates all real work to it.
+**How it works**: update06 contains a single plugin ("update") whose job is to ensure plugins-kit marketplace is registered and the bootstrap plugin is installed. Its `update_engine.py` is a thin facade that imports `_process_manifest` from `bootstrap_lib` and delegates all real work to it.
 
-**Library dependency**: update04 declares `bootstrap` as a Python git dependency in its `pyproject.toml`:
+**Library dependency**: update06 declares `bootstrap` as a Python git dependency in its `pyproject.toml`:
 ```
 bootstrap @ git+https://github.com/kitaekatt/plugins-kit.git#subdirectory=plugins/bootstrap
 ```
-This installs `bootstrap_lib` into update04's own venv. The venv lives at `~/.claude/plugins/data/update04/update/.venv` and is separate from the bootstrap plugin's cache.
+This installs `bootstrap_lib` into update06's own venv. The venv lives at `~/.claude/plugins/data/update06/update/.venv` and is separate from the bootstrap plugin's cache.
 
 **Three version numbers matter when publishing fixes**:
 1. `plugins/bootstrap/.claude-plugin/plugin.json` — plugin version (triggers cache refresh)
 2. `.claude-plugin/marketplace.json` — marketplace listing (must match plugin.json)
-3. `plugins/bootstrap/pyproject.toml` — Python package version (triggers `uv sync` reinstall in update04's venv)
+3. `plugins/bootstrap/pyproject.toml` — Python package version (triggers `uv sync` reinstall in update06's venv)
 
-All three must be bumped for a fix to reach both plugins-kit consumers and update04. After bumping, regenerate update04's lockfile:
+All three must be bumped for a fix to reach both plugins-kit consumers and update06. After bumping, regenerate update06's lockfile:
 ```bash
-cd ~/Dev/update04/plugins/update
+cd ~/Dev/update06/plugins/update
 uv lock --upgrade-package bootstrap
 ```
-Then bump update04's own version in both `plugin.json` and `marketplace.json`, commit, and push.
+Then bump update06's own version in both `plugin.json` and `marketplace.json`, commit, and push.
 
 **Keep architecture docs current** — when modifying bootstrap behavior, update the bootstrap skill references (`plugins/bootstrap/skills/bootstrap/references/`) to reflect the changes. These are the source of truth for how the system works.
 
