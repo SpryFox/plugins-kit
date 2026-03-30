@@ -156,6 +156,14 @@ PYTHON=""
 OS="$(uname -s)"
 STANDALONE_DIR="${HOME}/.local/share/python-standalone"
 
+# Schannel (Windows-native TLS) can fail with CRYPT_E_NO_REVOCATION_CHECK on
+# corporate networks. --ssl-revoke-best-effort still checks when possible but
+# doesn't hard-fail when the revocation server is unreachable.
+CURL_FLAGS=()
+if [[ "$OS" == MINGW* ]] || [[ "$OS" == MSYS* ]]; then
+    CURL_FLAGS=(--ssl-revoke-best-effort)
+fi
+
 if [[ "$OS" == MINGW* ]] || [[ "$OS" == MSYS* ]]; then
     # Windows: use standalone executable directly — no hard link needed since the
     # standalone dir is on PATH (DLLs are co-located with the executable there).
@@ -207,13 +215,16 @@ if [ -z "$PYTHON" ]; then
 
     log_entry "python3: downloading $ARCHIVE"
     mkdir -p "$STANDALONE_DIR"
-    if ! curl -LsSf "$URL" | tar xz -C "$STANDALONE_DIR" 2>/dev/null; then
+    _dl_tmp="$STANDALONE_DIR/$ARCHIVE"
+    if ! curl -LsSf "${CURL_FLAGS[@]}" "$URL" -o "$_dl_tmp" 2>/dev/null || ! tar xzf "$_dl_tmp" -C "$STANDALONE_DIR" 2>/dev/null; then
+        rm -f "$_dl_tmp" 2>/dev/null
         log_entry "python3: FAILED - download error"
         flush_log
         mkdir -p "$PLUGIN_DATA"
         printf '{"continue": true, "suppressOutput": false, "systemMessage": "%s -> python3 auto-install failed (download error). Install Python 3 manually.\\n\\n%s -> CRITICAL: python3 not found. Auto-install download failed. Install Python 3.x manually."}\n' "${BOOTSTRAP_LABEL}" "${BOOTSTRAP_LABEL}" > "$PLUGIN_DATA/bootstrap_display.pending"
         exit 0
     fi
+    rm -f "$_dl_tmp"
 
     if [[ "$OS" == MINGW* ]] || [[ "$OS" == MSYS* ]]; then
         # Windows: standalone exe is on PATH via STANDALONE_PYTHON_BIN — no symlink needed
