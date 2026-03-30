@@ -1,4 +1,4 @@
-"""Shared config utilities for local-review-kit scripts.
+"""Shared config utilities for p4-kit scripts.
 
 Stdlib-only — works even if the venv is broken.
 """

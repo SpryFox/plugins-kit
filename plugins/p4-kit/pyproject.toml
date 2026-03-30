@@ -1,7 +1,7 @@
 [project]
-name = "local-review-kit"
+name = "p4-kit"
 version = "0.1.0"
-description = "Host-side dependencies for local-review-kit"
+description = "Host-side dependencies for p4-kit"
 requires-python = ">=3.11"
 
 dependencies = [
