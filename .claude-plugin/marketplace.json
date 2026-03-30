@@ -48,13 +48,13 @@
       "category": "development"
     },
     {
-      "name": "local-review-kit",
+      "name": "p4-kit",
       "description": "Interactive local code review of Perforce changelists in Claude Code",
       "version": "0.2.0",
       "author": {
         "name": "Christina"
       },
-      "source": "./plugins/local-review-kit",
+      "source": "./plugins/p4-kit",
       "category": "development"
     }
   ]

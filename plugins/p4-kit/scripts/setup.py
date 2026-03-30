@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Setup script for local-review-kit config management.
+"""Setup script for p4-kit config management.
 
 Stdlib-only — works even if the venv is broken.
 
@@ -95,7 +95,7 @@ def do_describe(data_dir):
     config_path = os.path.join(data_dir, "config.yaml")
     current = read_config(config_path)
 
-    print("# local-review-kit configuration fields")
+    print("# p4-kit configuration fields")
     print(f"# Config location: {config_path}")
     print()
     for field, info in REQUIRED_FIELDS.items():

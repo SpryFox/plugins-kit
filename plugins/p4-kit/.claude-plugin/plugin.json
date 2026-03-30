@@ -1,5 +1,5 @@
 {
-  "name": "local-review-kit",
+  "name": "p4-kit",
   "version": "0.2.0",
   "description": "Interactive local code review of Perforce changelists in Claude Code",
   "author": {

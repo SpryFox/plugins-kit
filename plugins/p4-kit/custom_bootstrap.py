@@ -1,4 +1,4 @@
-"""Autodetect entry point for local-review-kit bootstrap."""
+"""Autodetect entry point for p4-kit bootstrap."""
 
 import os
 import subprocess
