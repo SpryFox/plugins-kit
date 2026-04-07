@@ -12,6 +12,11 @@ A declarative configuration file covering automatable operations. The engine rea
     {"name": "node", "installPath": "~/.local/share/node", "install": {"macos": "brew install node"}}
   ],
   "path_entries": ["~/.local/bin"],
+  "python_stub_check": {
+    "good_python_dir": "~/.local/share/python-standalone/python",
+    "stub_markers": ["WindowsApps"],
+    "script_output_dir": "~/Desktop"
+  },
   "venv": {
     "check_imports": ["yaml", "upyrc"]
   },
@@ -96,6 +101,20 @@ The optional `installPath` field on a tool entry tells the engine where the tool
 - Supports `~` expansion
 - The engine checks `<installPath>/<name>` (and `<installPath>/<name>.exe` on Windows) before falling back to `shutil.which()`
 - The same `installPath` is used for the recheck after install
+
+## `self_setup.python_stub_check`
+
+A Windows-only check that detects Microsoft Store Python stubs (or any other shadowing `python.exe`) sitting in front of the bootstrap-installed standalone Python on PATH. When a stub is detected, bootstrap writes a self-elevating `fix_python_path.bat` script to the user's Desktop and surfaces a friendly fix-all message instructing the user to run it as administrator. The check is a no-op on non-Windows and on Windows machines whose first `python.exe` is already the standalone one.
+
+This field lives only under `self_setup` (in `defaults/config.json` for the bootstrap plugin) — it is not a per-plugin manifest entry.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `good_python_dir` | `~/.local/share/python-standalone/python` | Directory that should win on PATH. The check passes when the first `python.exe` resolved by `shutil.which` lives here. |
+| `stub_markers` | `["WindowsApps"]` | Substrings that identify a shadowing stub. If the first `python.exe` on PATH contains any of these (case-insensitive), the check fails and a remediation script is written. |
+| `script_output_dir` | `~/Desktop` | Where to write `fix_python_path.bat`. Created if missing. The script is overwritten on every run so template updates land. |
+
+The fix script self-elevates via UAC (`powershell Start-Process -Verb RunAs`), prepends `good_python_dir` to the **System** PATH (HKLM Environment), and is idempotent — re-running it after the fix is in place is a no-op. Modifying System PATH requires administrator privileges, which is why the engine cannot do this itself.
 
 ## Script Section
 

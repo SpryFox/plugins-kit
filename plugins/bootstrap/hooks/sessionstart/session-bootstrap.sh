@@ -62,6 +62,19 @@ _COOLDOWN_FILE="$PLUGIN_DATA/last_run_epoch"
 _COOLDOWN_SECS=300  # 5-minute cooldown between runs
 mkdir -p "$PLUGIN_DATA"
 
+# --- Re-prime pending display from persistent alert (runs every session) ---
+# The bootstrap engine writes bootstrap_alert.json when there's an unresolved
+# user-actionable failure (e.g. a python stub on the system PATH). The alert
+# file lives until the engine confirms the fix on a later run. We always copy
+# it to bootstrap_display.pending here so the UserPromptSubmit hook surfaces
+# it once per session — independent of the engine cooldown below. This is the
+# "show the alert each session until resolved" behavior.
+_ALERT_FILE="$PLUGIN_DATA/bootstrap_alert.json"
+_PENDING_FILE="$PLUGIN_DATA/bootstrap_display.pending"
+if [ -f "$_ALERT_FILE" ]; then
+    cp -f "$_ALERT_FILE" "$_PENDING_FILE" 2>/dev/null || true
+fi
+
 # Layer 1: session_id guard (works when stdin is available)
 if [ -n "${_GUARD_SID:-}" ]; then
     if [ -f "$_GUARD_FILE" ] && [ "$(cat "$_GUARD_FILE" 2>/dev/null)" = "$_GUARD_SID" ]; then
@@ -72,7 +85,11 @@ if [ -n "${_GUARD_SID:-}" ]; then
 fi
 
 # Layer 2: timestamp cooldown (works regardless of stdin)
-if [ -f "$_COOLDOWN_FILE" ]; then
+# Bypass the cooldown when there's an unresolved persistent alert — we want
+# the engine to re-check on every session in that case so it can confirm the
+# fix and clear the alert promptly. Steady-state success still gets the
+# 5-minute throttle.
+if [ -f "$_COOLDOWN_FILE" ] && [ ! -f "$_ALERT_FILE" ]; then
     _LAST_RUN=$(cat "$_COOLDOWN_FILE" 2>/dev/null || echo "0")
     _NOW=$(date +%s 2>/dev/null || echo "0")
     if [ $((_NOW - _LAST_RUN)) -lt $_COOLDOWN_SECS ]; then
@@ -295,14 +312,16 @@ fi
 # --- Invoke Engine ---
 
 if [ -z "$FLAG_CONSOLE" ]; then
-    # Background mode: engine writes display JSON to file; stdout goes to /dev/null
+    # Background mode: engine writes display JSON to file. Stderr is captured
+    # to a debug log so silent engine failures (which would otherwise vanish
+    # into /dev/null) can be inspected after the fact.
     "$PYTHON" "${PLUGIN_ROOT}/engine/bootstrap_engine.py" \
         --plugin-root "$PLUGIN_ROOT" \
         --data-dir "$PLUGIN_DATA" \
         --hook-start-epoch "$HOOK_START_EPOCH" \
         --project-dir "$PWD" \
         --background \
-        "${ENGINE_FLAGS[@]}" > /dev/null 2>&1 &
+        "${ENGINE_FLAGS[@]}" > "$PLUGIN_DATA/engine_stderr.log" 2>&1 &
 else
     # Console mode: synchronous, plain text to stdout
     exec "$PYTHON" "${PLUGIN_ROOT}/engine/bootstrap_engine.py" \

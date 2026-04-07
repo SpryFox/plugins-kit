@@ -263,11 +263,30 @@ def main():
 
     # Step 8: Emit results
     output_file = os.path.join(data_dir, "bootstrap_display.pending") if args.background else None
+    persistent_alert_path = os.path.join(data_dir, "bootstrap_alert.json")
+    has_persistent = any(f.get("persist_across_sessions") for f in all_failures)
+    persistent_output_file = persistent_alert_path if (args.background and has_persistent) else None
+
     if all_failures:
-        emit_failure_response(all_failures, current_os, display_content, label=bootstrap_label, output_file=output_file)
+        emit_failure_response(
+            all_failures, current_os, display_content,
+            label=bootstrap_label, output_file=output_file,
+            persistent_output_file=persistent_output_file,
+        )
     elif display_content:
         emit_success_response(display_content, label=bootstrap_label, output_file=output_file)
     # else: nothing to show — silent exit (no file written in background mode)
+
+    # Clean up stale persistent alert file when no persistent failures remain.
+    # This is what makes the alert disappear once the user fixes the underlying
+    # issue and the engine confirms the fix on a subsequent run.
+    if not has_persistent:
+        try:
+            os.remove(persistent_alert_path)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            pass
 
 
 def _bootstrap_single_plugin(
@@ -547,6 +566,86 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
         current_path = os.environ.get("PATH", "")
         if os.path.normpath(expanded) not in [os.path.normpath(d) for d in current_path.split(os.pathsep)]:
             os.environ["PATH"] = expanded + os.pathsep + current_path
+
+    # Check for Python stubs shadowing the standalone python (Windows-only check)
+    stub_def = self_setup.get("python_stub_check")
+    if stub_def:
+        from .python_stub_check import check_python_stub, write_fix_script
+        good_python_dir = stub_def.get("good_python_dir", "~/.local/share/python-standalone/python")
+        stub_markers = stub_def.get("stub_markers", ["WindowsApps"])
+        script_output_dir = stub_def.get("script_output_dir", "~/Desktop")
+
+        stub_result = check_python_stub(good_python_dir, stub_markers)
+        if stub_result.passed:
+            ok_entries.append(f"{p}python stub: ok - {stub_result.message}")
+        else:
+            ok_write, write_msg, script_path = write_fix_script(good_python_dir, script_output_dir)
+            if ok_write:
+                # User-visible action entry (also written into the bootstrap log)
+                action_entries.append(
+                    f"{p}python stub: detected {stub_result.bad_python}; "
+                    f"wrote fix script to {script_path}"
+                )
+                # Focused user-facing and Claude-facing messages.
+                user_msg = (
+                    "Claude needs your help! Run the fix_python_path script that is on "
+                    "your desktop as administrator to make python accessible to Claude."
+                )
+                agent_msg = (
+                    "A Microsoft Store Python stub is shadowing the standalone Python "
+                    "that plugins-kit installed, blocking Claude's access to a working "
+                    f"python.exe. Detected stub at: {stub_result.bad_python}. A fix script "
+                    f"has been written to the user's desktop at {script_path}. The user "
+                    "must double-click it (it self-elevates via UAC) or right-click and "
+                    "choose 'Run as administrator'. The script prepends the standalone "
+                    "Python directory to the System PATH and then deletes itself. After "
+                    "the user runs it successfully, they need to start a new Claude Code "
+                    "session for the new System PATH to take effect. If the user asks for "
+                    "help, walk them through these steps. Do NOT attempt to run the script "
+                    "yourself — it requires interactive UAC consent."
+                )
+                failures.append({
+                    "type": "python_stub",
+                    "name": "python_stub",
+                    "user_msg": user_msg,
+                    "agent_msg": agent_msg,
+                    "message": user_msg,  # legacy field for general consumers
+                    "bad_python": stub_result.bad_python,
+                    "script_path": script_path,
+                    "plugin": "bootstrap",
+                    "persist_across_sessions": True,
+                })
+            else:
+                action_entries.append(
+                    f"{p}python stub: detected {stub_result.bad_python}, "
+                    f"could not write fix script: {write_msg}"
+                )
+                user_msg = (
+                    "Claude needs your help! A bad python is shadowing the standalone "
+                    f"python plugins-kit installed, and the fix script could not be "
+                    f"written automatically. Manually prepend {stub_result.good_python_dir} "
+                    "to your System PATH."
+                )
+                agent_msg = (
+                    f"A Microsoft Store Python stub at {stub_result.bad_python} is shadowing "
+                    f"the standalone Python, and the fix script could not be written: "
+                    f"{write_msg}. The user must manually prepend "
+                    f"{stub_result.good_python_dir} to their System PATH (Windows Settings -> "
+                    "Edit the system environment variables -> Environment Variables -> System "
+                    "variables -> Path -> New -> move to top), then start a new Claude Code "
+                    "session."
+                )
+                failures.append({
+                    "type": "python_stub",
+                    "name": "python_stub",
+                    "user_msg": user_msg,
+                    "agent_msg": agent_msg,
+                    "message": user_msg,
+                    "bad_python": stub_result.bad_python,
+                    "script_path": None,
+                    "plugin": "bootstrap",
+                    "persist_across_sessions": True,
+                })
 
     # Check venv — always run uv sync to keep deps current (~100ms no-op when up to date)
     venv_def = self_setup.get("venv")
@@ -1516,8 +1615,13 @@ def emit_success_response(log_content, label="bootstrap", output_file=None):
         print(json.dumps(response))
 
 
-def emit_failure_response(failures, current_os, log_content, label="bootstrap", output_file=None):
-    """Emit hook JSON with fix-all directives to stdout or file."""
+def emit_failure_response(failures, current_os, log_content, label="bootstrap", output_file=None, persistent_output_file=None):
+    """Emit hook JSON with fix-all directives to stdout or file.
+
+    If persistent_output_file is provided AND any failure is marked
+    `persist_across_sessions`, the same JSON is also written to that path so
+    subsequent sessions can re-prime bootstrap_display.pending from it.
+    """
     agent_lines = [f"{label} -> Setup issues found. Fix in order:\n"]
 
     for i, f in enumerate(failures, 1):
@@ -1546,10 +1650,48 @@ def emit_failure_response(failures, current_os, log_content, label="bootstrap", 
             agent_lines.append(f"{i}. Install plugin {f['ref']}{plugin_tag}: {f['message']}")
         elif f["type"] == "sync_to_data":
             agent_lines.append(f"{i}. Sync {f['src']} -> {f['dst']}{plugin_tag}: {f['message']}")
+        elif f["type"] == "python_stub":
+            agent_lines.append(f"{i}. python stub fix needed{plugin_tag}: {f.get('agent_msg', f.get('message', 'see log'))}")
 
     agent_lines.append("\nAfter fixing, type 'fix-all' or 'fixed' to re-run bootstrap, or restart Claude Code.")
     agent_msg = "\n".join(agent_lines)
 
+    # Special-case: if all failures are python_stub, emit a focused, user-friendly
+    # response (no log_content noise, no "fix-all" boilerplate — the user can't
+    # tell Claude to fix this since it requires admin elevation on their machine).
+    python_stub_failures = [f for f in failures if f["type"] == "python_stub"]
+    only_python_stub = bool(python_stub_failures) and len(python_stub_failures) == len(failures)
+
+    if only_python_stub:
+        # Use the first python_stub failure's structured messages.
+        ps = python_stub_failures[0]
+        focused_user_msg = ps.get("user_msg", ps.get("message", ""))
+        focused_agent_msg = ps.get("agent_msg", ps.get("message", ""))
+        if output_file:
+            response = {
+                "systemMessage": f"{label}: {focused_user_msg}",
+                "hookSpecificOutput": {
+                    "hookEventName": "UserPromptSubmit",
+                    "additionalContext": f"{label} -> {focused_agent_msg}",
+                },
+            }
+            _write_atomic(output_file, json.dumps(response))
+            if persistent_output_file:
+                _write_atomic(persistent_output_file, json.dumps(response))
+        else:
+            response = {
+                "continue": True,
+                "suppressOutput": False,
+                "systemMessage": f"{label}: {focused_user_msg}",
+                "hookSpecificOutput": {
+                    "hookEventName": "SessionStart",
+                    "additionalContext": f"{label} -> {focused_agent_msg}",
+                },
+            }
+            print(json.dumps(response))
+        return
+
+    # General path: mixed or non-python_stub failures.
     if output_file:
         # Background mode: consumed by UserPromptSubmit hook.
         # `additionalContext` gives Claude the full log + fix directives,
@@ -1563,6 +1705,8 @@ def emit_failure_response(failures, current_os, log_content, label="bootstrap", 
             },
         }
         _write_atomic(output_file, json.dumps(response))
+        if persistent_output_file:
+            _write_atomic(persistent_output_file, json.dumps(response))
     else:
         # SessionStart hook: supports hookSpecificOutput with hookEventName
         response = {
