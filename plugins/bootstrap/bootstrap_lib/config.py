@@ -4,7 +4,7 @@ import json
 import os
 import shutil
 
-CURRENT_SCHEMA_VERSION = 5
+CURRENT_SCHEMA_VERSION = 6
 
 
 def load_config(data_dir: str, defaults_dir: str) -> dict:
@@ -109,6 +109,32 @@ def migrate_config(config: dict, defaults_dir: str = "") -> dict:
                 no_bootstrap.remove(auto_ref)
 
         migrated["schema_version"] = 5
+
+    # Migration from v5 to v6: add python_stub_check to self_setup
+    if version < 6:
+        # Read python_stub_check from defaults/config.json if available
+        stub_check = None
+        if defaults_dir:
+            defaults_path = os.path.join(defaults_dir, "config.json")
+            try:
+                with open(defaults_path, "r") as f:
+                    defaults = json.load(f)
+                stub_check = defaults.get("self_setup", {}).get("python_stub_check")
+            except (FileNotFoundError, json.JSONDecodeError, OSError):
+                pass
+
+        # Hardcoded fallback if defaults not available
+        if stub_check is None:
+            stub_check = {
+                "good_python_dir": "~/.local/share/python-standalone/python",
+                "stub_markers": ["WindowsApps"],
+                "script_output_dir": "~/Desktop",
+            }
+
+        self_setup = migrated.setdefault("self_setup", {})
+        self_setup.setdefault("python_stub_check", stub_check)
+
+        migrated["schema_version"] = 6
 
     return migrated
 
