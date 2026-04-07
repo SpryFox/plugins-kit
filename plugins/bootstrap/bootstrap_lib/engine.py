@@ -17,7 +17,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 
 def main():
@@ -214,7 +214,7 @@ def main():
     # Plugin log writes are deferred to step 6 to avoid the bootstrap plugin's
     # ok_entries leaking back through shell_content (its data_dir == engine data_dir).
     if not args.console:
-        shell_content = _read_new_log_entries(data_dir)
+        shell_content = _read_new_log_entries(data_dir, start_time=start_time)
     else:
         shell_content = ""  # Console mode: shell already printed its entries
 
@@ -1493,11 +1493,18 @@ class _ScriptContext:
         self._log_entries.append(f"{self._prefix}{message}")
 
 
-def _read_new_log_entries(data_dir):
+def _read_new_log_entries(data_dir, start_time=None):
     """Read log entries since the last time we displayed them.
 
     Uses a 'last_displayed_at' file to track the timestamp of the last display.
     Does NOT update the marker — call _update_display_marker() after all entries are written.
+
+    A `start_time` floor (default: now - 120s) bounds the lookback window even
+    when the marker is missing or stale. This prevents the engine from dumping
+    the entire historical log to the user when the marker is reset (e.g. on
+    fresh installs, version downgrades, or after a corrupt-marker recovery).
+    Without this bound, the user would see months of stale entries — including
+    historical failures already resolved — every time the marker disappears.
     """
     from .log import LOG_FILENAME
     log_file = os.path.join(data_dir, LOG_FILENAME)
@@ -1517,16 +1524,29 @@ def _read_new_log_entries(data_dir):
     except FileNotFoundError:
         pass
 
-    # Filter to blocks after the last-displayed timestamp.
+    # Compute the floor: 120 seconds before start_time covers shell startup
+    # plus clock skew without including any pre-session content.
+    if start_time is None:
+        start_time = datetime.now(timezone.utc)
+    floor_dt = start_time - timedelta(seconds=120)
+    floor = floor_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # Effective marker is the LATER of last_displayed and the floor. This means
+    # entries older than `start_time - 120s` are never re-displayed, even if the
+    # marker is missing or stale.
+    effective_marker = max(last_displayed, floor)
+
+    # Filter to blocks strictly after the effective marker.
     # Timestamps are only on header lines (--- label timestamp ---).
-    # When a header is old, skip it and all lines until the next header.
+    # Untimestamped headers (or content before any header) start excluded —
+    # they only get included if a subsequent timestamped header lets them in.
     new_lines = []
-    include_block = not last_displayed  # If no marker, include everything
+    include_block = False
     for line in lines:
         ts = _extract_timestamp(line)
         if ts:
             # This is a header line — decide whether to include this block
-            include_block = ts > last_displayed if last_displayed else True
+            include_block = ts > effective_marker
         if include_block:
             new_lines.append(line)
 
