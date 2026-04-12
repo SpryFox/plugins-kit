@@ -133,12 +133,12 @@ claude --plugin-dir ~/Dev/plugins-kit/plugins/my-plugin
 
 `--plugin-dir` loads the plugin directly from disk (no cache copy) and makes no persistent changes — it doesn't modify `installed_plugins.json`, the cache, or `known_marketplaces.json`. Ending the session reverts to the marketplace-installed version. Use `/reload-plugins` to pick up file changes within a session (hooks require a full restart).
 
-**Publishing changes** — the plugin cache syncs from the remote repository's default branch, not the local working copy. Develop on the `dev` branch; merge to `master` only when releasing a version bump. This prevents silent divergence (fresh installs between releases getting HEAD code cached under the old version string). To publish:
+**Publishing changes** — the plugin cache syncs from the remote repository's default branch, not the local working copy. Develop on the `dev` branch; merge to `master` only when releasing a version bump. This prevents silent divergence (fresh installs between releases getting HEAD code cached under the old version string). **Merging to master and pushing are publishing actions — always ask the user for confirmation before doing them.** To publish:
 
 1. Bump the plugin version in both files — they must match:
    - `plugins/<name>/.claude-plugin/plugin.json` (the plugin's own manifest)
    - `.claude-plugin/marketplace.json` (the marketplace-level listing)
-2. Merge `dev` to `master` and push
+2. Ask the user to confirm, then merge `dev` to `master` and push
 3. Users with `autoUpdate: true` receive the update on next session start
 4. Users without auto-update run `/plugin marketplace update` then `/plugin update`
 
