@@ -6,8 +6,17 @@ Returns dict of discovered values, or None if nothing found.
 """
 
 import os
+import re
 import subprocess
 from typing import Dict, Optional
+
+
+_P4_ANNOTATION = re.compile(r"\s*\([^)]*\)\s*$")
+
+
+def _strip_annotation(value: str) -> str:
+    """Strip trailing `p4 set` source annotations like `(set)`, `(config '...')`, `(enviro)`."""
+    return _P4_ANNOTATION.sub("", value).strip()
 
 
 def autodetect() -> Optional[Dict[str, str]]:
@@ -21,9 +30,7 @@ def autodetect() -> Optional[Dict[str, str]]:
             for line in proc.stdout.splitlines():
                 for field in ("P4PORT", "P4USER"):
                     if line.startswith(f"{field}="):
-                        value = line.split("=", 1)[1].strip()
-                        if " (set)" in value:
-                            value = value.rsplit(" (set)", 1)[0]
+                        value = _strip_annotation(line.split("=", 1)[1])
                         if value:
                             result[field] = value
     except (FileNotFoundError, subprocess.TimeoutExpired):
