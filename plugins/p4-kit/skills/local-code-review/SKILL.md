@@ -13,6 +13,32 @@ Run a multi-agent code review of a Perforce changelist directly in conversation.
 - All tools are functional. Do not test tools or make exploratory calls.
 - Only call a tool if it is required to complete the task.
 
+## Narration (user-facing) — REQUIRED, use the exact templates below
+
+Reviews involve long silent stretches (batched file reads, parallel subagents that take 30s+). The user must be able to follow along. Post one short status line per step using these templates verbatim, filling in the bracketed counts. Do not paraphrase, omit, or add extras.
+
+| When | Template |
+|------|----------|
+| Before step 1 (only if no CL arg was passed) | `Listing your pending changelists.` |
+| Before step 2 | `Gathering context for CL <CL>: fetching diff and mapping CLAUDE.md scopes.` |
+| After step 2, before step 3 (M ≥ 1) | `Got <N> changed file(s) and <M> unique CLAUDE.md scope(s). Reading them now.` |
+| After step 2, before step 4 (M = 0) | `Got <N> changed file(s); no CLAUDE.md scopes apply. Skipping to reviewers.` |
+| Before step 4 | `Launching 3 reviewers in parallel: sonnet CLAUDE.md compliance, opus diff-only bugs, opus introduced-code.` |
+| After step 4, before step 5 (X ≥ 1) | `Reviewers returned <X> candidate issue(s) (<B> bug, <C> CLAUDE.md). Launching <X> validator(s) in parallel.` |
+| After step 4 (X = 0) | `Reviewers found no issues. Skipping validation.` Then go straight to step 7. |
+| After step 5, before step 7 | `Validators confirmed <Y> of <X>. Rendering review.` |
+
+Variables:
+- `<CL>` — the changelist number
+- `<N>` — `len(bundle.changed_files)`
+- `<M>` — `len(bundle.unique_claude_mds)`
+- `<X>` — total candidate issues from all three reviewers combined
+- `<B>` — count where `reason == "bug"`
+- `<C>` — count where `reason == "claude_md"`
+- `<Y>` — count of validators returning `CONFIRMED`
+
+No additional narration between sub-steps. The final markdown review (step 7) is the user-facing output and stands on its own.
+
 ## Pipeline
 
 Follow these steps precisely.
