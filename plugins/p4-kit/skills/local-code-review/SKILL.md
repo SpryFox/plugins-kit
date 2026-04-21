@@ -10,15 +10,7 @@ description: Run AI code reviews of Perforce changelists in conversation — lis
 
 Run an AI code review of a Perforce changelist directly in conversation. Results are displayed inline — no persistence to disk.
 
-## Prerequisites
-
-Check config is complete before proceeding:
-
-```bash
-python ${CLAUDE_PLUGIN_ROOT}/scripts/setup.py --check --data-dir ~/.claude/plugins/data/p4-kit
-```
-
-If exit code is non-zero, suggest invoking the **local-code-review-setup** skill first.
+The plugin's bootstrap handles configuration automatically: P4PORT/P4USER are auto-detected from `p4 set` or environment variables, and the default agent (`claude-opus`) uses `claude -p` with no API key required. If anything is missing, bootstrap emits a fix-all message on session start.
 
 ## Review Flow
 
@@ -40,7 +32,7 @@ Ask the user which CL to review and which agent to use. List available agents:
 ls ~/.claude/plugins/data/p4-kit/github/code-review-research/agents/*.yaml | grep -v _base | grep -v agents.yaml | sed 's/.*\///' | sed 's/\.yaml$//'
 ```
 
-Or read `DEFAULT_AGENT` from config as the default choice.
+Or read `DEFAULT_AGENT` from config as the default choice. `claude-opus` and `claude-haiku` use `claude -p` (no key). Other agents (`codex-*`, `gemini-*`, `deepseek-*`, `grok-*`, `kimi-*`) require `OPENAI_API_KEY` or `OPENROUTER_API_KEY` — if the user picks one of these and the key isn't set in config, run-review.py will fail with a clear error.
 
 ### 3. Run the review
 

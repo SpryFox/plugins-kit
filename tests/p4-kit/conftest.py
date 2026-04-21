@@ -21,20 +21,6 @@ def plugin_root():
 
 
 @pytest.fixture
-def data_dir(tmp_path):
-    """Temporary data directory with config.yaml location."""
-    d = tmp_path / "data"
-    d.mkdir()
-    return str(d)
-
-
-@pytest.fixture
-def defaults_dir():
-    """Path to plugin's defaults/ directory."""
-    return os.path.join(PLUGIN_ROOT, "defaults")
-
-
-@pytest.fixture
 def sample_config(tmp_path):
     """Factory for writing config files with known content."""
 
@@ -44,15 +30,3 @@ def sample_config(tmp_path):
         return str(path)
 
     return _write
-
-
-@pytest.fixture
-def full_config_data():
-    """A complete valid config dict."""
-    return {
-        "OPENAI_API_KEY": "sk-test123",
-        "OPENROUTER_API_KEY": "sk-or-test456",
-        "P4PORT": "ssl:perforce.example.com:1666",
-        "P4USER": "testuser",
-        "DEFAULT_AGENT": "claude-haiku",
-    }
