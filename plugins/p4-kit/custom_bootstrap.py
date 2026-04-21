@@ -1,38 +1,38 @@
-"""Autodetect entry point for p4-kit bootstrap."""
+"""Autodetect entry point for p4-kit bootstrap.
+
+autodetect() — discovers P4PORT/P4USER from `p4 set` or env vars.
+Called by the engine's project_config primitive (no arguments).
+Returns dict of discovered values, or None if nothing found.
+"""
 
 import os
 import subprocess
+from typing import Dict, Optional
 
 
-def autodetect(config, config_path):
-    """Try to auto-detect P4 settings. Returns True if config was changed."""
-    changed = False
+def autodetect() -> Optional[Dict[str, str]]:
+    result: Dict[str, str] = {}
 
-    # Try p4 set for P4PORT and P4USER
-    if not config.get("P4PORT") or not config.get("P4USER"):
-        try:
-            result = subprocess.run(
-                ["p4", "set"], capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                for line in result.stdout.splitlines():
-                    for field in ("P4PORT", "P4USER"):
-                        if line.startswith(f"{field}=") and not config.get(field):
-                            value = line.split("=", 1)[1].strip()
-                            if " (set)" in value:
-                                value = value.rsplit(" (set)", 1)[0]
-                            if value:
-                                config[field] = value
-                                changed = True
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            pass
+    try:
+        proc = subprocess.run(
+            ["p4", "set"], capture_output=True, text=True, timeout=5
+        )
+        if proc.returncode == 0:
+            for line in proc.stdout.splitlines():
+                for field in ("P4PORT", "P4USER"):
+                    if line.startswith(f"{field}="):
+                        value = line.split("=", 1)[1].strip()
+                        if " (set)" in value:
+                            value = value.rsplit(" (set)", 1)[0]
+                        if value:
+                            result[field] = value
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
 
-    # Try environment variables as fallback
     for field in ("P4PORT", "P4USER"):
-        if not config.get(field):
+        if field not in result:
             env_val = os.environ.get(field)
             if env_val:
-                config[field] = env_val
-                changed = True
+                result[field] = env_val
 
-    return changed
+    return result if result else None
