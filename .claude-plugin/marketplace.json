@@ -50,7 +50,7 @@
     {
       "name": "p4-kit",
       "description": "Interactive local code review of Perforce changelists in Claude Code",
-      "version": "0.5.0",
+      "version": "0.5.1",
       "author": {
         "name": "Christina"
       },
