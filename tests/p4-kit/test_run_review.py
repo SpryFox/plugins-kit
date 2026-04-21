@@ -71,7 +71,7 @@ class TestResolveDataDir:
     def test_default_path(self, monkeypatch):
         monkeypatch.delenv("PLUGIN_DATA_DIR", raising=False)
         result = _resolve_data_dir()
-        expected = Path("~/.claude/plugins/data/p4-kit").expanduser().resolve()
+        expected = Path("~/.claude/plugins/data/plugins-kit/p4-kit").expanduser().resolve()
         assert result == expected
 
     def test_expands_tilde(self, monkeypatch):

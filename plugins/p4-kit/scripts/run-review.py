@@ -5,7 +5,7 @@ Usage:
   python run-review.py <CL> [--agent NAME] [--diff-file FILE] [--dry-run] [--json]
 
 Environment:
-  PLUGIN_DATA_DIR — plugin data directory (default: ~/.claude/plugins/data/p4-kit)
+  PLUGIN_DATA_DIR — plugin data directory (default: ~/.claude/plugins/data/plugins-kit/p4-kit)
 
 Outputs ReviewResult as YAML (default) or JSON to stdout.
 Diagnostic messages go to stderr.
@@ -25,7 +25,7 @@ def _resolve_data_dir() -> Path:
     env = os.environ.get("PLUGIN_DATA_DIR")
     if env:
         return Path(env).expanduser().resolve()
-    return Path("~/.claude/plugins/data/p4-kit").expanduser().resolve()
+    return Path("~/.claude/plugins/data/plugins-kit/p4-kit").expanduser().resolve()
 
 
 def _die(msg: str) -> None:
