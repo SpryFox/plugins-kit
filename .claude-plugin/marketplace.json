@@ -40,7 +40,7 @@
     {
       "name": "bootstrap",
       "description": "Centralized bootstrap engine for Claude Code plugins",
-      "version": "0.8.16",
+      "version": "0.9.0",
       "author": {
         "name": "Christina"
       },
@@ -50,7 +50,7 @@
     {
       "name": "p4-kit",
       "description": "Interactive local code review of Perforce changelists in Claude Code",
-      "version": "0.5.1",
+      "version": "0.6.0",
       "author": {
         "name": "Christina"
       },
