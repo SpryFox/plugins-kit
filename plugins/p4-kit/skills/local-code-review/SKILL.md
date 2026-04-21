@@ -1,10 +1,10 @@
 ---
 _schema_version: 1
-name: local-review
+name: local-code-review
 description: Run AI code reviews of Perforce changelists in conversation — list CLs, pick agent, review, display results
 ---
 
-# Local Review
+# Local Code Review
 
 ## Purpose
 
@@ -15,10 +15,10 @@ Run an AI code review of a Perforce changelist directly in conversation. Results
 Check config is complete before proceeding:
 
 ```bash
-python ${CLAUDE_PLUGIN_ROOT}/scripts/setup.py --check --data-dir ~/.claude/plugins/data/local-review-kit
+python ${CLAUDE_PLUGIN_ROOT}/scripts/setup.py --check --data-dir ~/.claude/plugins/data/p4-kit
 ```
 
-If exit code is non-zero, suggest invoking the **local-review-setup** skill first.
+If exit code is non-zero, suggest invoking the **local-code-review-setup** skill first.
 
 ## Review Flow
 
@@ -30,14 +30,14 @@ Show the user's pending CLs so they can pick one:
 p4 -ztag changes -s pending -u <P4USER> -m 20
 ```
 
-Read `P4USER` from `~/.claude/plugins/data/local-review-kit/config.yaml`.
+Read `P4USER` from `~/.claude/plugins/data/p4-kit/config.yaml`.
 
 ### 2. Pick CL and agent
 
 Ask the user which CL to review and which agent to use. List available agents:
 
 ```bash
-ls ~/.claude/plugins/data/local-review-kit/github/code-review-research/agents/*.yaml | grep -v _base | grep -v agents.yaml | sed 's/.*\///' | sed 's/\.yaml$//'
+ls ~/.claude/plugins/data/p4-kit/github/code-review-research/agents/*.yaml | grep -v _base | grep -v agents.yaml | sed 's/.*\///' | sed 's/\.yaml$//'
 ```
 
 Or read `DEFAULT_AGENT` from config as the default choice.
@@ -47,7 +47,7 @@ Or read `DEFAULT_AGENT` from config as the default choice.
 Invoke the review script using the plugin venv Python:
 
 ```bash
-~/.claude/plugins/data/local-review-kit/.venv/bin/python ${CLAUDE_PLUGIN_ROOT}/scripts/run-review.py <CL> --agent <AGENT> --json
+~/.claude/plugins/data/p4-kit/.venv/bin/python ${CLAUDE_PLUGIN_ROOT}/scripts/run-review.py <CL> --agent <AGENT> --json
 ```
 
 Options:
@@ -96,7 +96,7 @@ Example format:
 To preview what the LLM will receive without spending tokens:
 
 ```bash
-~/.claude/plugins/data/local-review-kit/.venv/bin/python ${CLAUDE_PLUGIN_ROOT}/scripts/run-review.py <CL> --agent <AGENT> --dry-run
+~/.claude/plugins/data/p4-kit/.venv/bin/python ${CLAUDE_PLUGIN_ROOT}/scripts/run-review.py <CL> --agent <AGENT> --dry-run
 ```
 
 Prompts are printed to stderr. Useful for verifying agent config and diff parsing.
@@ -106,5 +106,5 @@ Prompts are printed to stderr. Useful for verifying agent config and diff parsin
 To review without a live Perforce connection:
 
 ```bash
-~/.claude/plugins/data/local-review-kit/.venv/bin/python ${CLAUDE_PLUGIN_ROOT}/scripts/run-review.py 99999 --agent claude-haiku --diff-file /path/to/test.diff --json
+~/.claude/plugins/data/p4-kit/.venv/bin/python ${CLAUDE_PLUGIN_ROOT}/scripts/run-review.py 99999 --agent claude-haiku --diff-file /path/to/test.diff --json
 ```

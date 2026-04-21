@@ -25,11 +25,13 @@ plugins-kit/                          # Marketplace root
       .claude-plugin/plugin.json      # Plugin manifest
       bootstrap.json                  # Test plugin's bootstrap manifest
       scripts/                        # Config setup
-    local-review-kit/                 # P4/Swarm AI code review plugin
+    p4-kit/                           # P4/Swarm AI code review plugin
       .claude-plugin/plugin.json      # Plugin manifest
-      hooks/sessionstart/             # 5-step bootstrap scripts
-      hooks/stop/                     # Bootstrap re-check
+      bootstrap.json                  # Bootstrap manifest (tools, venv, git_deps, config)
+      custom_bootstrap.py             # Autodetect hook for config
       scripts/                        # Review execution + config setup
+      skills/local-code-review/       # Main review skill
+      skills/local-code-review-setup/ # Interactive config setup skill
       defaults/                       # Default config template
     unreal-kit/                       # The UE plugin
       .claude-plugin/plugin.json      # Plugin manifest

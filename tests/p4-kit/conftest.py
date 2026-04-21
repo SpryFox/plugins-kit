@@ -1,4 +1,4 @@
-"""Fixtures for local-review-kit tests."""
+"""Fixtures for p4-kit tests."""
 
 import os
 import sys
@@ -6,20 +6,17 @@ import sys
 import pytest
 
 PLUGIN_ROOT = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, "plugins", "local-review-kit")
+    os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, "plugins", "p4-kit")
 )
 
-# Add module paths so tests can import setup and bootstrap-check
 scripts_path = os.path.join(PLUGIN_ROOT, "scripts")
-hooks_stop_path = os.path.join(PLUGIN_ROOT, "hooks", "stop")
-for p in (scripts_path, hooks_stop_path):
-    if p not in sys.path:
-        sys.path.insert(0, p)
+if scripts_path not in sys.path:
+    sys.path.insert(0, scripts_path)
 
 
 @pytest.fixture
 def plugin_root():
-    """Path to the local-review-kit plugin."""
+    """Path to the p4-kit plugin."""
     return PLUGIN_ROOT
 
 

@@ -1,4 +1,4 @@
-"""Tests for local-review-kit scripts/setup.py."""
+"""Tests for p4-kit scripts/setup.py."""
 
 import json
 import os
