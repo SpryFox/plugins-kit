@@ -335,10 +335,14 @@ def _bootstrap_single_plugin(
     project_detected = True
     project_config_section = plugin_manifest.get("project_config")
     if project_config_section:
+        project_config_failures = []
         project_detected = _process_project_config(
             project_config_section, plugin_data_dir, plugin_info.install_path,
             plugin_action_entries, ok_entries=plugin_ok_entries, plugin_name=plugin_info.name,
+            failures=project_config_failures,
         )
+        if project_config_failures:
+            all_failures.extend(project_config_failures)
 
     # Config phase
     config_section = plugin_manifest.get("config")
@@ -860,25 +864,56 @@ def _process_config(config_section, plugin_data_dir, plugin_root, action_entries
     return failures
 
 
-def _process_project_config(project_config_section, plugin_data_dir, plugin_root, action_entries, ok_entries=None, plugin_name=""):
+def _normalize_project_required_fields(required_fields):
+    """Normalize required_fields to dict form.
+
+    Accepts either:
+    - list of field names (strings) — legacy flat form, each becomes {}
+    - dict keyed by field name, values are {user_msg, agent_msg, default?} — dict form
+
+    Returns a dict mapping field name -> field spec (dict).
+    """
+    if isinstance(required_fields, dict):
+        return {
+            name: (spec if isinstance(spec, dict) else {})
+            for name, spec in required_fields.items()
+        }
+    # Treat as iterable of names (list/tuple)
+    return {name: {} for name in required_fields}
+
+
+def _process_project_config(project_config_section, plugin_data_dir, plugin_root, action_entries, ok_entries=None, plugin_name="", failures=None):
     """Process the project_config section of a plugin manifest.
 
     Discovers or reads per-project config (in CWD), syncs values to the data-dir config.
+
+    ``required_fields`` accepts either a flat list of field names (legacy) or a dict
+    keyed by field name with values ``{user_msg, agent_msg, default?}``. In dict form:
+    - A declared ``default`` is applied when the field is missing from both the file
+      and autodetect output (defaults never override already-populated values).
+    - Fields that remain missing after autodetect + defaults are emitted as fix-all
+      failure entries on the optional ``failures`` list.
+
     Returns True if a project was detected (config exists or autodetect succeeded),
     False if no project was found (autodetect returned None / no file / no autodetect).
     """
     from .config_check import load_yaml_config, save_yaml_config, run_project_autodetect
 
     config_file = project_config_section["file"]
-    required_fields = project_config_section.get("required_fields", [])
+    required_fields_spec = _normalize_project_required_fields(
+        project_config_section.get("required_fields", [])
+    )
+    required_field_names = list(required_fields_spec.keys())
     autodetect_spec = project_config_section.get("autodetect")
 
     project_config_path = os.path.join(os.getcwd(), config_file)
 
+    file_changed = False  # Track whether project_data was modified from disk state
+
     if os.path.isfile(project_config_path):
         # File exists — load it and check required fields
         project_data = load_yaml_config(project_config_path)
-        missing_fields = [f for f in required_fields if not project_data.get(f)]
+        missing_fields = [f for f in required_field_names if not project_data.get(f)]
 
         if missing_fields and autodetect_spec:
             # Some fields missing — try autodetect to fill gaps
@@ -887,8 +922,13 @@ def _process_project_config(project_config_section, plugin_data_dir, plugin_root
                 for field in missing_fields:
                     if detected.get(field):
                         project_data[field] = detected[field]
-                save_yaml_config(project_config_path, project_data)
-                action_entries.append(f"project config: updated {project_config_path}")
+                        file_changed = True
+                if file_changed:
+                    save_yaml_config(project_config_path, project_data)
+                    action_entries.append(f"project config: updated {project_config_path}")
+                else:
+                    if ok_entries is not None:
+                        ok_entries.append(f"project config: ok - {project_config_path}")
             else:
                 # Autodetect returned None — no active project in CWD
                 # Stale config file exists but no project is present
@@ -904,9 +944,17 @@ def _process_project_config(project_config_section, plugin_data_dir, plugin_root
             detected = run_project_autodetect(plugin_root, autodetect_spec)
             if detected:
                 os.makedirs(os.path.dirname(project_config_path), exist_ok=True)
-                save_yaml_config(project_config_path, detected)
-                action_entries.append(f"project config: created {project_config_path}")
-                project_data = detected
+                project_data = dict(detected)
+                # Apply defaults for any declared field still missing from detected
+                defaults_applied = _apply_project_defaults(project_data, required_fields_spec)
+                save_yaml_config(project_config_path, project_data)
+                if defaults_applied:
+                    action_entries.append(
+                        f"project config: created {project_config_path} (with defaults: {', '.join(defaults_applied)})"
+                    )
+                else:
+                    action_entries.append(f"project config: created {project_config_path}")
+                file_changed = True
             else:
                 if ok_entries is not None:
                     ok_entries.append("project config: no project detected")
@@ -916,6 +964,38 @@ def _process_project_config(project_config_section, plugin_data_dir, plugin_root
                 ok_entries.append("project config: no project detected")
             return False  # No file, no autodetect — nothing to do
 
+    # Apply declared defaults for any required field still missing after autodetect.
+    # Defaults never override already-populated values.
+    defaults_applied_now = _apply_project_defaults(project_data, required_fields_spec)
+    if defaults_applied_now:
+        save_yaml_config(project_config_path, project_data)
+        action_entries.append(
+            f"project config: applied defaults [{', '.join(defaults_applied_now)}] to {project_config_path}"
+        )
+        file_changed = True
+
+    # Collect fix-all failures for any field that is still missing and has no default.
+    # Only applies in dict form (string-list form defines no user/agent messages).
+    if failures is not None:
+        for field_name, field_spec in required_fields_spec.items():
+            if project_data.get(field_name):
+                continue
+            if field_spec.get("default") is not None:
+                continue  # default already applied above
+            if not field_spec:
+                # String-list form carries no messages — skip fix-all emission
+                continue
+            agent_msg = field_spec.get(
+                "agent_msg", f"Set {field_name} in {project_config_path}"
+            ).replace("{config_path}", project_config_path)
+            failures.append({
+                "type": "project_config",
+                "field": field_name,
+                "user_msg": field_spec.get("user_msg", field_name),
+                "agent_msg": agent_msg,
+                "plugin": plugin_name,
+            })
+
     # Sync discovered values to data-dir config
     data_config_path = os.path.join(plugin_data_dir, "config.yaml")
     if os.path.isfile(data_config_path):
@@ -924,7 +1004,7 @@ def _process_project_config(project_config_section, plugin_data_dir, plugin_root
         data_config = {}
 
     changed = False
-    for field in required_fields:
+    for field in required_field_names:
         val = project_data.get(field, "")
         if val and val != data_config.get(field, ""):
             data_config[field] = val
@@ -934,6 +1014,24 @@ def _process_project_config(project_config_section, plugin_data_dir, plugin_root
         save_yaml_config(data_config_path, data_config)
 
     return True
+
+
+def _apply_project_defaults(project_data, required_fields_spec):
+    """Apply declared defaults for any required field not already set in project_data.
+
+    Mutates ``project_data`` in place. Returns the list of field names that received
+    a default (empty if none).
+    """
+    applied = []
+    for field_name, field_spec in required_fields_spec.items():
+        if project_data.get(field_name):
+            continue
+        default = field_spec.get("default")
+        if default is None:
+            continue
+        project_data[field_name] = default
+        applied.append(field_name)
+    return applied
 
 
 def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entries, ok_entries, plugin_name="bootstrap", project_dir=None, project_detected=True):
@@ -1655,6 +1753,8 @@ def emit_failure_response(failures, current_os, log_content, label="bootstrap", 
         elif f["type"] == "git_dep":
             agent_lines.append(f"{i}. Clone {f['name']}{plugin_tag}: `{f['remediation_cmd']}`")
         elif f["type"] == "config":
+            agent_lines.append(f"{i}. {f['agent_msg']}{plugin_tag}")
+        elif f["type"] == "project_config":
             agent_lines.append(f"{i}. {f['agent_msg']}{plugin_tag}")
         elif f["type"] == "ini":
             agent_lines.append(f"{i}. Fix INI setting {f['key']} in {f['file']}{plugin_tag}: {f['message']}")

@@ -10,8 +10,9 @@ PLUGIN_ROOT = os.path.normpath(
 )
 
 scripts_path = os.path.join(PLUGIN_ROOT, "scripts")
-if scripts_path not in sys.path:
-    sys.path.insert(0, scripts_path)
+for p in (scripts_path, PLUGIN_ROOT):
+    if p not in sys.path:
+        sys.path.insert(0, p)
 
 
 @pytest.fixture

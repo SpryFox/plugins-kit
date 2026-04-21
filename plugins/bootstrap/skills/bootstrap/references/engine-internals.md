@@ -152,6 +152,8 @@ This is the fundamental logging contract. A check that performs work (creates a 
 
 Autodetect functions support this by returning a dict with `{"changed": bool, "actions": [...], "ok": [...]}` instead of a plain bool. The engine routes the messages to the appropriate entry list.
 
+**Project config phase.** When a plugin declares a `project_config` section, the engine runs it before the `config` section: it discovers or reads the per-project file (`<cwd>/.claude/<name>.yaml`), runs the optional autodetect, applies declared defaults for any still-missing field (dict-form `required_fields` only — defaults never override populated values), and emits fix-all entries (`type: project_config`) for any remaining missing fields that lack a default. Final values are synced to the data-dir `config.yaml`. If autodetect returns `None` and no file exists, the engine sets `project_detected = False`, which gates downstream project-scoped primitives (e.g. `ini_settings`) and the `config` section's `required_fields` validation so non-project sessions produce no fix-all noise. Applied defaults always produce an action entry (`project config: applied defaults [...]`) — no silent file writes.
+
 **Remediation, not auto-fix.** When something is missing, the hook emits structured JSON with the exact install command into Claude's `additionalContext`. The user can fix it themselves or tell Claude to do it.
 
 ## Plugin Cache Lifecycle
