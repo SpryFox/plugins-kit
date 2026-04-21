@@ -126,7 +126,24 @@ def main():
             "Migrate to ~/.claude/bootstrap.json (still processed this session)."
         )
 
-    layered_manifest = _load_layered_manifests(args.project_dir, data_dir)
+    layered_manifest, layered_parse_errors = _load_layered_manifests(args.project_dir, data_dir)
+    for pe in layered_parse_errors:
+        bootstrap_action_entries.append(
+            f"layered manifest {pe['path']}: PARSE FAILED - {pe['error']}"
+        )
+        all_failures.append({
+            "type": "manifest_parse",
+            "path": pe["path"],
+            "message": pe["error"],
+            "agent_msg": (
+                f"The bootstrap manifest at {pe['path']} failed to parse "
+                f"({pe['error']}). Open the file, fix the JSON syntax, and "
+                "ask the user to type 'fix-all' to re-run bootstrap. Common "
+                "causes: missing/extra commas, unquoted keys, trailing commas."
+            ),
+            "plugin": "bootstrap",
+            "persist_across_sessions": True,
+        })
     if layered_manifest:
         action_entries = []
         ok_entries = []
@@ -458,7 +475,9 @@ def _load_layered_manifests(project_dir, data_dir=None):
         1. ~/.claude/bootstrap.json
         0. <data_dir>/user-bootstrap.json  (legacy, lowest priority)
 
-    Returns merged manifest dict, or empty dict if no files exist.
+    Returns (merged_manifest, parse_errors) where parse_errors is a list of
+    {"path": <path>, "error": <message>} dicts for any layer that failed to load.
+    Layers that fail to parse are skipped (the merge continues with the rest).
     """
     from .manifest_merge import merge_manifests
 
@@ -483,16 +502,22 @@ def _load_layered_manifests(project_dir, data_dir=None):
         candidates.append(os.path.join(project_claude, "bootstrap.local.json"))
 
     merged = {}
+    parse_errors = []
     for path in candidates:
-        if os.path.isfile(path):
-            try:
-                with open(path, "r") as f:
-                    layer = json.load(f)
-                merged = merge_manifests(merged, layer)
-            except (json.JSONDecodeError, OSError):
-                pass  # Skip malformed files
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, "r") as f:
+                layer = json.load(f)
+        except json.JSONDecodeError as e:
+            parse_errors.append({"path": path, "error": f"JSON parse error: {e}"})
+            continue
+        except OSError as e:
+            parse_errors.append({"path": path, "error": f"read error: {e}"})
+            continue
+        merged = merge_manifests(merged, layer)
 
-    return merged
+    return merged, parse_errors
 
 
 def _activate_bootstrap_venv(data_dir):
@@ -1772,6 +1797,8 @@ def emit_failure_response(failures, current_os, log_content, label="bootstrap", 
             agent_lines.append(f"{i}. Sync {f['src']} -> {f['dst']}{plugin_tag}: {f['message']}")
         elif f["type"] == "python_stub":
             agent_lines.append(f"{i}. python stub fix needed{plugin_tag}: {f.get('agent_msg', f.get('message', 'see log'))}")
+        elif f["type"] == "manifest_parse":
+            agent_lines.append(f"{i}. {f.get('agent_msg', f.get('message', 'manifest parse error'))}{plugin_tag}")
 
     agent_lines.append("\nAfter fixing, type 'fix-all' or 'fixed' to re-run bootstrap, or restart Claude Code.")
     agent_msg = "\n".join(agent_lines)
