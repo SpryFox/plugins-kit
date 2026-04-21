@@ -1,4 +1,4 @@
-# Case Study: local-review-kit
+# Case Study: p4-kit
 
 P4/Swarm AI code review plugin with a mid-complexity bootstrap — system tools, venv, git dependency (sparse checkout), and config verification.
 
@@ -17,7 +17,7 @@ P4/Swarm AI code review plugin with a mid-complexity bootstrap — system tools,
 
 | Condition | Check Method | Remediation |
 |-----------|-------------|-------------|
-| Config incomplete (API keys, P4PORT, P4USER, DEFAULT_AGENT) | `setup.py --check` fails | User invokes local-review-setup skill to configure interactively |
+| Config incomplete (API keys, P4PORT, P4USER, DEFAULT_AGENT) | `setup.py --check` fails | User invokes local-code-review-setup skill to configure interactively |
 
 ## Manifest (`bootstrap.json`)
 
@@ -58,7 +58,7 @@ The script handles only the custom config check — everything else is covered b
 
 ```python
 def bootstrap(ctx):
-    """local-review-kit bootstrap script — custom logic only.
+    """p4-kit bootstrap script — custom logic only.
 
     Standard operations (tools, venv, git dep) are handled
     by the manifest. This script only checks plugin-specific config.
@@ -67,8 +67,8 @@ def bootstrap(ctx):
     result = run_config_check(ctx.plugin_path / "scripts" / "setup.py")
     if not result.success:
         ctx.add_fixall(
-            agent_msg="Run the local-review-setup skill to configure this plugin interactively.",
-            user_msg="local-review-kit needs configuration. Type fix-all to set up."
+            agent_msg="Run the local-code-review-setup skill to configure this plugin interactively.",
+            user_msg="p4-kit needs configuration. Type fix-all to set up."
         )
 ```
 
@@ -89,5 +89,5 @@ def bootstrap(ctx):
 - Four of five operations need zero code — just manifest entries
 - The config check is the only custom logic, same hybrid pattern as test-plugin
 - Platform-specific tool installs (`p4` uses `brew` on macOS, manual on Windows/Ubuntu) exercise the engine's per-OS install support already validated by test-plugin
-- The `venv.check_imports` is empty because local-review-kit's venv packages don't need import validation — presence of the venv itself is sufficient
+- The `venv.check_imports` is empty because p4-kit's venv packages don't need import validation — presence of the venv itself is sufficient
 - Current hand-rolled bootstrap is ~600 lines of bash across 5 sessionstart scripts, a stop hook, and a shared lib — all replaced by the manifest + a short script

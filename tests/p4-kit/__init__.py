@@ -1,1 +1,1 @@
-"""local-review-kit test package."""
+"""p4-kit test package."""

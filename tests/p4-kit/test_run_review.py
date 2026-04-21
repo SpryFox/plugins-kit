@@ -1,4 +1,4 @@
-"""Tests for local-review-kit scripts/run-review.py."""
+"""Tests for p4-kit scripts/run-review.py."""
 
 import importlib.util
 import json
@@ -15,7 +15,7 @@ _spec = importlib.util.spec_from_file_location(
     os.path.join(
         os.path.dirname(__file__),
         os.pardir, os.pardir,
-        "plugins", "local-review-kit", "scripts", "run-review.py",
+        "plugins", "p4-kit", "scripts", "run-review.py",
     ),
 )
 rr = importlib.util.module_from_spec(_spec)
@@ -71,7 +71,7 @@ class TestResolveDataDir:
     def test_default_path(self, monkeypatch):
         monkeypatch.delenv("PLUGIN_DATA_DIR", raising=False)
         result = _resolve_data_dir()
-        expected = Path("~/.claude/plugins/data/local-review-kit").expanduser().resolve()
+        expected = Path("~/.claude/plugins/data/p4-kit").expanduser().resolve()
         assert result == expected
 
     def test_expands_tilde(self, monkeypatch):

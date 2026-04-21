@@ -25,11 +25,13 @@ plugins-kit/                          # Marketplace root
       .claude-plugin/plugin.json      # Plugin manifest
       bootstrap.json                  # Test plugin's bootstrap manifest
       scripts/                        # Config setup
-    local-review-kit/                 # P4/Swarm AI code review plugin
+    p4-kit/                           # P4/Swarm AI code review plugin
       .claude-plugin/plugin.json      # Plugin manifest
-      hooks/sessionstart/             # 5-step bootstrap scripts
-      hooks/stop/                     # Bootstrap re-check
+      bootstrap.json                  # Bootstrap manifest (tools, venv, git_deps, config)
+      custom_bootstrap.py             # Autodetect hook for config
       scripts/                        # Review execution + config setup
+      skills/local-code-review/       # Main review skill
+      skills/local-code-review-setup/ # Interactive config setup skill
       defaults/                       # Default config template
     unreal-kit/                       # The UE plugin
       .claude-plugin/plugin.json      # Plugin manifest
@@ -133,12 +135,12 @@ claude --plugin-dir ~/Dev/plugins-kit/plugins/my-plugin
 
 `--plugin-dir` loads the plugin directly from disk (no cache copy) and makes no persistent changes — it doesn't modify `installed_plugins.json`, the cache, or `known_marketplaces.json`. Ending the session reverts to the marketplace-installed version. Use `/reload-plugins` to pick up file changes within a session (hooks require a full restart).
 
-**Publishing changes** — the plugin cache syncs from the remote repository's default branch, not the local working copy. Develop on the `dev` branch; merge to `master` only when releasing a version bump. This prevents silent divergence (fresh installs between releases getting HEAD code cached under the old version string). To publish:
+**Publishing changes** — the plugin cache syncs from the remote repository's default branch, not the local working copy. Develop on the `dev` branch; merge to `master` only when releasing a version bump. This prevents silent divergence (fresh installs between releases getting HEAD code cached under the old version string). **Merging to master and pushing are publishing actions — always ask the user for confirmation before doing them.** To publish:
 
 1. Bump the plugin version in both files — they must match:
    - `plugins/<name>/.claude-plugin/plugin.json` (the plugin's own manifest)
    - `.claude-plugin/marketplace.json` (the marketplace-level listing)
-2. Merge `dev` to `master` and push
+2. Ask the user to confirm, then merge `dev` to `master` and push
 3. Users with `autoUpdate: true` receive the update on next session start
 4. Users without auto-update run `/plugin marketplace update` then `/plugin update`
 

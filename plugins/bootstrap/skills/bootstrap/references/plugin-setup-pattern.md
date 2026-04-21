@@ -51,7 +51,7 @@ See `plugins/test-plugin/bootstrap.json` for a minimal example with two fields a
 
 ## Legacy: `scripts/setup.py` CLI Pattern
 
-Some plugins (e.g. `local-review-kit`) still use a `scripts/setup.py` CLI for interactive setup driven by skills. This pattern predates the engine's config support and is being phased out for plugins that can use `bootstrap.json` config sections.
+Some plugins (e.g. `p4-kit`) still use a `scripts/setup.py` CLI for interactive setup driven by skills. This pattern predates the engine's config support and is being phased out for plugins that can use `bootstrap.json` config sections.
 
 The CLI provides four modes:
 
