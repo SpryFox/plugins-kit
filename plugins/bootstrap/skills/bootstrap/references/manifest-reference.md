@@ -63,6 +63,15 @@ A declarative configuration file covering automatable operations. The engine rea
     "extras": ["dev"],
     "check_imports": ["pytest"]
   },
+  "project_config": {
+    "file": ".claude/p4-kit.yaml",
+    "required_fields": {
+      "P4PORT": {"user_msg": "Perforce server address", "agent_msg": "Ask the user for P4PORT and write it to {config_path}"},
+      "P4USER": {"user_msg": "Perforce username", "agent_msg": "Ask the user for P4USER and write it to {config_path}"},
+      "DEFAULT_AGENT": {"user_msg": "Default review agent", "agent_msg": "Ask the user for DEFAULT_AGENT", "default": "claude-opus"}
+    },
+    "autodetect": "custom_bootstrap.py autodetect"
+  },
   "config": {
     "file": "config.yaml",
     "defaults_source": "defaults/config.yaml",
@@ -115,6 +124,51 @@ This field lives only under `self_setup` (in `defaults/config.json` for the boot
 | `script_output_dir` | `~/Desktop` | Where to write `fix_python_path.bat`. Created if missing. The script is overwritten on every run so template updates land. |
 
 The fix script self-elevates via UAC (`powershell Start-Process -Verb RunAs`), prepends `good_python_dir` to the **System** PATH (HKLM Environment), and is idempotent — re-running it after the fix is in place is a no-op. Modifying System PATH requires administrator privileges, which is why the engine cannot do this itself.
+
+## `project_config` Section
+
+A per-project config file (under `<cwd>/.claude/<name>.yaml`) discovered or populated by an autodetect script. Runs before the `config` section so discovered values can be synced into the data-dir config. If autodetect returns `None` and the file is absent, downstream project-scoped phases (e.g. `ini_settings`) are skipped for that plugin.
+
+```json
+{
+  "project_config": {
+    "file": ".claude/p4-kit.yaml",
+    "required_fields": {
+      "P4PORT": {"user_msg": "Perforce server", "agent_msg": "Ask for P4PORT, write to {config_path}"},
+      "DEFAULT_AGENT": {"user_msg": "Review agent", "agent_msg": "Ask for DEFAULT_AGENT", "default": "claude-opus"}
+    },
+    "autodetect": "custom_bootstrap.py autodetect"
+  }
+}
+```
+
+### `required_fields` — two forms
+
+Both forms are supported; the dict form is preferred for new plugins.
+
+**Dict form** (preferred) — mirrors `config.required_fields`:
+
+| Key | Required? | Description |
+|-----|-----------|-------------|
+| `user_msg` | Yes (for fix-all) | User-facing description shown when the field is missing |
+| `agent_msg` | Yes (for fix-all) | Instructions to the agent. `{config_path}` is expanded to the absolute per-project file path |
+| `default` | No | If set, used when the field is absent from both the file and autodetect output. Never overrides an already-populated value |
+
+**String-list form** (legacy) — a flat list of field names. Fields populated by autodetect are synced to the data-dir config; missing fields are left to the separate `config` section for fix-all handling.
+
+### Defaulting behavior (dict form)
+
+1. Autodetect runs (if declared) and contributes any fields it discovers.
+2. For any declared field still missing, if a `default` is set, the engine writes it to the project file and logs a `project config: applied defaults [...]` action entry (never silent — see "Every check must log its outcome" in engine-internals).
+3. Any field that is still missing **and** has no default becomes a fix-all entry using its `user_msg`/`agent_msg`. The `type` on the failure record is `project_config`.
+4. Final values are synced to the plugin's data-dir `config.yaml` so host-side tools can read a single location.
+
+### When to use `project_config` vs `config`
+
+- **`project_config`** holds per-project values that travel with the repo (committed to `.claude/<name>.yaml`). Good for: project-scoped identifiers the team shares (the `.uproject` path, the Perforce server), and any per-project default the user may want to override (e.g. `DEFAULT_AGENT`).
+- **`config`** holds machine-global values that don't belong in version control (API keys, local install paths). Lives in `~/.claude/plugins/data/<plugin>/config.yaml`.
+
+Values set in `project_config` are automatically mirrored into the data-dir config after the project_config phase, so downstream code that reads the data-dir config (e.g. for simple getenv-style lookups) works unchanged.
 
 ## Script Section
 
