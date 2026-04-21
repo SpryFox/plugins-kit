@@ -1,102 +1,146 @@
 ---
 _schema_version: 1
 name: local-code-review
-description: Run AI code reviews of Perforce changelists in conversation — list CLs, pick agent, review, display results
+description: Multi-agent code review of a Perforce changelist using Claude subagents (CLAUDE.md compliance + bug audits + per-issue validation)
 ---
 
 # Local Code Review
 
-## Purpose
+Run a multi-agent code review of a Perforce changelist directly in conversation. Three Claude subagents review the diff in parallel; each flagged issue is then validated by an independent subagent to suppress false positives. Results are rendered as markdown — no persistence to disk.
 
-Run an AI code review of a Perforce changelist directly in conversation. Results are displayed inline — no persistence to disk.
+## Agent assumptions (apply to all subagents you launch)
 
-The plugin's bootstrap handles configuration automatically: P4PORT/P4USER are auto-detected from `p4 set` or environment variables, and the default agent (`claude-opus`) uses `claude -p` with no API key required. If anything is missing, bootstrap emits a fix-all message on session start.
+- All tools are functional. Do not test tools or make exploratory calls.
+- Only call a tool if it is required to complete the task.
 
-## Review Flow
+## Pipeline
 
-### 1. List pending changelists
+Follow these steps precisely.
 
-Show the user's pending CLs so they can pick one:
+### 1. Resolve the changelist
 
-```bash
-p4 -ztag changes -s pending -u <P4USER> -m 20
-```
-
-Read `P4USER` from `~/.claude/plugins/data/plugins-kit/p4-kit/config.yaml`.
-
-### 2. Pick CL and agent
-
-Ask the user which CL to review and which agent to use. List available agents:
+If the user invoked the skill with a CL number argument, use it. Otherwise, list the user's pending CLs and ask them to pick one:
 
 ```bash
-ls ~/.claude/plugins/data/plugins-kit/p4-kit/github/code-review-research/agents/*.yaml | grep -v _base | grep -v agents.yaml | sed 's/.*\///' | sed 's/\.yaml$//'
+p4 -ztag changes -s pending -u "$(p4 set -q P4USER | cut -d= -f2)" -m 20
 ```
 
-Or read `DEFAULT_AGENT` from config as the default choice. `claude-opus` and `claude-haiku` use `claude -p` (no key). Other agents (`codex-*`, `gemini-*`, `deepseek-*`, `grok-*`, `kimi-*`) require `OPENAI_API_KEY` or `OPENROUTER_API_KEY` — if the user picks one of these and the key isn't set in config, run-review.py will fail with a clear error.
+Render the list as a small table (CL, description). Wait for the user's choice.
 
-### 3. Run the review
+### 2. Gather context (deterministic, scripted)
 
-Invoke the review script using the plugin venv Python:
+Run the bundling script — it fetches the diff (with shelved fallback), parses the changed files, resolves them to local workspace paths, and walks each file's parent directories collecting any ancestor `CLAUDE.md` files:
 
 ```bash
-~/.claude/plugins/data/plugins-kit/p4-kit/.venv/bin/python ${CLAUDE_PLUGIN_ROOT}/scripts/run-review.py <CL> --agent <AGENT> --json
+uv run --no-project python "${CLAUDE_PLUGIN_ROOT}/scripts/prepare_review.py" <CL>
 ```
 
-Options:
-- `--diff-file <path>` — use a local diff file instead of `p4 describe` (useful for testing)
-- `--dry-run` — print assembled prompts without calling the LLM (no cost)
-- `--json` — output as JSON (default is YAML)
+The script outputs JSON with this shape:
 
-### 4. Format output for conversation
-
-Parse the JSON/YAML stdout and present as markdown:
-
-**Summary section:**
-- Agent name and model
-- CL number and description
-- Overall verdict / severity summary
-- Token usage and estimated cost
-
-**Findings grouped by file:**
-For each finding, show:
-- File path and line number
-- Severity badge: `[critical]` `[major]` `[minor]` `[suggestion]`
-- The finding text
-- Code snippet if available
-
-Example format:
-
-```
-## Review: CL 131250 — claude-haiku
-
-**Verdict**: Needs revision (2 major, 1 minor)
-**Cost**: ~$0.003 (1.2k input / 0.4k output tokens)
-
-### src/inventory/overflow.cpp
-
-**[major]** Line 42: Buffer overflow risk — `items` array accessed without bounds check.
-
-**[minor]** Line 78: Unused variable `temp_count`.
-
-### src/inventory/quest_items.h
-
-**[suggestion]** Line 15: Consider using `constexpr` for `MAX_QUEST_ITEMS`.
+```json
+{
+  "cl": "143376",
+  "description": "Fix inventory overflow",
+  "diff": "==== //depot/.../foo.cpp#3 ...\n@@ -10,5 +10,6 @@ ...",
+  "changed_files": [
+    {"depot": "//depot/.../foo.cpp", "local": "C:\\ws\\foo.cpp",
+     "claude_mds": ["C:\\ws\\src\\CLAUDE.md", "C:\\ws\\CLAUDE.md"]}
+  ],
+  "unique_claude_mds": ["C:\\ws\\src\\CLAUDE.md", "C:\\ws\\CLAUDE.md"]
+}
 ```
 
-## Dry Run
+If the script exits non-zero, surface the stderr message to the user and stop.
 
-To preview what the LLM will receive without spending tokens:
+### 3. Read CLAUDE.md files
 
-```bash
-~/.claude/plugins/data/plugins-kit/p4-kit/.venv/bin/python ${CLAUDE_PLUGIN_ROOT}/scripts/run-review.py <CL> --agent <AGENT> --dry-run
+Use the `Read` tool on each path in `unique_claude_mds`. You will pass their full contents to the CLAUDE.md compliance reviewer in step 4. Do this once — subagents do not need to re-read.
+
+### 4. Launch reviewer subagents (3 in parallel)
+
+Send a single message with **three** `Agent` tool calls, all `subagent_type: general-purpose`, with the model overrides below. Each agent's prompt must be self-contained — include the diff, the CL description, and the relevant context. Each agent must return a JSON array of issues with this shape:
+
+```json
+[{"file": "<depot or local path>", "lines": "<line range, e.g. 42 or 42-48>",
+  "reason": "bug" | "claude_md", "description": "<one-sentence explanation>",
+  "citation": "<exact rule quote, only for claude_md issues>"}]
 ```
 
-Prompts are printed to stderr. Useful for verifying agent config and diff parsing.
+#### Reviewer A — CLAUDE.md compliance (`model: sonnet`)
 
-## Testing with a diff file
+Pass the full diff plus the per-file CLAUDE.md mapping with full text of each CLAUDE.md (you have these from step 3). Tell the agent: only consider CLAUDE.md files that share a path with the file being reviewed (use the per-file mapping, do not cross-apply).
 
-To review without a live Perforce connection:
+#### Reviewer B — Diff-only bug audit (`model: opus`)
 
-```bash
-~/.claude/plugins/data/plugins-kit/p4-kit/.venv/bin/python ${CLAUDE_PLUGIN_ROOT}/scripts/run-review.py 99999 --agent claude-haiku --diff-file /path/to/test.diff --json
+Pass only the diff and CL description. The agent must NOT use `Read` or any other tool to look beyond the diff. Scope: obvious bugs visible in the diff alone — won't-compile, syntax/type errors, missing imports, unresolved references, definitely-wrong logic regardless of inputs.
+
+#### Reviewer C — Introduced-code audit (`model: opus`)
+
+Pass the diff and CL description, plus the list of local file paths. The agent MAY use `Read` to look at surrounding context in the changed files when needed. Scope: bugs/security/logic problems in the introduced code that need broader context to identify (e.g. concurrency issues, lifetime bugs, security holes).
+
+#### False-positive guardrails (include in every reviewer prompt)
+
+Only flag issues where:
+- The code will fail to compile or parse (syntax errors, type errors, missing imports, unresolved references).
+- The code will definitely produce wrong results regardless of inputs (clear logic errors).
+- A CLAUDE.md rule is clearly and unambiguously violated, and you can quote the exact rule.
+
+Do NOT flag:
+- Code style or quality concerns.
+- Potential issues that depend on specific inputs or state.
+- Subjective suggestions or improvements.
+- Pre-existing issues (only review the diff).
+- Anything a linter would catch (do not run a linter).
+- Issues that appear in CLAUDE.md but are explicitly silenced in the code (e.g. lint-ignore comments).
+
+If you are not certain an issue is real, do not flag it. False positives erode trust.
+
+### 5. Validate every flagged issue (parallel subagents)
+
+Collect the issues returned by reviewers A, B, and C into one combined list. For each issue, launch one validator subagent in parallel.
+
+- **Bug issues** (`reason: "bug"`) → `model: opus`
+- **CLAUDE.md issues** (`reason: "claude_md"`) → `model: sonnet`
+
+Each validator's prompt:
+
+> A reviewer flagged the following issue on Perforce CL `<CL>` (`<description>`). Validate whether this is a real issue with high confidence. For bugs: examine the cited diff lines (and surrounding code via `Read` if needed). For CLAUDE.md issues: confirm the cited rule is in scope for the file and is actually violated by the change. Reply with exactly one line: `CONFIRMED: <one-sentence reason>` or `REJECTED: <one-sentence reason>`.
+>
+> Issue: `<JSON of the issue>`
+> Diff: `<full diff>`
+> [If CLAUDE.md issue: include relevant CLAUDE.md contents]
+
+The validator does not see who flagged the issue — independence is the value.
+
+### 6. Filter
+
+Keep only issues whose validator returned `CONFIRMED`. Drop the rest silently (do not report rejected issues to the user — that erodes signal).
+
+### 7. Render the review
+
+Output one markdown summary in chat. Group issues by file. Use this format:
+
 ```
+## Review: CL <CL> — <description>
+
+Found N issues (M filtered as false positives).
+
+### path/to/file.cpp
+- **[bug]** L42: Buffer overflow risk — `items[i]` accessed without bounds check.
+- **[claude_md]** L78: Violates `src/CLAUDE.md` rule "Use absl::Status not bool returns".
+```
+
+If 0 issues survive validation:
+
+```
+## Review: CL <CL> — <description>
+
+No issues found. Reviewed for bugs and CLAUDE.md compliance.
+```
+
+## Notes
+
+- **Render only.** This skill outputs results in chat — there is no Swarm comment, PR comment, or disk write step.
+- **No retries.** If `prepare_review.py` fails, report the error and stop.
+- **Parallelism matters.** Reviewer agents (step 4) run in one message with three concurrent `Agent` calls. Validators (step 5) run in one message with N concurrent `Agent` calls. Sequential calls waste time.
+- **Quoting.** Always quote the exact CLAUDE.md rule text when flagging a `claude_md` issue. If you cannot quote it verbatim, do not flag it.

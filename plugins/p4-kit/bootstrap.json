@@ -25,9 +25,6 @@
       }
     }
   ],
-  "venv": {
-    "check_imports": []
-  },
   "project_config": {
     "file": ".claude/p4-kit.yaml",
     "required_fields": {
@@ -38,34 +35,8 @@
       "P4USER": {
         "user_msg": "Perforce username",
         "agent_msg": "Ask the user for their Perforce username. Write it to {config_path} as P4USER."
-      },
-      "DEFAULT_AGENT": {
-        "user_msg": "Default review agent",
-        "agent_msg": "Ask the user which agent to use for reviews. Write to {config_path} as DEFAULT_AGENT.",
-        "default": "claude-opus"
       }
     },
     "autodetect": "custom_bootstrap.py autodetect"
-  },
-  "git_deps": [
-    {
-      "url": "https://github.com/kitaekatt/code-review-research",
-      "branch": "main",
-      "sparse_paths": ["agents/"]
-    }
-  ],
-  "config": {
-    "file": "config.yaml",
-    "defaults_source": "defaults/config.yaml",
-    "required_fields": {
-      "P4PORT": {
-        "user_msg": "Perforce server address (e.g. ssl:perforce:1666)",
-        "agent_msg": "Ask the user for their Perforce server address. Write it to {config_path} AND to <project_root>/.claude/p4-kit.yaml (the per-project config)."
-      },
-      "P4USER": {
-        "user_msg": "Perforce username",
-        "agent_msg": "Ask the user for their Perforce username. Write it to {config_path} AND to <project_root>/.claude/p4-kit.yaml (the per-project config)."
-      }
-    }
   }
 }
