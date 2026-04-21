@@ -49,8 +49,8 @@
     },
     {
       "name": "p4-kit",
-      "description": "Interactive local code review of Perforce changelists in Claude Code",
-      "version": "0.6.1",
+      "description": "Multi-agent local code review of Perforce changelists using Claude subagents",
+      "version": "0.7.0",
       "author": {
         "name": "Christina"
       },

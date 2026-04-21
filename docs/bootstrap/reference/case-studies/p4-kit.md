@@ -1,6 +1,6 @@
 # Case Study: p4-kit
 
-P4/Swarm AI code review plugin with a mid-complexity bootstrap — system tools, venv, git dependency (sparse checkout), and config verification.
+P4 multi-agent code review plugin. The current bootstrap is **manifest-only with autodetect** — no venv, no git deps, no script-driven remediation. All review logic happens at runtime via Claude subagents launched by the skill prose.
 
 ## Current Operations
 
@@ -9,85 +9,59 @@ P4/Swarm AI code review plugin with a mid-complexity bootstrap — system tools,
 | Category | Condition | Check Method | Remediation |
 |----------|-----------|-------------|-------------|
 | Tool | `p4` not installed | `command -v p4` | Platform-specific (`brew install --cask perforce` on macOS, manual download on Windows/Ubuntu) |
-| Tool | `uv` not installed | `command -v uv` | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
-| Library/Data | Python venv missing or broken | Check dir -> binary -> packages importable | `uv sync` from `pyproject.toml` |
-| Library/Data | Git dep not cloned or out of date | Check `code-review-research` exists | `git clone` (sparse checkout of `agents/` from `kitaekatt/code-review-research`) |
+| Tool | `uv` not installed | `command -v uv` | Platform install command |
+| Tool | `claude` not installed | `command -v claude` | Manual (Claude Code CLI) |
+| Project config | `P4PORT`/`P4USER` missing in `<project>/.claude/p4-kit.yaml` | `project_config` primitive | Run `custom_bootstrap.py autodetect` (reads `p4 set` and env vars). If autodetect finds the values, the engine writes them silently; otherwise the field becomes a fix-all item that asks the user. |
 
 ### Manual
 
-| Condition | Check Method | Remediation |
-|-----------|-------------|-------------|
-| Config incomplete (API keys, P4PORT, P4USER, DEFAULT_AGENT) | `setup.py --check` fails | User invokes local-code-review-setup skill to configure interactively |
+None. Configuration is fully autodetected from the user's existing `p4 set` output or `$P4PORT`/`$P4USER` environment variables. Only if both sources are empty does the engine prompt the user via fix-all.
 
 ## Manifest (`bootstrap.json`)
 
-Standard operations are declared in the manifest — the engine handles these without any script code:
+The entire bootstrap is declarative — no script-driven `bootstrap()` function:
 
 ```json
 {
   "tools": [
-    {
-      "name": "p4",
-      "install": {
-        "macos": "brew install --cask perforce",
-        "windows": "manual",
-        "ubuntu": "manual"
-      }
-    },
-    {
-      "name": "uv",
-      "install": "curl -LsSf https://astral.sh/uv/install.sh | sh"
-    }
+    { "name": "p4", "install": { "macos": "brew install --cask perforce", "windows": "manual", "ubuntu": "manual" } },
+    { "name": "uv", "install": { "macos": "...", "windows": "...", "ubuntu": "..." } },
+    { "name": "claude", "install": { "macos": "manual", "windows": "manual", "ubuntu": "manual" } }
   ],
-  "venv": {
-    "check_imports": []
-  },
-  "git_deps": [
-    {
-      "url": "https://github.com/kitaekatt/code-review-research",
-      "branch": "main",
-      "sparse_paths": ["agents/"]
-    }
-  ]
+  "project_config": {
+    "file": ".claude/p4-kit.yaml",
+    "required_fields": {
+      "P4PORT": { "user_msg": "...", "agent_msg": "..." },
+      "P4USER": { "user_msg": "...", "agent_msg": "..." }
+    },
+    "autodetect": "custom_bootstrap.py autodetect"
+  }
 }
 ```
 
-## Bootstrap Script (Pseudocode)
+## Autodetect (`custom_bootstrap.py`)
 
-The script handles only the custom config check — everything else is covered by the manifest:
+The only Python the bootstrap engine invokes:
 
 ```python
-def bootstrap(ctx):
-    """p4-kit bootstrap script — custom logic only.
-
-    Standard operations (tools, venv, git dep) are handled
-    by the manifest. This script only checks plugin-specific config.
-    """
-
-    result = run_config_check(ctx.plugin_path / "scripts" / "setup.py")
-    if not result.success:
-        ctx.add_fixall(
-            agent_msg="Run the local-code-review-setup skill to configure this plugin interactively.",
-            user_msg="p4-kit needs configuration. Type fix-all to set up."
-        )
+def autodetect():
+    """Discover P4PORT/P4USER from `p4 set` (handling source annotations) or env vars."""
+    # Returns {"P4PORT": ..., "P4USER": ...} or None
 ```
+
+Used by the `project_config` primitive to fill in missing fields without asking the user.
 
 ## Library Usage
 
 | Source | Operation | Primitive |
 |--------|-----------|-----------|
-| Manifest | Verify `p4` is installed | `check_tool()` |
-| Manifest | Verify `uv` is installed | `check_tool()` |
-| Manifest | Create/validate venv | `ensure_venv()` |
-| Manifest | Sparse clone of `kitaekatt/code-review-research` | `ensure_git_dep()` |
-| Script | Check plugin config completion | Custom (runs `setup.py --check`) |
+| Manifest | Verify `p4`, `uv`, `claude` installed | `check_tool()` |
+| Manifest | Verify per-project config has `P4PORT`/`P4USER` | `project_config` |
+| Script | Discover `P4PORT`/`P4USER` for autodetect | `custom_bootstrap.py autodetect()` |
 
 ## Observations
 
-- Mid-complexity bootstrap — two tools (one with platform-specific install), one venv, one git dep, one config check
-- Good second target after test-plugin: exercises the same four categories but with real-world dependencies
-- Four of five operations need zero code — just manifest entries
-- The config check is the only custom logic, same hybrid pattern as test-plugin
-- Platform-specific tool installs (`p4` uses `brew` on macOS, manual on Windows/Ubuntu) exercise the engine's per-OS install support already validated by test-plugin
-- The `venv.check_imports` is empty because p4-kit's venv packages don't need import validation — presence of the venv itself is sufficient
-- Current hand-rolled bootstrap is ~600 lines of bash across 5 sessionstart scripts, a stop hook, and a shared lib — all replaced by the manifest + a short script
+- **Zero data-dir state** — no venv, no cloned git deps, no per-machine config under `~/.claude/plugins/data/plugins-kit/p4-kit/`. The plugin's only persistent state is the per-project `<project>/.claude/p4-kit.yaml`.
+- **Runtime is in-conversation** — the skill (`local-code-review`) launches Claude subagents via the `Agent` tool with model overrides (`sonnet`, `opus`). No external Python orchestrator, no external LLM API keys.
+- **The only Python in the plugin** is `custom_bootstrap.py` (autodetect, called by the engine) and `scripts/prepare_review.py` (called by the skill at runtime, stdlib-only, runs via `uv run --no-project python`).
+- Earlier iterations had a venv, a `code-review-research` git dep, and a `run-review.py` orchestrator that called external LLMs (codex/gemini/openrouter). All removed in 0.7.0 — the multi-agent design subsumes them.

@@ -1,9 +1,9 @@
 {
   "name": "p4-kit",
-  "version": "0.6.1",
-  "description": "Interactive local code review of Perforce changelists in Claude Code",
+  "version": "0.7.0",
+  "description": "Multi-agent local code review of Perforce changelists using Claude subagents",
   "author": {
     "name": "Christina"
   },
-  "keywords": ["code-review", "perforce", "p4", "swarm", "ai-review"]
+  "keywords": ["code-review", "perforce", "p4", "ai-review"]
 }
