@@ -57,7 +57,8 @@ A declarative configuration file covering automatable operations. The engine rea
     {"name": "plugins-kit", "source": "https://github.com/user/plugins-kit.git", "alwaysUpdate": true}
   ],
   "plugins": [
-    {"ref": "plugins-kit:unreal-kit", "enabled": true}
+    {"ref": "plugins-kit:unreal-kit", "enabled": true},
+    {"ref": "plugins-kit:bootstrap", "min_version": "0.9.1"}
   ],
   "project_venv": {
     "extras": ["dev"],
@@ -169,6 +170,36 @@ Both forms are supported; the dict form is preferred for new plugins.
 - **`config`** holds machine-global values that don't belong in version control (API keys, local install paths). Lives in `~/.claude/plugins/data/<plugin>/config.yaml`.
 
 Values set in `project_config` are automatically mirrored into the data-dir config after the project_config phase, so downstream code that reads the data-dir config (e.g. for simple getenv-style lookups) works unchanged.
+
+## `plugins` Entry Fields
+
+Each entry in the `plugins` array declares a plugin the engine should ensure is installed and enabled.
+
+| Field | Required? | Description |
+|-------|-----------|-------------|
+| `ref` | Yes | Plugin reference in `marketplace:plugin` format |
+| `enabled` | No (default `true`) | If `false`, the engine disables the plugin |
+| `scope` | No (default `"user"`) | Installation scope (`user` or `project`) |
+| `min_version` | No | Minimum required installed version — see below |
+
+### `min_version`
+
+Declares that the installed plugin must be at least this version. When the constraint is not satisfied, the engine runs `claude plugin update <ref>` and rechecks. If the update succeeds and the installed version now satisfies the constraint, processing continues. If the constraint remains unsatisfied (e.g. the marketplace does not yet have a version new enough), the engine records a failure that surfaces as a fix-all item.
+
+**Output examples**:
+```
+plugin plugins-kit:bootstrap: installed 0.8.3 < required 0.9.1, running `claude plugin update bootstrap@plugins-kit`
+plugin plugins-kit:bootstrap: updated to 0.9.1 (satisfies >= 0.9.1)
+```
+```
+plugin plugins-kit:bootstrap: installed 0.8.3 < required 0.9.1, update failed - <reason>
+```
+
+**Comparison semantics**: Numeric dotted versions only (e.g. `0.9.1`, `1.2.3`). Non-numeric parts coerce to 0, so pre-release suffixes like `0.9.1-rc1` are not handled reliably. If you need full specifier grammar (`~=`, `<`), file an issue — this starts as minimum-only.
+
+**Chicken-and-egg for bootstrap itself**: A plugin may declare `plugins-kit:bootstrap` with a `min_version`. This only takes effect once an engine new enough to read the `min_version` field is already running. Older bootstrap engines ignore the field (forward-compatible). If bootstrap itself is too old to recognize the field, the constraint is silently not enforced — consumers should treat the field as advisory in that scenario.
+
+**Layering**: `min_version` participates in the standard merge-by-identity rule (identity key `ref`). If the same plugin ref appears in multiple layers with different `min_version` values, the highest-priority layer wins (it is a scalar field, not a list).
 
 ## Script Section
 

@@ -10,6 +10,7 @@ import pytest
 from bootstrap_lib.marketplace_lifecycle import (
     LifecycleResult,
     ScopeCheckResult,
+    VersionCheckResult,
     _find_claude_cli,
     _run_claude,
     _version_greater,
@@ -17,6 +18,7 @@ from bootstrap_lib.marketplace_lifecycle import (
     check_marketplace_exists,
     check_plugin_enabled_at_scope,
     check_plugin_installed,
+    check_plugin_min_version,
     check_plugin_scope,
     ensure_registry_scope,
     update_marketplace,
@@ -704,3 +706,265 @@ class TestEnsureRegistryScope:
         monkeypatch.setenv("USERPROFILE", str(tmp_path))
         result = ensure_registry_scope("plugins-kit:bootstrap", "user")
         assert result is False
+
+
+class TestCheckPluginMinVersion:
+    """Tests for check_plugin_min_version — constraint satisfaction against installed version."""
+
+    def _write_installed(self, tmp_path, monkeypatch, plugins_data):
+        ip = tmp_path / ".claude" / "plugins" / "installed_plugins.json"
+        ip.parent.mkdir(parents=True, exist_ok=True)
+        ip.write_text(json.dumps({"version": 2, "plugins": plugins_data}))
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+
+    def test_should_pass_when_installed_equals_min_version(self, tmp_path, monkeypatch):
+        self._write_installed(tmp_path, monkeypatch, {
+            "bootstrap@plugins-kit": [{"scope": "user", "version": "0.9.1"}]
+        })
+        result = check_plugin_min_version("plugins-kit:bootstrap", "0.9.1")
+        assert result.up_to_date is True
+        assert result.installed_version == "0.9.1"
+        assert "satisfies >= 0.9.1" in result.message
+
+    def test_should_pass_when_installed_greater_than_min_version(self, tmp_path, monkeypatch):
+        self._write_installed(tmp_path, monkeypatch, {
+            "bootstrap@plugins-kit": [{"scope": "user", "version": "0.9.5"}]
+        })
+        result = check_plugin_min_version("plugins-kit:bootstrap", "0.9.1")
+        assert result.up_to_date is True
+        assert result.installed_version == "0.9.5"
+
+    def test_should_fail_when_installed_less_than_min_version(self, tmp_path, monkeypatch):
+        self._write_installed(tmp_path, monkeypatch, {
+            "bootstrap@plugins-kit": [{"scope": "user", "version": "0.8.3"}]
+        })
+        result = check_plugin_min_version("plugins-kit:bootstrap", "0.9.1")
+        assert result.up_to_date is False
+        assert result.installed_version == "0.8.3"
+        assert "< required 0.9.1" in result.message
+
+    def test_should_fail_on_major_version_gap(self, tmp_path, monkeypatch):
+        self._write_installed(tmp_path, monkeypatch, {
+            "bootstrap@plugins-kit": [{"scope": "user", "version": "0.9.9"}]
+        })
+        result = check_plugin_min_version("plugins-kit:bootstrap", "1.0.0")
+        assert result.up_to_date is False
+
+    def test_should_pass_on_major_version_jump(self, tmp_path, monkeypatch):
+        self._write_installed(tmp_path, monkeypatch, {
+            "bootstrap@plugins-kit": [{"scope": "user", "version": "1.0.0"}]
+        })
+        result = check_plugin_min_version("plugins-kit:bootstrap", "0.9.9")
+        assert result.up_to_date is True
+
+    def test_should_skip_when_plugin_not_installed(self, tmp_path, monkeypatch):
+        """Not installed → up_to_date=True (skip-check semantics; install path handles missing plugin)."""
+        self._write_installed(tmp_path, monkeypatch, {})
+        result = check_plugin_min_version("plugins-kit:bootstrap", "0.9.1")
+        assert result.up_to_date is True
+        assert result.installed_version == ""
+        assert "skipping" in result.message
+
+    def test_should_skip_when_min_version_is_empty(self, tmp_path, monkeypatch):
+        """Empty min_version → up_to_date=True (no constraint to check)."""
+        self._write_installed(tmp_path, monkeypatch, {
+            "bootstrap@plugins-kit": [{"scope": "user", "version": "0.8.3"}]
+        })
+        result = check_plugin_min_version("plugins-kit:bootstrap", "")
+        assert result.up_to_date is True
+        assert "no min_version declared" in result.message
+
+    def test_should_read_via_marketplace_colon_plugin_format(self, tmp_path, monkeypatch):
+        """Installed registry entry stored in marketplace:plugin format is found."""
+        self._write_installed(tmp_path, monkeypatch, {
+            "plugins-kit:bootstrap": [{"scope": "user", "version": "0.9.5"}]
+        })
+        result = check_plugin_min_version("plugins-kit:bootstrap", "0.9.1")
+        assert result.up_to_date is True
+        assert result.installed_version == "0.9.5"
+
+    def test_should_skip_when_registry_file_missing(self, tmp_path, monkeypatch):
+        """No registry file → treat as not-installed, skip check."""
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        result = check_plugin_min_version("plugins-kit:bootstrap", "0.9.1")
+        assert result.up_to_date is True
+
+
+class TestEngineMinVersionFlow:
+    """Tests for the engine's min_version check in the plugins loop.
+
+    Verifies the full flow: detect constraint, trigger update, recheck, record failure
+    if unsatisfied after update.
+    """
+
+    @staticmethod
+    def _setup_engine_path():
+        bootstrap_root = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, "plugins", "bootstrap")
+        )
+        engine_dir = os.path.join(bootstrap_root, "engine")
+        if engine_dir not in sys.path:
+            sys.path.insert(0, engine_dir)
+
+    def _write_registry_and_settings(self, tmp_path, monkeypatch, installed_version):
+        ip = tmp_path / ".claude" / "plugins" / "installed_plugins.json"
+        ip.parent.mkdir(parents=True)
+        ip.write_text(json.dumps({
+            "version": 2,
+            "plugins": {
+                "bootstrap@plugins-kit": [{"scope": "user", "version": installed_version, "installPath": "/cache"}]
+            }
+        }))
+        settings = tmp_path / ".claude" / "settings.json"
+        settings.write_text(json.dumps({"enabledPlugins": {"bootstrap@plugins-kit": True}}))
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        return ip
+
+    def test_should_not_trigger_update_when_min_version_satisfied(self, tmp_path, monkeypatch):
+        """Installed version >= min_version → no update call, no action entries mentioning min_version."""
+        self._setup_engine_path()
+        self._write_registry_and_settings(tmp_path, monkeypatch, "0.9.5")
+
+        manifest = {
+            "plugins": [
+                {"ref": "plugins-kit:bootstrap", "enabled": True, "scope": "user", "min_version": "0.9.1"}
+            ]
+        }
+
+        from bootstrap_lib.engine import _process_manifest
+        action_entries = []
+        ok_entries = []
+
+        with patch("bootstrap_lib.marketplace_lifecycle.update_plugin") as mock_update, \
+             patch("bootstrap_lib.marketplace_lifecycle.check_plugin_version") as mock_ver:
+            mock_ver.return_value = type("R", (), {"up_to_date": True})()
+            failures = _process_manifest(
+                manifest, "windows", str(tmp_path / "data"), str(tmp_path / "root"),
+                action_entries, ok_entries, plugin_name="test",
+            )
+            mock_update.assert_not_called()
+
+        assert not any("< required" in e for e in action_entries)
+        assert not any(f["type"] == "plugin" and "min_version" in f.get("message", "") for f in failures)
+
+    def test_should_trigger_update_and_record_success_when_update_satisfies_constraint(self, tmp_path, monkeypatch):
+        """Installed < min_version, update bumps it to satisfy → recheck passes, no failure."""
+        self._setup_engine_path()
+        ip = self._write_registry_and_settings(tmp_path, monkeypatch, "0.8.3")
+
+        manifest = {
+            "plugins": [
+                {"ref": "plugins-kit:bootstrap", "enabled": True, "scope": "user", "min_version": "0.9.1"}
+            ]
+        }
+
+        from bootstrap_lib.engine import _process_manifest
+        action_entries = []
+        ok_entries = []
+
+        def _bump_installed_version(*args, **kwargs):
+            """Simulate update_plugin bumping the installed version in the registry."""
+            data = json.loads(ip.read_text())
+            data["plugins"]["bootstrap@plugins-kit"][0]["version"] = "0.9.1"
+            ip.write_text(json.dumps(data))
+            return LifecycleResult(passed=True, ref="plugins-kit:bootstrap", message="updated")
+
+        with patch("bootstrap_lib.marketplace_lifecycle.update_plugin", side_effect=_bump_installed_version), \
+             patch("bootstrap_lib.marketplace_lifecycle.check_plugin_version") as mock_ver:
+            mock_ver.return_value = type("R", (), {"up_to_date": True})()
+            failures = _process_manifest(
+                manifest, "windows", str(tmp_path / "data"), str(tmp_path / "root"),
+                action_entries, ok_entries, plugin_name="test",
+            )
+
+        assert any("installed 0.8.3 < required 0.9.1, running" in e for e in action_entries)
+        assert any("updated to 0.9.1 (satisfies >= 0.9.1)" in e for e in action_entries)
+        assert not any(f["type"] == "plugin" and "min_version" in f.get("message", "") for f in failures)
+
+    def test_should_record_failure_when_update_fails(self, tmp_path, monkeypatch):
+        """Installed < min_version, update_plugin returns failure → record a plugin failure entry."""
+        self._setup_engine_path()
+        self._write_registry_and_settings(tmp_path, monkeypatch, "0.8.3")
+
+        manifest = {
+            "plugins": [
+                {"ref": "plugins-kit:bootstrap", "enabled": True, "scope": "user", "min_version": "0.9.1"}
+            ]
+        }
+
+        from bootstrap_lib.engine import _process_manifest
+        action_entries = []
+        ok_entries = []
+
+        with patch("bootstrap_lib.marketplace_lifecycle.update_plugin",
+                   return_value=LifecycleResult(passed=False, ref="plugins-kit:bootstrap", message="network error")), \
+             patch("bootstrap_lib.marketplace_lifecycle.check_plugin_version") as mock_ver:
+            mock_ver.return_value = type("R", (), {"up_to_date": True})()
+            failures = _process_manifest(
+                manifest, "windows", str(tmp_path / "data"), str(tmp_path / "root"),
+                action_entries, ok_entries, plugin_name="test",
+            )
+
+        assert any("update failed - network error" in e for e in action_entries)
+        assert any(f["type"] == "plugin" and "min_version 0.9.1 not satisfied" in f.get("message", "") for f in failures)
+
+    def test_should_record_failure_when_update_succeeds_but_still_too_old(self, tmp_path, monkeypatch):
+        """Update succeeds but installed version is still < min_version (marketplace stale) → failure."""
+        self._setup_engine_path()
+        ip = self._write_registry_and_settings(tmp_path, monkeypatch, "0.8.3")
+
+        manifest = {
+            "plugins": [
+                {"ref": "plugins-kit:bootstrap", "enabled": True, "scope": "user", "min_version": "0.9.1"}
+            ]
+        }
+
+        from bootstrap_lib.engine import _process_manifest
+        action_entries = []
+        ok_entries = []
+
+        def _bump_to_still_too_old(*args, **kwargs):
+            data = json.loads(ip.read_text())
+            data["plugins"]["bootstrap@plugins-kit"][0]["version"] = "0.8.9"
+            ip.write_text(json.dumps(data))
+            return LifecycleResult(passed=True, ref="plugins-kit:bootstrap", message="updated")
+
+        with patch("bootstrap_lib.marketplace_lifecycle.update_plugin", side_effect=_bump_to_still_too_old), \
+             patch("bootstrap_lib.marketplace_lifecycle.check_plugin_version") as mock_ver:
+            mock_ver.return_value = type("R", (), {"up_to_date": True})()
+            failures = _process_manifest(
+                manifest, "windows", str(tmp_path / "data"), str(tmp_path / "root"),
+                action_entries, ok_entries, plugin_name="test",
+            )
+
+        assert any("update failed to satisfy constraint" in e for e in action_entries)
+        assert any(f["type"] == "plugin" and "min_version 0.9.1 not satisfied (installed 0.8.9)" in f.get("message", "") for f in failures)
+
+    def test_should_skip_check_when_no_min_version_declared(self, tmp_path, monkeypatch):
+        """No min_version field → no constraint check, no update call triggered by min_version logic."""
+        self._setup_engine_path()
+        self._write_registry_and_settings(tmp_path, monkeypatch, "0.8.3")
+
+        manifest = {
+            "plugins": [
+                {"ref": "plugins-kit:bootstrap", "enabled": True, "scope": "user"}
+            ]
+        }
+
+        from bootstrap_lib.engine import _process_manifest
+        action_entries = []
+        ok_entries = []
+
+        with patch("bootstrap_lib.marketplace_lifecycle.update_plugin") as mock_update, \
+             patch("bootstrap_lib.marketplace_lifecycle.check_plugin_version") as mock_ver:
+            mock_ver.return_value = type("R", (), {"up_to_date": True})()
+            _process_manifest(
+                manifest, "windows", str(tmp_path / "data"), str(tmp_path / "root"),
+                action_entries, ok_entries, plugin_name="test",
+            )
+            mock_update.assert_not_called()
+
+        assert not any("< required" in e for e in action_entries)

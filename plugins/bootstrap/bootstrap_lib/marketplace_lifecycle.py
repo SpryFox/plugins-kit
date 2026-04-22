@@ -424,6 +424,58 @@ def check_plugin_version(plugin_ref: str) -> VersionCheckResult:
     )
 
 
+def check_plugin_min_version(plugin_ref: str, min_version: str) -> VersionCheckResult:
+    """Check whether the installed plugin version satisfies a minimum version constraint.
+
+    Returns up_to_date=True when the constraint is satisfied (installed >= min_version),
+    when the plugin is not installed (skipped), or when min_version is empty. Returns
+    up_to_date=False only when the installed version is definitively older than required.
+
+    Version comparison is numeric-semver only (see _version_greater): dotted numeric
+    parts are compared as int tuples; non-numeric parts coerce to 0. Pre-release
+    suffixes and other non-numeric tags are not supported.
+    """
+    if not min_version:
+        return VersionCheckResult(
+            up_to_date=True, ref=plugin_ref,
+            installed_version="", latest_version=min_version,
+            message="no min_version declared",
+        )
+
+    cli_ref = _to_cli_ref(plugin_ref)
+    ip_path = os.path.expanduser("~/.claude/plugins/installed_plugins.json")
+    installed_version = ""
+    try:
+        with open(ip_path, "r") as f:
+            data = json.load(f)
+        installs = data.get("plugins", {}).get(cli_ref) or data.get("plugins", {}).get(plugin_ref) or []
+        if installs:
+            installed_version = installs[0].get("version", "")
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        pass
+
+    if not installed_version:
+        return VersionCheckResult(
+            up_to_date=True, ref=plugin_ref,
+            installed_version="", latest_version=min_version,
+            message="not installed (skipping min_version check)",
+        )
+
+    # Satisfied when installed == min_version or installed > min_version.
+    if installed_version == min_version or _version_greater(installed_version, min_version):
+        return VersionCheckResult(
+            up_to_date=True, ref=plugin_ref,
+            installed_version=installed_version, latest_version=min_version,
+            message=f"installed {installed_version} satisfies >= {min_version}",
+        )
+
+    return VersionCheckResult(
+        up_to_date=False, ref=plugin_ref,
+        installed_version=installed_version, latest_version=min_version,
+        message=f"installed {installed_version} < required {min_version}",
+    )
+
+
 def check_plugin_enabled(plugin_ref: str) -> LifecycleResult:
     """Check if a plugin is currently enabled in settings.json enabledPlugins."""
     cli_ref = _to_cli_ref(plugin_ref)

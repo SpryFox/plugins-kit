@@ -1310,6 +1310,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
         plugin_ref = plugin_def.get("ref", "")
         enabled = plugin_def.get("enabled", True)
         desired_scope = plugin_def.get("scope", "user")
+        min_version = plugin_def.get("min_version", "")
         if not plugin_ref:
             continue
 
@@ -1373,6 +1374,34 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                         action_entries.append(f"{prefix}plugin {plugin_ref}: updated to {ver_result.latest_version}")
                     else:
                         action_entries.append(f"{prefix}plugin {plugin_ref}: update failed - {upd_result.message}")
+
+            # Check min_version constraint (auto-update, then fail if still unsatisfied)
+            if install_result.passed and min_version:
+                from .marketplace_lifecycle import check_plugin_min_version
+                min_result = check_plugin_min_version(plugin_ref, min_version)
+                if not min_result.up_to_date:
+                    action_entries.append(f"{prefix}plugin {plugin_ref}: installed {min_result.installed_version} < required {min_version}, running `claude plugin update {cli_ref}`")
+                    upd_result = update_plugin(plugin_ref, scope=desired_scope)
+                    if upd_result.passed:
+                        recheck = check_plugin_min_version(plugin_ref, min_version)
+                        if recheck.up_to_date:
+                            action_entries.append(f"{prefix}plugin {plugin_ref}: updated to {recheck.installed_version} (satisfies >= {min_version})")
+                        else:
+                            action_entries.append(f"{prefix}plugin {plugin_ref}: installed {recheck.installed_version} < required {min_version}, update failed to satisfy constraint")
+                            failures.append({
+                                "type": "plugin",
+                                "ref": plugin_ref,
+                                "message": f"min_version {min_version} not satisfied (installed {recheck.installed_version})",
+                                "plugin": plugin_name,
+                            })
+                    else:
+                        action_entries.append(f"{prefix}plugin {plugin_ref}: installed {min_result.installed_version} < required {min_version}, update failed - {upd_result.message}")
+                        failures.append({
+                            "type": "plugin",
+                            "ref": plugin_ref,
+                            "message": f"min_version {min_version} not satisfied: {upd_result.message}",
+                            "plugin": plugin_name,
+                        })
 
             # Check enabled state at desired scope
             enabled_result = check_plugin_enabled_at_scope(plugin_ref, desired_scope, project_dir)
