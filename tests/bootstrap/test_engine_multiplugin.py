@@ -315,6 +315,109 @@ class TestMultiPluginEngine:
         assert "venv" in response["hookSpecificOutput"]["additionalContext"].lower()
         assert "[venv-plugin]" in response["hookSpecificOutput"]["additionalContext"]
 
+    def test_plugin_venv_exports_env_var_via_claude_env_file(self, tmp_path):
+        """Plugin with a working venv writes <PLUGIN>_VENV to $CLAUDE_ENV_FILE.
+
+        Consumer scripts read this var to re-exec themselves under the venv's
+        python without reconstructing bootstrap's data-dir path layout.
+        """
+        plugins_dir = tmp_path / "plugins"
+        plugins_dir.mkdir()
+
+        fake_root = plugins_dir / "bootstrap"
+        fake_root.mkdir()
+        (fake_root / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
+        (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
+        _write_minimal_defaults(fake_root)
+        (fake_root / "bootstrap.json").write_text(json.dumps({}))
+
+        # Plugin that declares a venv.check_imports. We pre-create the venv
+        # in its data dir so the engine's venv check passes without invoking
+        # uv sync against a nonexistent pyproject.toml.
+        plugin_name = "my-venv-plugin"
+        venv_plugin_dir = plugins_dir / plugin_name
+        venv_plugin_dir.mkdir()
+        (venv_plugin_dir / "bootstrap.json").write_text(json.dumps({
+            "venv": {"check_imports": ["os", "sys"]},
+        }))
+
+        plugin_data_dir = tmp_path / "data" / plugin_name
+        plugin_data_dir.mkdir(parents=True)
+        subprocess.run(
+            ["uv", "venv", str(plugin_data_dir / ".venv")],
+            check=True, capture_output=True,
+        )
+
+        registry = {"plugins": {f"kit:{plugin_name}": [{"installPath": f"./{plugin_name}", "version": "1.0.0"}]}}
+        (plugins_dir / "installed_plugins.json").write_text(json.dumps(registry))
+
+        data_dir = str(tmp_path / "data" / "bootstrap")
+        os.makedirs(data_dir)
+        config = {"schema_version": 3, "enabled_plugins": [f"kit:{plugin_name}"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
+        with open(os.path.join(data_dir, "config.json"), "w") as f:
+            json.dump(config, f)
+
+        env_file = tmp_path / "claude_env_file"
+        env_file.write_text("")
+        env = {**_isolated_env(tmp_path), "CLAUDE_ENV_FILE": str(env_file)}
+
+        result = run_engine(data_dir, plugin_root=str(fake_root), env=env)
+        assert result.returncode == 0, result.stderr
+
+        contents = env_file.read_text()
+        assert "export MY_VENV_PLUGIN_VENV=" in contents
+
+        # Round-trip: the exported path should resolve to a real python binary
+        rt = subprocess.run(
+            ["bash", "-c", f"source {env_file}; echo \"$MY_VENV_PLUGIN_VENV\""],
+            capture_output=True, text=True, check=True,
+        )
+        python_path = rt.stdout.strip()
+        assert os.path.isfile(python_path)
+        assert str(plugin_data_dir / ".venv") in python_path
+
+    def test_plugin_venv_no_export_when_claude_env_file_unset(self, tmp_path):
+        """No export is written when CLAUDE_ENV_FILE is absent from the env."""
+        plugins_dir = tmp_path / "plugins"
+        plugins_dir.mkdir()
+
+        fake_root = plugins_dir / "bootstrap"
+        fake_root.mkdir()
+        (fake_root / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
+        (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
+        _write_minimal_defaults(fake_root)
+        (fake_root / "bootstrap.json").write_text(json.dumps({}))
+
+        plugin_name = "nosig"
+        venv_plugin_dir = plugins_dir / plugin_name
+        venv_plugin_dir.mkdir()
+        (venv_plugin_dir / "bootstrap.json").write_text(json.dumps({
+            "venv": {"check_imports": ["os"]},
+        }))
+
+        plugin_data_dir = tmp_path / "data" / plugin_name
+        plugin_data_dir.mkdir(parents=True)
+        subprocess.run(
+            ["uv", "venv", str(plugin_data_dir / ".venv")],
+            check=True, capture_output=True,
+        )
+
+        registry = {"plugins": {f"kit:{plugin_name}": [{"installPath": f"./{plugin_name}", "version": "1.0.0"}]}}
+        (plugins_dir / "installed_plugins.json").write_text(json.dumps(registry))
+
+        data_dir = str(tmp_path / "data" / "bootstrap")
+        os.makedirs(data_dir)
+        config = {"schema_version": 3, "enabled_plugins": [f"kit:{plugin_name}"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
+        with open(os.path.join(data_dir, "config.json"), "w") as f:
+            json.dump(config, f)
+
+        env = _isolated_env(tmp_path)
+        env.pop("CLAUDE_ENV_FILE", None)
+
+        result = run_engine(data_dir, plugin_root=str(fake_root), env=env)
+        assert result.returncode == 0, result.stderr
+        # No env file was created; engine should not have crashed.
+
     def test_git_dep_failure_in_plugin(self, tmp_path):
         """Plugin with missing git dep emits JSON with remediation."""
         plugins_dir = tmp_path / "plugins"

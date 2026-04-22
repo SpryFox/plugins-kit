@@ -107,7 +107,10 @@ def main():
     self_setup = config.get("self_setup", {})
     action_entries = []
     ok_entries = []
-    failures = _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_entries, ok_entries)
+    failures = _process_self_setup(
+        self_setup, current_os, data_dir, plugin_root,
+        action_entries, ok_entries, plugin_name=boot_plugin_name,
+    )
     bootstrap_action_entries.extend(action_entries)
     bootstrap_ok_entries.extend(ok_entries)
 
@@ -536,7 +539,7 @@ def _activate_bootstrap_venv(data_dir):
                 sys.path.insert(0, sp)
 
 
-def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_entries, ok_entries):
+def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_entries, ok_entries, plugin_name="bootstrap"):
     """Process engine self-setup: tools, path_entries, venv.
 
     Only these 3 phases — the minimum needed to make the engine runnable.
@@ -545,7 +548,7 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
     """
     from .tool_check import check_tool
     from .path_check import check_path_entry
-    from .venv_check import check_venv
+    from .venv_check import check_venv, export_venv_env_var
 
     failures = []
     p = "[bootstrap-setup] "
@@ -720,6 +723,9 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
 
         if result.passed:
             ok_entries.append(f"{p}venv: ok - {result.message}")
+            exported = export_venv_env_var(plugin_name, data_dir)
+            if exported:
+                ok_entries.append(f"{p}venv: exported {exported} to CLAUDE_ENV_FILE")
         else:
             action_entries.append(f"{p}venv: FAILED - {result.message}")
             failures.append({
@@ -1070,7 +1076,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
     """
     from .tool_check import check_tool
     from .path_check import check_path_entry
-    from .venv_check import check_venv
+    from .venv_check import check_venv, export_venv_env_var
     from .git_dep_check import check_git_dep
 
     failures = []
@@ -1177,6 +1183,9 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
 
         if result.passed:
             ok_entries.append(f"{prefix}venv: ok - {result.message}")
+            exported = export_venv_env_var(plugin_name, data_dir)
+            if exported:
+                ok_entries.append(f"{prefix}venv: exported {exported} to CLAUDE_ENV_FILE")
         else:
             action_entries.append(f"{prefix}venv: FAILED - {result.message}")
             failures.append({

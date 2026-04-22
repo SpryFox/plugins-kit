@@ -90,6 +90,51 @@ A declarative configuration file covering automatable operations. The engine rea
 
 Every field is optional — include only what the plugin needs.
 
+## `venv` — Per-Plugin Python Environment
+
+A plugin declares a `venv` section to request a bootstrap-managed Python environment. The engine creates and syncs `<plugin_data_dir>/.venv` from the plugin's `pyproject.toml` (via `uv sync --project <plugin_root>`), then verifies each listed import works.
+
+```json
+{
+  "venv": {
+    "check_imports": ["yaml", "upyrc"]
+  }
+}
+```
+
+### `<PLUGIN>_VENV` environment variable export
+
+When `CLAUDE_ENV_FILE` is set (always true under SessionStart hooks), a successful venv check also appends an export line of the form:
+
+```sh
+export <PLUGIN_NAME_UPPER>_VENV=<absolute path to venv python>
+```
+
+`<PLUGIN_NAME_UPPER>` is the plugin manifest name uppercased with hyphens replaced by underscores. Examples:
+
+```sh
+export UNREAL_KIT_VENV=/Users/christina/.claude/plugins/data/plugins-kit/unreal-kit/.venv/bin/python
+export BOOTSTRAP_VENV=/Users/christina/.claude/plugins/data/plugins-kit/bootstrap/.venv/bin/python
+```
+
+**Consumer pattern** — scripts re-exec themselves under the plugin's venv without reconstructing bootstrap's data-dir layout:
+
+```python
+import os, sys
+from pathlib import Path
+
+_venv = os.environ.get("UNREAL_KIT_VENV")
+if not _venv:
+    sys.stderr.write("ERROR: UNREAL_KIT_VENV not set. Is bootstrap running?\n")
+    sys.exit(1)
+if Path(sys.executable).resolve() != Path(_venv).resolve():
+    os.execv(_venv, [_venv] + sys.argv)
+```
+
+**Reach**: Exports in `CLAUDE_ENV_FILE` are sourced by Claude Code before every subsequent Bash tool invocation. They do NOT automatically propagate to hook script invocations — hook scripts that need the venv must either re-derive the path or source `$CLAUDE_ENV_FILE` themselves. For the common case (scripts called via Bash or re-exec'd via `os.execv`), the variable is always set.
+
+**Fail-fast semantics**: if bootstrap cannot create the venv, no export line is written. Consumer scripts then error out on the unset var rather than re-exec'ing an invalid interpreter path.
+
 ## Variable Expansion
 
 Variable references are expanded by the engine from plugin context and config:
