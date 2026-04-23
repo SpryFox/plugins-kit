@@ -21,8 +21,13 @@ def run_engine(data_dir, plugin_root=BOOTSTRAP_ROOT, extra_args=None):
     return subprocess.run(cmd, capture_output=True, text=True)
 
 
-def _make_minimal_root(tmp_path, config_overrides=None):
-    """Create a fake bootstrap root with minimal ecosystem manifest."""
+def _make_minimal_root(tmp_path, config_overrides=None, with_version=False):
+    """Create a fake bootstrap root with minimal ecosystem manifest.
+
+    When with_version=True, writes a .claude-plugin/plugin.json with a version
+    so the first run produces an "installed: X" action entry — needed by tests
+    that expect non-empty display output (oks alone no longer surface to the user).
+    """
     fake_root = tmp_path / "bootstrap_bg"
     fake_root.mkdir(exist_ok=True)
     (fake_root / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
@@ -44,13 +49,17 @@ def _make_minimal_root(tmp_path, config_overrides=None):
         config.update(config_overrides)
     (defaults / "config.json").write_text(json.dumps(config))
     (fake_root / "bootstrap.json").write_text(json.dumps({}))
+    if with_version:
+        plugin_dir = fake_root / ".claude-plugin"
+        plugin_dir.mkdir(exist_ok=True)
+        (plugin_dir / "plugin.json").write_text(json.dumps({"name": "bootstrap", "version": "0.0.1"}))
     return str(fake_root)
 
 
 class TestEngineBackground:
     def test_background_writes_display_file(self, data_dir, tmp_path):
         """Engine with --background creates bootstrap_display.pending when there's output."""
-        fake_root = _make_minimal_root(tmp_path, {"log_success_checks": True})
+        fake_root = _make_minimal_root(tmp_path, with_version=True)
         result = run_engine(data_dir, plugin_root=fake_root, extra_args=["--background"])
         assert result.returncode == 0
         display_file = os.path.join(data_dir, "bootstrap_display.pending")
@@ -58,14 +67,14 @@ class TestEngineBackground:
 
     def test_background_no_stdout(self, data_dir, tmp_path):
         """In background mode, stdout is empty (output goes to file)."""
-        fake_root = _make_minimal_root(tmp_path, {"log_success_checks": True})
+        fake_root = _make_minimal_root(tmp_path, with_version=True)
         result = run_engine(data_dir, plugin_root=fake_root, extra_args=["--background"])
         assert result.returncode == 0
         assert result.stdout.strip() == ""
 
     def test_background_success_format(self, data_dir, tmp_path):
         """Display file has UserPromptSubmit-compliant JSON with additionalContext for Claude."""
-        fake_root = _make_minimal_root(tmp_path, {"log_success_checks": True})
+        fake_root = _make_minimal_root(tmp_path, with_version=True)
         run_engine(data_dir, plugin_root=fake_root, extra_args=["--background"])
         display_file = os.path.join(data_dir, "bootstrap_display.pending")
         with open(display_file) as f:
@@ -116,7 +125,7 @@ class TestEngineBackground:
 
     def test_foreground_has_hook_specific_output(self, data_dir, tmp_path):
         """Non-background (SessionStart) output retains hookSpecificOutput."""
-        fake_root = _make_minimal_root(tmp_path, {"log_success_checks": True})
+        fake_root = _make_minimal_root(tmp_path, with_version=True)
         result = run_engine(data_dir, plugin_root=fake_root)
         assert result.returncode == 0
         response = json.loads(result.stdout.strip())
