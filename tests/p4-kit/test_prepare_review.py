@@ -348,6 +348,50 @@ class TestExtractDiff:
         assert ["print", "-q", "//depot/new.py@=144072"] in calls
         assert "+hello" in diff
 
+    def test_mixed_cl_adds_missing_from_differences_synthesized(self):
+        """Mixed CL: pure-adds listed in Shelved files but omitted from Differences.
+
+        Real p4 behavior on some servers: `p4 describe -du -S` for a shelved mixed
+        CL emits `==== ...====` headers ONLY for edits. Pure-add files appear only
+        in the Shelved files listing, never in the Differences section. The script
+        must still synthesize sections (header + hunk) for these missing files,
+        not drop them silently.
+        """
+        describe = (
+            "Shelved files ...\n"
+            "... //depot/edit.cpp#3 edit\n"
+            "... //depot/add1.cpp#1 add\n"
+            "... //depot/add2.cpp#1 add\n"
+            "Differences ...\n"
+            "\n"
+            "==== //depot/edit.cpp#3 (text) ====\n"
+            "@@ -1 +1 @@\n"
+            "-old\n"
+            "+new\n"
+        )
+        actions = pr.parse_file_actions(describe)
+
+        def fake_run_p4(args):
+            if args == ["print", "-q", "//depot/add1.cpp@=99"]:
+                return (0, "content of add1\n", "")
+            if args == ["print", "-q", "//depot/add2.cpp@=99"]:
+                return (0, "content of add2\n", "")
+            return (1, "", f"unexpected: {args}")
+
+        with patch.object(pr, "run_p4", side_effect=fake_run_p4):
+            diff = pr.extract_diff(describe, actions, cl="99", is_shelved=True)
+
+        # All three files must appear in the diff
+        assert "==== //depot/edit.cpp#3" in diff
+        assert "==== //depot/add1.cpp#1" in diff
+        assert "==== //depot/add2.cpp#1" in diff
+        # Edit preserved
+        assert "-old" in diff
+        assert "+new" in diff
+        # Adds synthesized
+        assert "+content of add1" in diff
+        assert "+content of add2" in diff
+
     def test_warns_on_unhandled_add_to_stderr(self, capsys):
         describe = (
             "Affected files ...\n"
@@ -703,6 +747,74 @@ class TestBuildBundle:
         assert bundle["description"] == "Add new modules"
         assert "+content of a" in bundle["diff"]
         assert "+content of b" in bundle["diff"]
+
+    def test_mixed_cl_adds_omitted_from_differences(self, tmp_path):
+        """Regression (Spirit Crossing CL 144098): on some p4 servers, `describe -du -S`
+        for a shelved mixed CL emits ==== headers ONLY for edits. Pure-adds appear only
+        in the Shelved files listing. Previously these were silently dropped.
+        """
+        ws = tmp_path / "ws"
+        ws.mkdir()
+
+        committed_out = "Change 144098 by u@c on 2026/01/01 *pending*\n"
+        shelved_out = (
+            "Change 144098 by u@c on 2026/01/01 *pending*\n"
+            "\n"
+            "\tModule + facade wiring\n"
+            "\n"
+            "Shelved files ...\n"
+            "\n"
+            "... //depot/facade.cpp#4 edit\n"
+            "... //depot/mod_a.cpp#1 add\n"
+            "... //depot/mod_b.cpp#1 add\n"
+            "... //depot/mod_c.cpp#1 add\n"
+            "\n"
+            "Differences ...\n"
+            "\n"
+            "==== //depot/facade.cpp#4 (text) ====\n"
+            "@@ -1 +1 @@\n"
+            "-wire_old();\n"
+            "+wire_new();\n"
+        )
+
+        def fake_run_p4(args):
+            if args[:2] == ["describe", "-du"] and "-S" not in args:
+                return (0, committed_out, "")
+            if args[:3] == ["describe", "-du", "-S"]:
+                return (0, shelved_out, "")
+            if args[:2] == ["-ztag", "where"]:
+                return (0, "", "")
+            if args[:2] == ["-ztag", "info"]:
+                return (0, f"... clientRoot {ws}\n", "")
+            if args == ["print", "-q", "//depot/mod_a.cpp@=144098"]:
+                return (0, "mod_a contents\n", "")
+            if args == ["print", "-q", "//depot/mod_b.cpp@=144098"]:
+                return (0, "mod_b contents\n", "")
+            if args == ["print", "-q", "//depot/mod_c.cpp@=144098"]:
+                return (0, "mod_c contents\n", "")
+            return (1, "", f"unexpected: {args}")
+
+        with patch.object(pr, "run_p4", side_effect=fake_run_p4):
+            bundle = pr.build_bundle("144098")
+
+        # All four files in changed_files — not just the edit
+        depots = [f["depot"] for f in bundle["changed_files"]]
+        assert depots == [
+            "//depot/facade.cpp",
+            "//depot/mod_a.cpp",
+            "//depot/mod_b.cpp",
+            "//depot/mod_c.cpp",
+        ]
+
+        # Edit preserved
+        assert "+wire_new();" in bundle["diff"]
+        # Adds synthesized with full content, even though they had no ==== header in Differences
+        assert "==== //depot/mod_a.cpp#1" in bundle["diff"]
+        assert "==== //depot/mod_b.cpp#1" in bundle["diff"]
+        assert "==== //depot/mod_c.cpp#1" in bundle["diff"]
+        assert "+mod_a contents" in bundle["diff"]
+        assert "+mod_b contents" in bundle["diff"]
+        assert "+mod_c contents" in bundle["diff"]
 
 
 # ---------------------------------------------------------------------------
