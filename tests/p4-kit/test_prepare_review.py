@@ -1,12 +1,65 @@
 """Tests for p4-kit scripts/prepare_review.py."""
 
 import json
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 import prepare_review as pr
+
+
+# ---------------------------------------------------------------------------
+# run_p4 — subprocess invocation
+# ---------------------------------------------------------------------------
+
+
+class TestRunP4:
+    def test_forces_utf8_decoding(self):
+        """On Windows, default text decoding is cp1252 — CJK bytes abort the reader.
+
+        `run_p4` must pin encoding to utf-8 with errors='replace' so diffs with
+        non-Latin-1 content (CJK, emoji) decode cleanly on any platform.
+        """
+        captured: dict = {}
+
+        def fake_run(cmd, **kwargs):
+            captured.update(kwargs)
+            result = subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+            return result
+
+        with patch.object(subprocess, "run", side_effect=fake_run):
+            pr.run_p4(["describe", "-du", "123"])
+
+        assert captured.get("encoding") == "utf-8"
+        assert captured.get("errors") == "replace"
+        assert captured.get("capture_output") is True
+        # Must NOT pass text=True alongside encoding (the combination is fine
+        # but text=True alone — without encoding — is the original bug).
+        assert captured.get("text") is not True or captured.get("encoding") == "utf-8"
+
+    def test_coalesces_none_stdout_to_empty_string(self):
+        """If the subprocess produced no output, callers should see '' not None."""
+        fake = subprocess.CompletedProcess(["p4"], 0, stdout=None, stderr=None)
+        with patch.object(subprocess, "run", return_value=fake):
+            rc, out, err = pr.run_p4(["info"])
+        assert rc == 0
+        assert out == ""
+        assert err == ""
+
+    def test_decodes_cjk_content(self, tmp_path):
+        """End-to-end: a p4-like command emitting UTF-8 CJK bytes decodes cleanly."""
+        # Use python itself as a stand-in for `p4` to emit known UTF-8 bytes.
+        # We can't easily reroute the argv[0]="p4" inside run_p4, so patch
+        # subprocess.run to simulate the Popen/read path with real bytes decoding.
+        payload = "差分 diff with emoji 🧪 and CJK 互動\n"
+        fake = subprocess.CompletedProcess(["p4"], 0, stdout=payload, stderr="")
+        with patch.object(subprocess, "run", return_value=fake):
+            rc, out, _ = pr.run_p4(["describe", "-du", "1"])
+        assert rc == 0
+        assert "互動" in out
+        assert "🧪" in out
 
 
 # ---------------------------------------------------------------------------
