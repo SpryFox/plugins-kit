@@ -43,9 +43,19 @@ _DELETE_ACTIONS = {"delete", "move/delete", "purge"}
 
 
 def run_p4(args: list[str]) -> tuple[int, str, str]:
-    """Run a p4 command, return (returncode, stdout, stderr)."""
-    proc = subprocess.run(["p4", *args], capture_output=True, text=True)
-    return proc.returncode, proc.stdout, proc.stderr
+    """Run a p4 command, return (returncode, stdout, stderr).
+
+    Forces UTF-8 decoding so non-Latin-1 content (CJK, emoji) in diffs doesn't
+    abort the subprocess reader thread on Windows, whose default text decoder
+    is the system ANSI codepage (cp1252 on en-US/en-GB).
+    """
+    proc = subprocess.run(
+        ["p4", *args],
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    return proc.returncode, proc.stdout or "", proc.stderr or ""
 
 
 def has_describe_content(output: str) -> bool:
