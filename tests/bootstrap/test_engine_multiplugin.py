@@ -243,11 +243,15 @@ class TestMultiPluginEngine:
         # First run
         run_engine(data_dir, plugin_root=str(fake_root), env=_isolated_env(tmp_path))
 
-        # Second run — re-runs checks, produces output
+        # Second run — re-runs checks. Display is silent (only oks), but the
+        # plugin's own log file records the re-run since log_success_checks=True.
         result = run_engine(data_dir, plugin_root=str(fake_root), env=_isolated_env(tmp_path))
         assert result.returncode == 0
-        response = json.loads(result.stdout)
-        assert "rerun-plugin" in response["systemMessage"]
+        plugin_log = os.path.join(str(tmp_path / "data"), "rerun-plugin", "bootstrap.log")
+        with open(plugin_log) as f:
+            content = f.read()
+        # Two timestamped headers = two runs recorded
+        assert content.count("rerun-plugin@1.0.0") >= 2
 
     def test_plugin_without_manifest_skipped(self, tmp_path):
         """Plugin with no bootstrap.json is silently skipped."""

@@ -28,7 +28,7 @@ def main():
     parser.add_argument("--data-dir", required=True, help="Path to bootstrap data directory")
     parser.add_argument("--hook-start-epoch", type=int, default=0, help="(unused, kept for backward compat)")
     parser.add_argument("--project-dir", default=None, help="Project root directory (for layered bootstrap.json)")
-    parser.add_argument("--verbose", action="store_true", help="Show all entries including ok/cached")
+    parser.add_argument("--verbose", action="store_true", help="Write ok/cached entries to the log file (never shown in hook output)")
     parser.add_argument("--console", action="store_true", help="Plain text output, no JSON/log writes")
     parser.add_argument("--background", action="store_true",
         help="Write display output to bootstrap_display.json instead of stdout")
@@ -250,16 +250,14 @@ def main():
         if plugin_log_entries and not args.console:
             write_log_block(plugin_data_dir, plugin_label, plugin_log_entries, start_time=start_time)
 
-    # Step 7: Build display from sections — actions always, ok only if log_success
-    # Each section with entries gets a header line
+    # Step 7: Build display from sections — actions only, never ok entries.
+    # ok entries are written to the log file (gated by log_success) for debugging
+    # via `tail bootstrap.log`, but never surface in the user-facing hook output.
     display_lines = []
-    for header, actions, oks in display_sections:
-        section_entries = list(actions)
-        if log_success:
-            section_entries.extend(oks)
-        if section_entries:
+    for header, actions, _oks in display_sections:
+        if actions:
             display_lines.append(f"--- {header} ---")
-            display_lines.extend(section_entries)
+            display_lines.extend(actions)
 
     if args.console:
         # Console mode: plain text to stdout, no JSON
@@ -1070,7 +1068,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
 
     Entries are split into two lists:
     - action_entries: actions performed, failures, conditions not met (always displayed)
-    - ok_entries: checks that passed (only displayed if log_success is true)
+    - ok_entries: checks that passed (never displayed; written to log file when log_success is true)
 
     When project_detected is False, project-scoped primitives (ini_settings) are skipped.
     """

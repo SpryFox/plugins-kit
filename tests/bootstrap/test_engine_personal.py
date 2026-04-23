@@ -129,10 +129,9 @@ class TestLayeredManifests:
 
         result = run_engine(data_dir, plugin_root=fake_root, env_override={"HOME": fake_home})
         assert result.returncode == 0
-        assert result.stdout.strip() != ""
-        response = json.loads(result.stdout)
-        # git should appear in the output (either ok or action)
-        assert "git" in response.get("systemMessage", "")
+        # Display is silent when only oks; verify the manifest was processed via the log.
+        with open(os.path.join(data_dir, "bootstrap.log")) as f:
+            assert "git" in f.read()
 
     def test_project_level_bootstrap(self, data_dir, tmp_path):
         """<project>/.claude/bootstrap.json is discovered and processed."""
@@ -158,9 +157,9 @@ class TestLayeredManifests:
             env_override={"HOME": fake_home},
         )
         assert result.returncode == 0
-        assert result.stdout.strip() != ""
-        response = json.loads(result.stdout)
-        assert "git" in response.get("systemMessage", "")
+        # Display is silent when only oks; verify the project manifest was processed via the log.
+        with open(os.path.join(data_dir, "bootstrap.log")) as f:
+            assert "git" in f.read()
 
     def test_project_local_override(self, data_dir, tmp_path):
         """bootstrap.local.json overrides bootstrap.json at project level."""
@@ -245,9 +244,9 @@ class TestLayeredManifests:
         # No --project-dir passed
         result = run_engine(data_dir, plugin_root=fake_root, env_override={"HOME": fake_home})
         assert result.returncode == 0
-        assert result.stdout.strip() != ""
-        response = json.loads(result.stdout)
-        assert "git" in response.get("systemMessage", "")
+        # Display is silent when only oks; verify the user manifest was processed via the log.
+        with open(os.path.join(data_dir, "bootstrap.log")) as f:
+            assert "git" in f.read()
 
     def test_user_local_override(self, data_dir, tmp_path):
         """~/.claude/bootstrap.local.json overrides ~/.claude/bootstrap.json."""
@@ -373,10 +372,9 @@ class TestLayeredManifests:
             env_override={"HOME": fake_home},
         )
         assert result.returncode == 0
-        assert result.stdout.strip() != ""
-        response = json.loads(result.stdout)
-        msg = response.get("systemMessage", "")
-        assert "project_venv: ok" in msg
+        # Display is silent when only oks; verify via the log file.
+        with open(os.path.join(data_dir, "bootstrap.log")) as f:
+            assert "project_venv: ok" in f.read()
 
     def test_priority_project_local_wins(self, data_dir, tmp_path):
         """Project-local bootstrap.local.json has highest priority for field overrides."""
