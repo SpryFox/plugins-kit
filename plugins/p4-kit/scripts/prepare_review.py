@@ -214,12 +214,14 @@ def extract_diff(
     synthesized_adds: list[str] = []
     synthesized_deletes: list[str] = []
     unhandled: list[tuple[str, str]] = []
+    seen_depots: set[str] = set()
 
     for sec in sections:
         depot = sec["depot"]
         rev = sec["rev"]
         header = sec["header"]
         body = sec["body"]
+        seen_depots.add(depot)
 
         if "@@" in body:
             result_parts.append(header + body)
@@ -249,6 +251,28 @@ def extract_diff(
             unhandled.append((depot, action))
 
         result_parts.append(header + body)
+
+    # Synthesize complete sections for files in `actions` that were omitted from
+    # the Differences section entirely (e.g. mixed shelved CLs where pure-adds
+    # only appear in "Shelved files ..." and never get a ==== header).
+    for depot, (rev, action) in actions.items():
+        if depot in seen_depots:
+            continue
+        synthesized_header = f"==== {depot}#{rev} (text) ====\n"
+        if action in _ADD_ACTIONS:
+            content = fetch_file_content(depot, rev, cl, is_shelved, is_delete=False)
+            if content is not None:
+                result_parts.append(synthesized_header + synthesize_add_hunk(content))
+                synthesized_adds.append(depot)
+                continue
+            unhandled.append((depot, action))
+        elif action in _DELETE_ACTIONS:
+            content = fetch_file_content(depot, rev, cl, is_shelved, is_delete=True)
+            if content is not None:
+                result_parts.append(synthesized_header + synthesize_delete_hunk(content))
+                synthesized_deletes.append(depot)
+                continue
+            unhandled.append((depot, action))
 
     if synthesized_adds:
         print(
@@ -345,7 +369,10 @@ def build_bundle(cl: str) -> dict:
     description = parse_description(describe)
     actions = parse_file_actions(describe)
     diff = extract_diff(describe, actions, cl, is_shelved)
-    depot_files = parse_depot_files(describe)
+    # `actions` is the canonical per-file list (Affected/Shelved files section).
+    # Pure-add files in mixed shelved CLs may be absent from the Differences
+    # section entirely, so deriving the file list from ==== headers undercounts.
+    depot_files = list(actions.keys())
     local_map = resolve_local_paths(depot_files)
     workspace_root = get_workspace_root()
 
