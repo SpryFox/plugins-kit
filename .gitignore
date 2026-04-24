@@ -10,3 +10,4 @@ build/
 .claude/settings.local.json
 uv.lock
 tmp/
+.claude/p4-kit.yaml
