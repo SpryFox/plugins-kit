@@ -109,6 +109,12 @@ def _add_path_to_windows_registry(path_entry: str) -> Tuple[bool, str]:
     """
     import subprocess
 
+    # The registry is global state — it ignores HOME/USERPROFILE redirection,
+    # so tests that point HOME at a tmp dir would otherwise leak permanent
+    # entries into the real user's PATH. Tests set this var to opt out.
+    if os.environ.get("BOOTSTRAP_SKIP_REGISTRY"):
+        return True, "skipped Windows registry write (BOOTSTRAP_SKIP_REGISTRY set)"
+
     expanded = os.path.expanduser(path_entry)
     # Convert Unix-style path to Windows-style for the registry
     win_path = expanded.replace("/", "\\")

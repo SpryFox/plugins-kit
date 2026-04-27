@@ -19,6 +19,9 @@ def _env_with_home(home_dir):
     env = dict(os.environ)
     env["HOME"] = str(home_dir)
     env["USERPROFILE"] = str(home_dir)
+    # The Windows User PATH registry is global state and ignores HOME, so
+    # without this guard the engine would leak tmp paths into the real PATH.
+    env["BOOTSTRAP_SKIP_REGISTRY"] = "1"
     return env
 
 
