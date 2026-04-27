@@ -6,7 +6,9 @@ marketplace and plugin management (add, remove, update, install, etc.).
 
 import json
 import os
+import shutil
 import subprocess
+import sys
 from typing import NamedTuple, Optional
 
 
@@ -25,14 +27,63 @@ class VersionCheckResult(NamedTuple):
 
 
 def _find_claude_cli() -> Optional[str]:
-    """Find the claude CLI binary via CLAUDE_REAL_BIN.
+    """Find the claude CLI binary.
 
-    This env var is set by Claude Code at runtime, so it is always available
-    when the bootstrap engine runs inside a session.
+    Resolution order:
+      1. CLAUDE_REAL_BIN env var (set by Claude Code at runtime)
+      2. CLAUDE_CODE_EXECPATH env var (alternative set by Claude Code)
+      3. shutil.which("claude") on the current PATH
+      4. Well-known install locations (npm global bin, native installer dirs,
+         ~/.local/bin) — needed on Windows because git-bash inherits the
+         bash PATH and does not see entries added to the Windows User PATH
+         after the shell launched (e.g. `%APPDATA%\\npm` from
+         `npm install -g @anthropic-ai/claude-code`).
     """
+    is_windows = sys.platform == "win32" or "MSYSTEM" in os.environ
+
     real_bin = os.environ.get("CLAUDE_REAL_BIN")
-    if real_bin and os.path.isfile(real_bin):
-        return real_bin
+    if real_bin:
+        if os.path.isfile(real_bin):
+            return real_bin
+        # Some shells strip the .cmd/.exe suffix from the env var on Windows.
+        if is_windows:
+            for ext in (".cmd", ".exe", ".bat"):
+                candidate = real_bin + ext
+                if os.path.isfile(candidate):
+                    return candidate
+
+    exec_path = os.environ.get("CLAUDE_CODE_EXECPATH")
+    if exec_path and os.path.isfile(exec_path):
+        return exec_path
+
+    path = shutil.which("claude")
+    if path:
+        return path
+
+    candidates = []
+    if is_windows:
+        appdata = os.environ.get("APPDATA")
+        localappdata = os.environ.get("LOCALAPPDATA")
+        userprofile = os.environ.get("USERPROFILE") or os.path.expanduser("~")
+        if appdata:
+            candidates.append(os.path.join(appdata, "npm", "claude.cmd"))
+            candidates.append(os.path.join(appdata, "npm", "claude.exe"))
+        if localappdata:
+            candidates.append(os.path.join(localappdata, "Programs", "claude", "claude.exe"))
+        candidates.append(os.path.join(userprofile, ".local", "bin", "claude.exe"))
+        candidates.append(os.path.join(userprofile, ".local", "bin", "claude.cmd"))
+    else:
+        home = os.path.expanduser("~")
+        candidates.extend([
+            os.path.join(home, ".local", "bin", "claude"),
+            "/usr/local/bin/claude",
+            "/opt/homebrew/bin/claude",
+        ])
+
+    for candidate in candidates:
+        if os.path.isfile(candidate):
+            return candidate
+
     return None
 
 

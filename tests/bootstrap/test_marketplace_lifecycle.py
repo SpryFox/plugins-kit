@@ -25,38 +25,104 @@ from bootstrap_lib.marketplace_lifecycle import (
 )
 
 
-class TestFindClaudeCli:
-    """Tests for _find_claude_cli — CLAUDE_REAL_BIN env var lookup."""
+@pytest.fixture
+def isolate_claude_lookup(tmp_path, monkeypatch):
+    """Isolate _find_claude_cli from the host environment.
 
-    def test_returns_path_when_env_set_and_file_exists(self, tmp_path, monkeypatch):
+    Clears all env vars and well-known install locations the resolver checks,
+    and forces shutil.which to miss. Tests can opt back in by setting specific
+    inputs after the fixture runs.
+    """
+    for var in ("CLAUDE_REAL_BIN", "CLAUDE_CODE_EXECPATH"):
+        monkeypatch.delenv(var, raising=False)
+    # Point all Windows install-location env vars at empty dirs so the
+    # resolver's well-known candidates don't accidentally hit a real install.
+    empty_dir = tmp_path / "empty"
+    empty_dir.mkdir()
+    monkeypatch.setenv("APPDATA", str(empty_dir))
+    monkeypatch.setenv("LOCALAPPDATA", str(empty_dir))
+    monkeypatch.setenv("USERPROFILE", str(empty_dir))
+    monkeypatch.setenv("HOME", str(empty_dir))
+    monkeypatch.setattr(
+        "bootstrap_lib.marketplace_lifecycle.shutil.which",
+        lambda name: None,
+    )
+
+
+class TestFindClaudeCli:
+    """Tests for _find_claude_cli — env, PATH, and well-known location lookup."""
+
+    def test_returns_path_when_env_set_and_file_exists(self, tmp_path, monkeypatch, isolate_claude_lookup):
         fake_bin = tmp_path / "claude"
         fake_bin.write_text("#!/bin/sh\n")
         monkeypatch.setenv("CLAUDE_REAL_BIN", str(fake_bin))
         assert _find_claude_cli() == str(fake_bin)
 
-    def test_returns_none_when_env_not_set(self, monkeypatch):
-        monkeypatch.delenv("CLAUDE_REAL_BIN", raising=False)
+    def test_returns_none_when_env_not_set(self, isolate_claude_lookup):
         assert _find_claude_cli() is None
 
-    def test_returns_none_when_env_set_but_file_missing(self, tmp_path, monkeypatch):
+    def test_returns_none_when_env_set_but_file_missing(self, tmp_path, monkeypatch, isolate_claude_lookup):
         monkeypatch.setenv("CLAUDE_REAL_BIN", str(tmp_path / "nonexistent"))
         assert _find_claude_cli() is None
 
-    def test_returns_none_when_env_is_empty(self, monkeypatch):
+    def test_returns_none_when_env_is_empty(self, monkeypatch, isolate_claude_lookup):
         monkeypatch.setenv("CLAUDE_REAL_BIN", "")
         assert _find_claude_cli() is None
+
+    def test_falls_back_to_exec_path_env(self, tmp_path, monkeypatch, isolate_claude_lookup):
+        fake_bin = tmp_path / "claude.exe"
+        fake_bin.write_text("")
+        monkeypatch.setenv("CLAUDE_CODE_EXECPATH", str(fake_bin))
+        assert _find_claude_cli() == str(fake_bin)
+
+    def test_falls_back_to_shutil_which(self, tmp_path, monkeypatch, isolate_claude_lookup):
+        fake_bin = tmp_path / "claude"
+        fake_bin.write_text("")
+        monkeypatch.setattr(
+            "bootstrap_lib.marketplace_lifecycle.shutil.which",
+            lambda name: str(fake_bin) if name == "claude" else None,
+        )
+        assert _find_claude_cli() == str(fake_bin)
+
+    def test_falls_back_to_npm_global_bin_on_windows(self, tmp_path, monkeypatch, isolate_claude_lookup):
+        # Simulate Windows: APPDATA\npm\claude.cmd from `npm install -g`
+        monkeypatch.setattr(sys, "platform", "win32")
+        appdata = tmp_path / "appdata"
+        npm_dir = appdata / "npm"
+        npm_dir.mkdir(parents=True)
+        claude_cmd = npm_dir / "claude.cmd"
+        claude_cmd.write_text("@echo off\n")
+        monkeypatch.setenv("APPDATA", str(appdata))
+        assert _find_claude_cli() == str(claude_cmd)
+
+    def test_falls_back_to_native_installer_on_windows(self, tmp_path, monkeypatch, isolate_claude_lookup):
+        monkeypatch.setattr(sys, "platform", "win32")
+        localappdata = tmp_path / "localappdata"
+        prog_dir = localappdata / "Programs" / "claude"
+        prog_dir.mkdir(parents=True)
+        claude_exe = prog_dir / "claude.exe"
+        claude_exe.write_text("")
+        monkeypatch.setenv("LOCALAPPDATA", str(localappdata))
+        assert _find_claude_cli() == str(claude_exe)
+
+    def test_appends_extension_when_real_bin_missing_suffix_on_windows(self, tmp_path, monkeypatch, isolate_claude_lookup):
+        monkeypatch.setattr(sys, "platform", "win32")
+        claude_cmd = tmp_path / "claude.cmd"
+        claude_cmd.write_text("@echo off\n")
+        # Env var without the .cmd suffix — the resolver should still find it.
+        monkeypatch.setenv("CLAUDE_REAL_BIN", str(tmp_path / "claude"))
+        assert _find_claude_cli() == str(claude_cmd)
 
 
 class TestRunClaude:
     """Tests for _run_claude — CLI invocation via _find_claude_cli."""
 
-    def test_returns_failure_when_cli_not_found(self, monkeypatch):
-        monkeypatch.delenv("CLAUDE_REAL_BIN", raising=False)
+    def test_returns_failure_when_cli_not_found(self, isolate_claude_lookup):
         ok, stdout, stderr = _run_claude(["plugin", "list"])
         assert ok is False
         assert "claude CLI not found" in stderr
 
-    def test_invokes_binary_from_env(self, tmp_path, monkeypatch):
+    def test_invokes_binary_from_env(self, tmp_path, monkeypatch, isolate_claude_lookup):
         fake_bin = tmp_path / "claude"
         fake_bin.write_text("#!/bin/sh\n")
         monkeypatch.setenv("CLAUDE_REAL_BIN", str(fake_bin))
