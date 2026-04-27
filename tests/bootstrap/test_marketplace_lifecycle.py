@@ -47,6 +47,10 @@ def isolate_claude_lookup(tmp_path, monkeypatch):
         "bootstrap_lib.marketplace_lifecycle.shutil.which",
         lambda name: None,
     )
+    monkeypatch.setattr(
+        "bootstrap_lib.marketplace_lifecycle._query_system_shell_for_claude",
+        lambda is_windows: None,
+    )
 
 
 class TestFindClaudeCli:
