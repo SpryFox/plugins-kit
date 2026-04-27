@@ -97,3 +97,96 @@ class TestMergeJsonEntries:
         target = tmp_path / "target.json"
         result = merge_json_entries(str(tmp_path / "missing.json"), str(target), ["source"])
         assert result.passed is False
+
+    def test_preserve_fields_seed_defaults_for_new_entry(self, tmp_path):
+        """A reference value for a preserve_field becomes the default when the
+        target entry doesn't have it yet — required so freshly merged entries
+        pass downstream schema validators (e.g. claude CLI marketplace schema
+        requires installLocation/lastUpdated to be strings, not undefined)."""
+        ref = tmp_path / "ref.json"
+        target = tmp_path / "target.json"
+        ref.write_text(json.dumps({
+            "my-market": {
+                "source": {"source": "git", "url": "https://example.com"},
+                "autoUpdate": True,
+                "installLocation": "",
+                "lastUpdated": "",
+            }
+        }))
+        # Target file does not exist yet — entry will be created from scratch.
+
+        result = merge_json_entries(
+            str(ref), str(target),
+            merge_fields=["source", "autoUpdate"],
+            preserve_fields=["installLocation", "lastUpdated"],
+        )
+        assert result.passed is True
+
+        data = json.loads(target.read_text())
+        entry = data["my-market"]
+        assert entry["source"] == {"source": "git", "url": "https://example.com"}
+        assert entry["autoUpdate"] is True
+        assert entry["installLocation"] == ""
+        assert entry["lastUpdated"] == ""
+
+    def test_preserve_fields_keep_target_value_over_reference(self, tmp_path):
+        """When target already has a preserve_field, reference defaults must
+        not overwrite it."""
+        ref = tmp_path / "ref.json"
+        target = tmp_path / "target.json"
+        ref.write_text(json.dumps({
+            "my-market": {
+                "source": "local",
+                "installLocation": "",
+                "lastUpdated": "",
+            }
+        }))
+        target.write_text(json.dumps({
+            "my-market": {
+                "source": "remote",
+                "installLocation": "/real/path",
+                "lastUpdated": "2026-04-27",
+            }
+        }))
+
+        result = merge_json_entries(
+            str(ref), str(target),
+            merge_fields=["source"],
+            preserve_fields=["installLocation", "lastUpdated"],
+        )
+        assert result.passed is True
+
+        entry = json.loads(target.read_text())["my-market"]
+        assert entry["source"] == "local"
+        assert entry["installLocation"] == "/real/path"
+        assert entry["lastUpdated"] == "2026-04-27"
+
+    def test_preserve_fields_seed_defaults_for_partial_existing_entry(self, tmp_path):
+        """When target entry exists but is missing required preserve_fields
+        (e.g. user has the bad partial entry from older bootstrap), the next
+        merge backfills the defaults from reference."""
+        ref = tmp_path / "ref.json"
+        target = tmp_path / "target.json"
+        ref.write_text(json.dumps({
+            "my-market": {
+                "source": "local",
+                "autoUpdate": True,
+                "installLocation": "",
+                "lastUpdated": "",
+            }
+        }))
+        # Partial target — missing installLocation & lastUpdated entirely.
+        target.write_text(json.dumps({
+            "my-market": {"source": "local", "autoUpdate": True}
+        }))
+
+        result = merge_json_entries(
+            str(ref), str(target),
+            merge_fields=["source", "autoUpdate"],
+            preserve_fields=["installLocation", "lastUpdated"],
+        )
+        assert result.passed is True
+
+        entry = json.loads(target.read_text())["my-market"]
+        assert entry["installLocation"] == ""
+        assert entry["lastUpdated"] == ""

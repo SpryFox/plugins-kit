@@ -47,6 +47,8 @@ def check_json_entries(
             message="target file does not exist",
         )
 
+    preserve_fields = preserve_fields or []
+
     # Compare merge fields per entry (top-level keys are entry names,
     # merge_fields refer to sub-fields within each entry)
     for key, ref_entry in ref_data.items():
@@ -63,6 +65,16 @@ def check_json_entries(
                 return JsonCheckResult(
                     passed=False, target=target_path,
                     message=f"entry '{key}' field '{field}' differs",
+                )
+        # Reference can declare schema-required defaults for preserve_fields.
+        # If target lacks them, the entry is incomplete and merge must run to
+        # seed defaults — otherwise downstream consumers (e.g. claude CLI's
+        # marketplace schema) reject the partial entry.
+        for field in preserve_fields:
+            if field in ref_entry and field not in target_entry:
+                return JsonCheckResult(
+                    passed=False, target=target_path,
+                    message=f"entry '{key}' missing preserve field '{field}'",
                 )
 
     return JsonCheckResult(
@@ -113,8 +125,15 @@ def merge_json_entries(
             if field in ref_entry:
                 target_entry[field] = ref_entry[field]
 
-        # Preserve existing sub-fields that shouldn't be overwritten
-        # (already in target_entry — just don't touch them)
+        # preserve_fields: keep target's value if present; otherwise seed from
+        # reference. This lets the reference declare schema-required defaults
+        # (e.g. ``"installLocation": ""``) so a freshly merged entry passes
+        # downstream validators while still allowing later writers — the
+        # claude CLI's marketplace add, for example — to fill the real value
+        # without being overwritten on subsequent merges.
+        for field in preserve_fields:
+            if field not in target_entry and field in ref_entry:
+                target_entry[field] = ref_entry[field]
 
     # Write target
     target = Path(target_path)

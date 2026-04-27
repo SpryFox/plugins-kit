@@ -26,6 +26,36 @@ class VersionCheckResult(NamedTuple):
     message: str
 
 
+def _query_system_shell_for_claude(is_windows: bool) -> Optional[str]:
+    """Ask the OS shell directly where the claude binary lives.
+
+    This bypasses the inherited PATH (which can be stale in hook subshells —
+    e.g. git-bash launched from VS Code before `npm install -g` updated the
+    User PATH). On Windows we use PowerShell's Get-Command, which queries the
+    Machine+User PATH from the registry. On Unix we use a login bash, which
+    sources the user's profile.
+    """
+    try:
+        if is_windows:
+            result = subprocess.run(
+                ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+                 "$ErrorActionPreference='SilentlyContinue'; (Get-Command claude).Source"],
+                capture_output=True, text=True, timeout=10,
+            )
+        else:
+            result = subprocess.run(
+                ["bash", "-lc", "command -v claude"],
+                capture_output=True, text=True, timeout=10,
+            )
+        if result.returncode == 0:
+            path = result.stdout.strip().strip('"').strip("'")
+            if path and os.path.isfile(path):
+                return path
+    except (subprocess.SubprocessError, OSError, FileNotFoundError):
+        pass
+    return None
+
+
 def _find_claude_cli() -> Optional[str]:
     """Find the claude CLI binary.
 
@@ -33,11 +63,11 @@ def _find_claude_cli() -> Optional[str]:
       1. CLAUDE_REAL_BIN env var (set by Claude Code at runtime)
       2. CLAUDE_CODE_EXECPATH env var (alternative set by Claude Code)
       3. shutil.which("claude") on the current PATH
-      4. Well-known install locations (npm global bin, native installer dirs,
-         ~/.local/bin) — needed on Windows because git-bash inherits the
-         bash PATH and does not see entries added to the Windows User PATH
-         after the shell launched (e.g. `%APPDATA%\\npm` from
-         `npm install -g @anthropic-ai/claude-code`).
+      4. System shell query (PowerShell on Windows, login bash on Unix) —
+         sees the real User+Machine PATH even when our process inherited a
+         stale one (e.g. git-bash hook launched before `npm install -g`
+         updated the Windows User PATH).
+      5. Well-known install locations as a final fallback.
     """
     is_windows = sys.platform == "win32" or "MSYSTEM" in os.environ
 
@@ -59,6 +89,10 @@ def _find_claude_cli() -> Optional[str]:
     path = shutil.which("claude")
     if path:
         return path
+
+    discovered = _query_system_shell_for_claude(is_windows)
+    if discovered:
+        return discovered
 
     candidates = []
     if is_windows:
