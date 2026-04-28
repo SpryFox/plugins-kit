@@ -127,7 +127,7 @@ PATTERN_SKILL_SCHEMA = {
 }
 
 
-_TECHNIQUE_AUTO_STEP = {"keys": {
+_TECHNIQUE_STEP = {"keys": {
     "n": {"type": "int", "required": True},
     "action": {"type": "string", "required": True},
     "tool": {"type": "string", "required": False},
@@ -136,14 +136,18 @@ _TECHNIQUE_AUTO_STEP = {"keys": {
     "on_failure": {"type": "string", "required": False},
 }}
 
-TECHNIQUE_SKILL_SCHEMA_AUTO = {
+# Single unified technique_skill schema. Each technique must have steps OR
+# output_template (both is allowed). User-only skills typically use
+# output_template; complex slash-command skills with real procedures use
+# steps. The validator enforces "at least one" via a custom rule.
+TECHNIQUE_SKILL_SCHEMA = {
     "root": "technique_skill",
     "keys": {
         "_schema_version": {"type": "string", "required": False},
         "identity": IDENTITY_RULE,
         "scope": SCOPE_RULE,
         "trigger_model": {"type": "string", "required": False,
-                          "note": "auto variant: trigger_model not required (or set to 'auto'); user-only variant: 'user-only'"},
+                          "note": "'auto' (default) or 'user-only'"},
         "techniques": {
             "type": "list",
             "required": True,
@@ -155,7 +159,15 @@ TECHNIQUE_SKILL_SCHEMA_AUTO = {
                     "keywords": KEYWORDS_RULE,
                     "goal": {"type": "string", "required": True},
                     "preconditions": {"type": "list", "required": False},
-                    "steps": {"type": "list", "required": True, "min_len": 1, "items": _TECHNIQUE_AUTO_STEP},
+                    "steps": {"type": "list", "required": False, "min_len": 1, "items": _TECHNIQUE_STEP,
+                              "note": "required IF output_template is absent (procedure-as-body)"},
+                    "output_template": {"type": "string", "required": False,
+                                        "note": "required IF steps are absent (output-template-as-body)"},
+                    "arguments": {"type": "list", "required": False, "items": {"keys": {
+                        "name": {"type": "string", "required": True},
+                        "required": {"type": "bool", "required": True},
+                        "description": {"type": "string", "required": True},
+                    }}},
                     "gotchas": {"type": "list", "required": True, "min_len": 1},
                     "validator": {"type": "dict", "required": False, "keys": {
                         "type": {"type": "string", "required": True},
@@ -168,41 +180,12 @@ TECHNIQUE_SKILL_SCHEMA_AUTO = {
     },
     "forbidden_keys": ["rules", "counters", "facts", "patterns",
                        "apply_when", "do_not_apply_when", "members", "index"],
+    "techniques_must_have_body": True,  # custom rule: each technique needs steps OR output_template
 }
 
-TECHNIQUE_SKILL_SCHEMA_USER_ONLY = {
-    "root": "technique_skill",
-    "keys": {
-        "_schema_version": {"type": "string", "required": False},
-        "identity": IDENTITY_RULE,
-        "scope": SCOPE_RULE,
-        "trigger_model": {"type": "string", "required": True,
-                          "note": "user-only variant: must be 'user-only' literally"},
-        "techniques": {
-            "type": "list",
-            "required": True,
-            "min_len": 1,
-            "items": {
-                "keys": {
-                    "id": {"type": "string", "required": True},
-                    "name": {"type": "string", "required": True},
-                    "keywords": KEYWORDS_RULE,
-                    "goal": {"type": "string", "required": True},
-                    "output_template": {"type": "string", "required": True,
-                                        "note": "user-only: technique IS the slash-command output"},
-                    "arguments": {"type": "list", "required": False, "items": {"keys": {
-                        "name": {"type": "string", "required": True},
-                        "required": {"type": "bool", "required": True},
-                        "description": {"type": "string", "required": True},
-                    }}},
-                    "gotchas": {"type": "list", "required": True, "min_len": 1},
-                },
-            },
-        },
-    },
-    "forbidden_keys": ["rules", "counters", "facts", "patterns",
-                       "apply_when", "do_not_apply_when", "members", "index"],
-}
+# Backwards-compat aliases (the old variant names still resolve)
+TECHNIQUE_SKILL_SCHEMA_AUTO = TECHNIQUE_SKILL_SCHEMA
+TECHNIQUE_SKILL_SCHEMA_USER_ONLY = TECHNIQUE_SKILL_SCHEMA
 
 
 DISCIPLINE_SKILL_SCHEMA = {
@@ -507,5 +490,19 @@ def validate(yaml_data: dict, schema: dict) -> tuple[list, list]:
             isinstance(f, dict) and f.get("example") for f in facts
         ):
             fails.append((f"{root}.facts[*].example", "at least one fact must carry example"))
+
+    if schema.get("techniques_must_have_body"):
+        techniques = block.get("techniques", [])
+        if isinstance(techniques, list):
+            for i, t in enumerate(techniques):
+                if not isinstance(t, dict):
+                    continue
+                has_steps = isinstance(t.get("steps"), list) and len(t["steps"]) > 0
+                has_template = isinstance(t.get("output_template"), str) and t["output_template"].strip()
+                if not (has_steps or has_template):
+                    fails.append((
+                        f"{root}.techniques[{i}]",
+                        "technique must have either steps[] (procedure body) or output_template (output body)",
+                    ))
 
     return fails, checked
