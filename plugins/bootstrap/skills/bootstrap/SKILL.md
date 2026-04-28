@@ -128,6 +128,14 @@ Project-level `.claude/bootstrap.json`:
 
 Layered configs are merged before plugin `bootstrap.json` files are processed.
 
+## Gotchas
+
+- **Healthy bootstrap is invisible.** No output on session start means everything checked clean -- not that bootstrap is broken. Verify by checking each plugin's log at `~/.claude/plugins/data/<marketplace>/<plugin>/bootstrap.log`. If the log doesn't exist, bootstrap never reached that plugin.
+- **`bootstrap.local.json` files are gitignored.** Per-machine overrides won't propagate to teammates; don't put shared config there.
+- **Layer order matters.** Higher-priority layers win on conflict; arrays union by identity key, objects deep-merge, scalars override. A user-level entry can be silently shadowed by a project-level entry with the same identity.
+- **Autodetect runs before required-field validation.** A plugin's autodetect script can fill required fields silently; if autodetect partially succeeds, the remaining fields surface as fix-all items.
+- **`fix-all` re-runs the engine.** The remediation flow ends with bootstrap re-running to verify resolution; if the user types `fix-all` and the issues persist, the cause is likely outside the engine's known remediation paths.
+
 ```yaml
 conditional_loading:
   engine_keywords:
