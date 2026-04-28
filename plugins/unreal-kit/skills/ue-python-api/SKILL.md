@@ -1,10 +1,17 @@
 ---
 _schema_version: 1
 name: ue-python-api
-description: Enables reading, writing, and understanding unreal data and communicating with the unreal editor by reading/writing/creating/executing python scripts that use the unreal python api
+skill-type: domain-skill
+description: Use when reading, writing, or extracting Unreal Editor data via Python. Do NOT use for blueprint edits or non-Python Editor work.
 ---
 
 # Unreal Engine Python API
+
+Unreal Engine Python API automation is the discipline of reading, writing, and extracting Unreal Editor data via Python scripts that work with or without the Editor open. This domain owns the runner, stubs, patterns, and reference set for that work.
+
+## Companion declaration
+
+No siblings within plugins-kit.
 
 ## Purpose
 

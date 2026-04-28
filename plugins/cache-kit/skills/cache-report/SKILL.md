@@ -1,6 +1,7 @@
 ---
 name: cache-report
-description: Show cache hit rate and token usage for the current or a specified session. Use when the user asks about cache usage, cache hit rate, token costs, or prompt caching stats.
+skill-type: technique-skill
+description: Use when the user asks about cache hit rate, token usage, or prompt-caching stats. Do NOT use for runtime cache configuration.
 ---
 
 ## Instructions

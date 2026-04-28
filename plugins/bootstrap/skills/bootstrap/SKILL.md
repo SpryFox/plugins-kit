@@ -1,7 +1,8 @@
 ---
 _schema_version: 1
 name: bootstrap
-description: How the bootstrap plugin manages user and project dependencies, and how to interpret SessionStart bootstrap messages
+skill-type: reference-skill
+description: Use when interpreting SessionStart bootstrap messages or configuring user/project dependency manifests. Do NOT use for non-bootstrap debugging.
 ---
 
 ## Skill Purpose

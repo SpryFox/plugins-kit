@@ -1,7 +1,8 @@
 ---
 _schema_version: 1
 name: test-greeting
-description: Generate a personalized greeting using test-plugin configuration
+skill-type: technique-skill
+description: Use when the user invokes /test-greeting to verify bootstrap config setup. Do NOT use for production work; this is a test fixture.
 ---
 
 # Test Greeting
