@@ -176,6 +176,8 @@ uv lock --upgrade-package bootstrap
 ```
 Then bump update06's own version in both `plugin.json` and `marketplace.json`, commit, and push.
 
+**Always close the loop.** A bootstrap publish is not done until update06 is also bumped, locked against the new bootstrap commit, committed, and pushed. Do not defer the update06 step to "next time" — silent divergence between plugins-kit and update06 defeats the chicken-and-egg fix that update06 exists to provide. If you publish a bootstrap fix in plugins-kit, finish the update06 work in the same session.
+
 **Keep architecture docs current** — when modifying bootstrap behavior, update the bootstrap skill references (`plugins/bootstrap/skills/bootstrap/references/`) to reflect the changes. These are the source of truth for how the system works.
 
 **Anti-pattern: silent bootstrap operations.** Every bootstrap check must log its outcome — `ok_entries` when passing (verbose-only), `action_entries` when remediating (always visible). Adding a check that creates files, clones repos, or writes config without emitting a log entry is a bug. See the "Every check must log its outcome" principle in [engine-internals.md](plugins/bootstrap/skills/bootstrap/references/engine-internals.md).
