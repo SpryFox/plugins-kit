@@ -8,167 +8,169 @@ disable-model-invocation: true
 
 # Local Code Review
 
-Run a multi-agent code review of a Perforce changelist directly in conversation. Three Claude subagents review the diff in parallel; each flagged issue is then validated by an independent subagent to suppress false positives. Results are rendered as markdown — no persistence to disk.
+Run a multi-agent code review of a Perforce changelist directly in conversation. Three Claude subagents review the diff in parallel; each flagged issue is then validated by an independent subagent to suppress false positives. Results are rendered as markdown -- no persistence to disk.
 
-## Agent assumptions (apply to all subagents you launch)
+```yaml
+technique_skill:
+  _schema_version: "1"
+  trigger_model: user-only
+  identity: Run a multi-agent code review of a Perforce changelist using parallel Claude subagents.
+  scope:
+    covers:
+      - reviewing pending Perforce changelists by CL number
+      - CLAUDE.md compliance audits in a P4 workspace
+      - bug audits scoped to introduced code
+    excludes:
+      - git diffs and non-Perforce review workflows
+      - persisting review output to disk or Swarm
+      - reviewing previously-submitted changelists
+  techniques:
+    - id: full_review
+      name: Full multi-agent review
+      keywords: [code review, perforce review, CL review, multi-agent review, claude.md compliance, parallel reviewers, p4 review]
+      goal: Produce a markdown summary of confirmed issues for one pending Perforce CL.
+      preconditions:
+        - User has at least one pending CL OR has passed a CL number argument.
+      steps:
+        - n: 1
+          action: Resolve the CL number (from argument, else list pending CLs and prompt the user).
+          tool: p4
+          input: "p4 -ztag changes -s pending -u $(p4 set -q P4USER | cut -d= -f2) -m 20"
+          expected: A single integer CL number confirmed by the user.
+        - n: 2
+          action: Run prepare_review.py to fetch the diff (with shelved fallback) and map ancestor CLAUDE.md files for each changed file.
+          tool: ${CLAUDE_PLUGIN_ROOT}/scripts/prepare_review.py
+          input: "<CL>"
+          expected: JSON with cl, description, diff, changed_files, unique_claude_mds.
+          on_failure: Surface the stderr message to the user and stop. No retry.
+        - n: 3
+          action: Read every CLAUDE.md path in unique_claude_mds. Subagents do not need to re-read.
+          tool: Read
+        - n: 4
+          action: Launch three reviewer subagents in parallel via a single message with three Agent tool calls.
+          tool: Agent
+          expected: Three JSON arrays of candidate issues from reviewers A, B, C.
+        - n: 5
+          action: Launch one validator subagent per candidate issue, all in parallel via a single message.
+          tool: Agent
+          expected: CONFIRMED or REJECTED per issue.
+        - n: 6
+          action: Drop rejected issues silently (do not report rejected issues to the user).
+        - n: 7
+          action: Render the markdown review grouped by file.
+      checklist:
+        - CL number resolved
+        - Context bundled via prepare_review.py
+        - All CLAUDE.md files read
+        - Reviewers launched in parallel (single message, three Agent calls)
+        - Validators launched in parallel (single message, N Agent calls)
+        - Filtered to confirmed-only
+        - Markdown rendered to chat
+      gotchas:
+        - Always quote the exact CLAUDE.md rule text when flagging a claude_md issue. If you cannot quote it verbatim, do not flag it.
+        - Sequential reviewer or validator calls waste time. Reviewers run in one message with three concurrent Agent calls. Validators run in one message with N concurrent Agent calls.
+        - Render only -- this skill outputs in chat. There is no Swarm comment, PR comment, or disk write step.
+        - If prepare_review.py fails, report the error and stop. No retry.
+        - Validators are independent of reviewers. The validator does not see who flagged the issue.
+  narration:
+    note: Reviews involve long silent stretches (batched file reads, parallel subagents that take 30s+). Post one short status line per step using these templates verbatim, filling in the bracketed counts. Do not paraphrase, omit, or add extras.
+    templates:
+      - when: "Before step 1 (only if no CL arg was passed)"
+        template: "Listing your pending changelists."
+      - when: "Before step 2"
+        template: "Gathering context for CL <CL>: fetching diff and mapping CLAUDE.md scopes."
+      - when: "After step 2, before step 3 (M >= 1)"
+        template: "Got <N> changed file(s) and <M> unique CLAUDE.md scope(s). Reading them now."
+      - when: "After step 2, before step 4 (M = 0)"
+        template: "Got <N> changed file(s); no CLAUDE.md scopes apply. Skipping to reviewers."
+      - when: "Before step 4"
+        template: "Launching 3 reviewers in parallel: sonnet CLAUDE.md compliance, opus diff-only bugs, opus introduced-code."
+      - when: "After step 4, before step 5 (X >= 1)"
+        template: "Reviewers returned <X> candidate issue(s) (<B> bug, <C> CLAUDE.md). Launching <X> validator(s) in parallel."
+      - when: "After step 4 (X = 0)"
+        template: "Reviewers found no issues. Skipping validation."
+      - when: "After step 5, before step 7"
+        template: "Validators confirmed <Y> of <X>. Rendering review."
+    variables:
+      "<CL>": "the changelist number"
+      "<N>": "len(bundle.changed_files)"
+      "<M>": "len(bundle.unique_claude_mds)"
+      "<X>": "total candidate issues from all three reviewers combined"
+      "<B>": "count where reason == 'bug'"
+      "<C>": "count where reason == 'claude_md'"
+      "<Y>": "count of validators returning CONFIRMED"
+  subagents:
+    - name: reviewer_a_claude_md_compliance
+      model: sonnet
+      subagent_type: general-purpose
+      scope: CLAUDE.md compliance only
+      input: "full diff + per-file CLAUDE.md mapping with full text of each CLAUDE.md (read in step 3)"
+      restrictions:
+        - "Only consider CLAUDE.md files that share a path with the file being reviewed (use the per-file mapping; do not cross-apply)."
+    - name: reviewer_b_diff_only_bugs
+      model: opus
+      subagent_type: general-purpose
+      scope: obvious bugs visible in the diff alone
+      input: "diff and CL description only"
+      restrictions:
+        - "MUST NOT use Read or any other tool to look beyond the diff."
+        - "Only flag won't-compile, syntax/type errors, missing imports, unresolved references, definitely-wrong logic regardless of inputs."
+    - name: reviewer_c_introduced_code
+      model: opus
+      subagent_type: general-purpose
+      scope: bugs/security/logic problems in the introduced code that need broader context
+      input: "diff, CL description, list of local file paths"
+      restrictions:
+        - "MAY use Read to look at surrounding context in the changed files when needed."
+        - "Examples: concurrency issues, lifetime bugs, security holes."
+    - name: validator
+      model_per_issue:
+        bug: opus
+        claude_md: sonnet
+      subagent_type: general-purpose
+      scope: confirm or reject one candidate issue with high confidence
+      input: "the issue (JSON), the full diff, [if claude_md: relevant CLAUDE.md contents]"
+      output_format: "exactly one line: 'CONFIRMED: <one-sentence reason>' or 'REJECTED: <one-sentence reason>'"
+      restrictions:
+        - "Validator does not see who flagged the issue. Independence is the value."
+  false_positive_guardrails:
+    only_flag:
+      - "code that will fail to compile or parse (syntax errors, type errors, missing imports, unresolved references)"
+      - "code that will definitely produce wrong results regardless of inputs (clear logic errors)"
+      - "a CLAUDE.md rule clearly and unambiguously violated, with the exact rule quotable"
+    do_not_flag:
+      - "code style or quality concerns"
+      - "potential issues that depend on specific inputs or state"
+      - "subjective suggestions or improvements"
+      - "pre-existing issues (only review the diff)"
+      - "anything a linter would catch (do not run a linter)"
+      - "issues that appear in CLAUDE.md but are explicitly silenced in the code (e.g. lint-ignore comments)"
+    rule: "If you are not certain an issue is real, do not flag it. False positives erode trust."
+  agent_assumptions:
+    - "All tools are functional. Do not test tools or make exploratory calls."
+    - "Only call a tool if it is required to complete the task."
+  issue_format:
+    description: "JSON shape returned by reviewer subagents and accepted by validators."
+    schema: |
+      [{
+        "file": "<depot or local path>",
+        "lines": "<line range, e.g. 42 or 42-48>",
+        "reason": "bug" | "claude_md",
+        "description": "<one-sentence explanation>",
+        "citation": "<exact rule quote, only for claude_md issues>"
+      }]
+  output_format:
+    description: "Final markdown rendered to chat, grouped by file."
+    template: |
+      ## Review: CL <CL> -- <description>
 
-- All tools are functional. Do not test tools or make exploratory calls.
-- Only call a tool if it is required to complete the task.
+      Found N issues (M filtered as false positives).
 
-## Narration (user-facing) — REQUIRED, use the exact templates below
+      ### path/to/file.cpp
+      - **[bug]** L42: Buffer overflow risk -- `items[i]` accessed without bounds check.
+      - **[claude_md]** L78: Violates `src/CLAUDE.md` rule "Use absl::Status not bool returns".
+    empty_template: |
+      ## Review: CL <CL> -- <description>
 
-Reviews involve long silent stretches (batched file reads, parallel subagents that take 30s+). The user must be able to follow along. Post one short status line per step using these templates verbatim, filling in the bracketed counts. Do not paraphrase, omit, or add extras.
-
-| When | Template |
-|------|----------|
-| Before step 1 (only if no CL arg was passed) | `Listing your pending changelists.` |
-| Before step 2 | `Gathering context for CL <CL>: fetching diff and mapping CLAUDE.md scopes.` |
-| After step 2, before step 3 (M ≥ 1) | `Got <N> changed file(s) and <M> unique CLAUDE.md scope(s). Reading them now.` |
-| After step 2, before step 4 (M = 0) | `Got <N> changed file(s); no CLAUDE.md scopes apply. Skipping to reviewers.` |
-| Before step 4 | `Launching 3 reviewers in parallel: sonnet CLAUDE.md compliance, opus diff-only bugs, opus introduced-code.` |
-| After step 4, before step 5 (X ≥ 1) | `Reviewers returned <X> candidate issue(s) (<B> bug, <C> CLAUDE.md). Launching <X> validator(s) in parallel.` |
-| After step 4 (X = 0) | `Reviewers found no issues. Skipping validation.` Then go straight to step 7. |
-| After step 5, before step 7 | `Validators confirmed <Y> of <X>. Rendering review.` |
-
-Variables:
-- `<CL>` — the changelist number
-- `<N>` — `len(bundle.changed_files)`
-- `<M>` — `len(bundle.unique_claude_mds)`
-- `<X>` — total candidate issues from all three reviewers combined
-- `<B>` — count where `reason == "bug"`
-- `<C>` — count where `reason == "claude_md"`
-- `<Y>` — count of validators returning `CONFIRMED`
-
-No additional narration between sub-steps. The final markdown review (step 7) is the user-facing output and stands on its own.
-
-## Pipeline
-
-Follow these steps precisely.
-
-### 1. Resolve the changelist
-
-If the user invoked the skill with a CL number argument, use it. Otherwise, list the user's pending CLs and ask them to pick one:
-
-```bash
-p4 -ztag changes -s pending -u "$(p4 set -q P4USER | cut -d= -f2)" -m 20
+      No issues found. Reviewed for bugs and CLAUDE.md compliance.
 ```
-
-Render the list as a small table (CL, description). Wait for the user's choice.
-
-### 2. Gather context (deterministic, scripted)
-
-Run the bundling script — it fetches the diff (with shelved fallback), parses the changed files, resolves them to local workspace paths, and walks each file's parent directories collecting any ancestor `CLAUDE.md` files:
-
-```bash
-uv run --no-project python "${CLAUDE_PLUGIN_ROOT}/scripts/prepare_review.py" <CL>
-```
-
-The script outputs JSON with this shape:
-
-```json
-{
-  "cl": "143376",
-  "description": "Fix inventory overflow",
-  "diff": "==== //depot/.../foo.cpp#3 ...\n@@ -10,5 +10,6 @@ ...",
-  "changed_files": [
-    {"depot": "//depot/.../foo.cpp", "local": "C:\\ws\\foo.cpp",
-     "claude_mds": ["C:\\ws\\src\\CLAUDE.md", "C:\\ws\\CLAUDE.md"]}
-  ],
-  "unique_claude_mds": ["C:\\ws\\src\\CLAUDE.md", "C:\\ws\\CLAUDE.md"]
-}
-```
-
-If the script exits non-zero, surface the stderr message to the user and stop.
-
-### 3. Read CLAUDE.md files
-
-Use the `Read` tool on each path in `unique_claude_mds`. You will pass their full contents to the CLAUDE.md compliance reviewer in step 4. Do this once — subagents do not need to re-read.
-
-### 4. Launch reviewer subagents (3 in parallel)
-
-Send a single message with **three** `Agent` tool calls, all `subagent_type: general-purpose`, with the model overrides below. Each agent's prompt must be self-contained — include the diff, the CL description, and the relevant context. Each agent must return a JSON array of issues with this shape:
-
-```json
-[{"file": "<depot or local path>", "lines": "<line range, e.g. 42 or 42-48>",
-  "reason": "bug" | "claude_md", "description": "<one-sentence explanation>",
-  "citation": "<exact rule quote, only for claude_md issues>"}]
-```
-
-#### Reviewer A — CLAUDE.md compliance (`model: sonnet`)
-
-Pass the full diff plus the per-file CLAUDE.md mapping with full text of each CLAUDE.md (you have these from step 3). Tell the agent: only consider CLAUDE.md files that share a path with the file being reviewed (use the per-file mapping, do not cross-apply).
-
-#### Reviewer B — Diff-only bug audit (`model: opus`)
-
-Pass only the diff and CL description. The agent must NOT use `Read` or any other tool to look beyond the diff. Scope: obvious bugs visible in the diff alone — won't-compile, syntax/type errors, missing imports, unresolved references, definitely-wrong logic regardless of inputs.
-
-#### Reviewer C — Introduced-code audit (`model: opus`)
-
-Pass the diff and CL description, plus the list of local file paths. The agent MAY use `Read` to look at surrounding context in the changed files when needed. Scope: bugs/security/logic problems in the introduced code that need broader context to identify (e.g. concurrency issues, lifetime bugs, security holes).
-
-#### False-positive guardrails (include in every reviewer prompt)
-
-Only flag issues where:
-- The code will fail to compile or parse (syntax errors, type errors, missing imports, unresolved references).
-- The code will definitely produce wrong results regardless of inputs (clear logic errors).
-- A CLAUDE.md rule is clearly and unambiguously violated, and you can quote the exact rule.
-
-Do NOT flag:
-- Code style or quality concerns.
-- Potential issues that depend on specific inputs or state.
-- Subjective suggestions or improvements.
-- Pre-existing issues (only review the diff).
-- Anything a linter would catch (do not run a linter).
-- Issues that appear in CLAUDE.md but are explicitly silenced in the code (e.g. lint-ignore comments).
-
-If you are not certain an issue is real, do not flag it. False positives erode trust.
-
-### 5. Validate every flagged issue (parallel subagents)
-
-Collect the issues returned by reviewers A, B, and C into one combined list. For each issue, launch one validator subagent in parallel.
-
-- **Bug issues** (`reason: "bug"`) → `model: opus`
-- **CLAUDE.md issues** (`reason: "claude_md"`) → `model: sonnet`
-
-Each validator's prompt:
-
-> A reviewer flagged the following issue on Perforce CL `<CL>` (`<description>`). Validate whether this is a real issue with high confidence. For bugs: examine the cited diff lines (and surrounding code via `Read` if needed). For CLAUDE.md issues: confirm the cited rule is in scope for the file and is actually violated by the change. Reply with exactly one line: `CONFIRMED: <one-sentence reason>` or `REJECTED: <one-sentence reason>`.
->
-> Issue: `<JSON of the issue>`
-> Diff: `<full diff>`
-> [If CLAUDE.md issue: include relevant CLAUDE.md contents]
-
-The validator does not see who flagged the issue — independence is the value.
-
-### 6. Filter
-
-Keep only issues whose validator returned `CONFIRMED`. Drop the rest silently (do not report rejected issues to the user — that erodes signal).
-
-### 7. Render the review
-
-Output one markdown summary in chat. Group issues by file. Use this format:
-
-```
-## Review: CL <CL> — <description>
-
-Found N issues (M filtered as false positives).
-
-### path/to/file.cpp
-- **[bug]** L42: Buffer overflow risk — `items[i]` accessed without bounds check.
-- **[claude_md]** L78: Violates `src/CLAUDE.md` rule "Use absl::Status not bool returns".
-```
-
-If 0 issues survive validation:
-
-```
-## Review: CL <CL> — <description>
-
-No issues found. Reviewed for bugs and CLAUDE.md compliance.
-```
-
-## Notes
-
-- **Render only.** This skill outputs results in chat — there is no Swarm comment, PR comment, or disk write step.
-- **No retries.** If `prepare_review.py` fails, report the error and stop.
-- **Parallelism matters.** Reviewer agents (step 4) run in one message with three concurrent `Agent` calls. Validators (step 5) run in one message with N concurrent `Agent` calls. Sequential calls waste time.
-- **Quoting.** Always quote the exact CLAUDE.md rule text when flagging a `claude_md` issue. If you cannot quote it verbatim, do not flag it.
