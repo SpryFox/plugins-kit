@@ -8,17 +8,40 @@ disable-model-invocation: true
 
 # Test Greeting
 
-## Purpose
+A bootstrap-config test fixture. Reads two values from
+`~/.claude/plugins/data/test-plugin/config.yaml` and renders a one-line
+greeting.
 
-Demonstrate consuming plugin configuration by generating a personalized greeting.
+```yaml
+technique_skill:
+  _schema_version: "1"
+  trigger_model: user-only
+  identity: Test fixture for verifying bootstrap config setup; produces a personalized greeting.
+  scope:
+    covers:
+      - verifying that bootstrap config setup works end-to-end
+      - the /test-greeting slash command
+    excludes:
+      - production work; this is a test fixture
+  techniques:
+    - id: greet
+      name: Personalized greeting
+      keywords: [test greeting, bootstrap config test, hello world skill, plugin config demo, test-greeting slash command]
+      goal: Read GREETING_NAME and FAVORITE_COLOR from the config file and render a one-line greeting.
+      arguments:
+        - name: GREETING_NAME
+          required: true
+          description: Sourced from ~/.claude/plugins/data/test-plugin/config.yaml.
+        - name: FAVORITE_COLOR
+          required: true
+          description: Sourced from ~/.claude/plugins/data/test-plugin/config.yaml.
+      output_template: |
+        Hello, {GREETING_NAME}! Your favorite color is {FAVORITE_COLOR}.
+      gotchas:
+        - If the config file is missing or incomplete, the bootstrap engine creates it with defaults on the next session start. Tell the user to restart their session in that case; do not improvise values.
+```
 
-## Usage
-
-Read the config file at `~/.claude/plugins/data/test-plugin/config.yaml` and produce:
-
-> Hello, {GREETING_NAME}! Your favorite color is {FAVORITE_COLOR}.
-
-## Config Format
+## Config format reference
 
 The config file is simple `KEY: "value"` YAML:
 
@@ -26,7 +49,3 @@ The config file is simple `KEY: "value"` YAML:
 GREETING_NAME: "Alice"
 FAVORITE_COLOR: "green"
 ```
-
-## If Config Is Missing
-
-If `~/.claude/plugins/data/test-plugin/config.yaml` does not exist or is incomplete, the bootstrap engine will create it automatically with default values on the next session start.
