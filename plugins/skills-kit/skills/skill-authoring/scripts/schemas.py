@@ -73,6 +73,12 @@ REFERENCE_SKILL_SCHEMA = {
             "keywords": KEYWORDS_RULE,
             "fact_ids": {"type": "list", "required": True, "min_len": 1},
         }}},
+        "references": {"type": "list", "required": False, "items": {"keys": {
+            "id": {"type": "string", "required": True},
+            "path": {"type": "string", "required": True},
+            "keywords": KEYWORDS_RULE,
+            "summary": {"type": "string", "required": True},
+        }}},
     },
     "facts_must_include_gotcha": True,
     "facts_must_include_example": True,
