@@ -43,6 +43,65 @@ from _shared import (
     strip_code_fences,
 )
 
+from schemas import (
+    SCHEMAS_BY_ROOT,
+    detect_mixed_type_yaml,
+    resolve_schema,
+    validate,
+)
+
+try:
+    import yaml as _pyyaml
+    HAVE_YAML = True
+except ImportError:
+    _pyyaml = None
+    HAVE_YAML = False
+
+
+_YAML_BLOCK_RE = re.compile(r"^```ya?ml\s*\n(.*?)^```", re.MULTILINE | re.DOTALL)
+
+
+CONTRACT_ROOT_KEYS = (
+    "reference_skill",
+    "pattern_skill",
+    "technique_skill",
+    "discipline_skill",
+    "domain_skill",
+    "claude_md",
+)
+
+
+def extract_yaml_contract(body_text: str) -> tuple[dict | None, str, str | None]:
+    """Find the first fenced yaml block whose content parses as a contract block.
+
+    Returns (parsed_dict, error_msg, detected_root). When pyyaml is available and
+    parsing succeeds, returns (data, "", root_key). When pyyaml is missing but a
+    contract block is detected by regex, returns (None, "no-yaml-parser",
+    detected_root) -- the audit knows a contract is staged but can't validate.
+    When no contract block is present at all, returns (None, "no-contract-yaml-block", None).
+    """
+    detected_root: str | None = None
+    if HAVE_YAML:
+        for m in _YAML_BLOCK_RE.finditer(body_text):
+            text = m.group(1)
+            try:
+                data = _pyyaml.safe_load(text)
+            except Exception:
+                continue
+            if isinstance(data, dict):
+                for key in CONTRACT_ROOT_KEYS:
+                    if key in data:
+                        return data, "", key
+        return None, "no-contract-yaml-block", None
+
+    # pyyaml missing -- detect a contract root key by regex inside any yaml fence
+    for m in _YAML_BLOCK_RE.finditer(body_text):
+        text = m.group(1)
+        for key in CONTRACT_ROOT_KEYS:
+            if re.search(rf"^{key}\s*:", text, re.MULTILINE):
+                return None, "no-yaml-parser", key
+    return None, "no-yaml-parser-no-block", None
+
 
 RESERVED_NAMES = {"anthropic", "claude"}
 
@@ -366,6 +425,39 @@ TYPE_RUNNERS = {
 }
 
 
+def check_yaml_contract(yaml_data: dict) -> tuple[list[CheckResult], str | None]:
+    """Validate the YAML block against the appropriate schema.
+
+    Returns (results, root_key). results is a list of CheckResult rows; root_key
+    is the resolved type root (or None if no contract block recognized).
+    """
+    results: list[CheckResult] = []
+
+    roots_present = detect_mixed_type_yaml(yaml_data)
+    if len(roots_present) > 1:
+        results.append(CheckResult(
+            "yaml: single root key",
+            FAIL,
+            f"multiple type roots present (mixed-type drift): {roots_present}",
+        ))
+
+    root_key, schema = resolve_schema(yaml_data)
+    if schema is None:
+        results.append(CheckResult("yaml: recognized root key", FAIL, "no canonical-type root key found"))
+        return results, None
+
+    results.append(CheckResult(f"yaml: root key '{root_key}'", PASS))
+
+    fails, _checked = validate(yaml_data, schema)
+    if not fails:
+        results.append(CheckResult("yaml: schema validation", PASS, "all required keys present, all rules satisfied"))
+    else:
+        for path, msg in fails:
+            results.append(CheckResult(f"yaml: {path}", FAIL, msg))
+
+    return results, root_key
+
+
 def audit(skill_md_path: Path) -> dict[str, Any]:
     if not skill_md_path.exists():
         return {"error": f"file not found: {skill_md_path}"}
@@ -377,27 +469,74 @@ def audit(skill_md_path: Path) -> dict[str, Any]:
 
     universal = check_universal(fm, body, skill_dir)
     declared_type = fm.fields.get("skill-type") if fm else None
+
+    yaml_data, yaml_err, detected_root = extract_yaml_contract(body.text)
+    yaml_results: list[CheckResult] = []
+    yaml_root: str | None = None
+    contract_staged = yaml_data is not None or detected_root is not None
+
+    if yaml_data is not None:
+        yaml_results, yaml_root = check_yaml_contract(yaml_data)
+    elif yaml_err == "no-yaml-parser":
+        yaml_root = detected_root
+        yaml_results.append(CheckResult(
+            f"yaml: contract block detected (root='{detected_root}')",
+            JUDGMENT,
+            "pyyaml not installed; YAML contract validation unavailable. Skill is staged for YAML validation; install pyyaml to validate.",
+        ))
+    elif yaml_err == "no-yaml-parser-no-block":
+        yaml_results.append(CheckResult(
+            "yaml: parser available + contract block",
+            JUDGMENT,
+            "pyyaml not installed AND no yaml contract block found; falling back to legacy markdown heuristics",
+        ))
+    else:
+        yaml_results.append(CheckResult(
+            "yaml: contract block",
+            JUDGMENT,
+            "no fenced yaml contract block with a recognized root key; falling back to legacy markdown heuristics",
+        ))
+
     type_specific: list[CheckResult] = []
-    if declared_type in TYPE_RUNNERS:
+    if not contract_staged and declared_type in TYPE_RUNNERS:
         if declared_type == "technique-skill":
             type_specific = check_technique_skill(body, skill_dir, fm)
         else:
             type_specific = TYPE_RUNNERS[declared_type](body, skill_dir)
 
-    score, signals = mixed_type_signal(body.text)
-    if score >= 2:
-        mixed = CheckResult(
-            "mixed-type signal",
-            JUDGMENT,
-            f"score={score}: {signals}",
-        )
+    if not contract_staged:
+        score, signals = mixed_type_signal(body.text)
+        if score >= 2:
+            mixed = CheckResult(
+                "mixed-type signal (legacy heuristic)",
+                JUDGMENT,
+                f"score={score}: {signals}",
+            )
+        else:
+            mixed = CheckResult("mixed-type signal (legacy heuristic)", PASS, f"score={score}")
+    elif yaml_data is not None:
+        roots_present = detect_mixed_type_yaml(yaml_data)
+        if len(roots_present) > 1:
+            mixed = CheckResult(
+                "mixed-type signal (deterministic)",
+                FAIL,
+                f"multiple root keys present: {roots_present}",
+            )
+        else:
+            mixed = CheckResult("mixed-type signal (deterministic)", PASS, f"single root: {roots_present[0] if roots_present else 'none'}")
     else:
-        mixed = CheckResult("mixed-type signal", PASS, f"score={score}")
+        mixed = CheckResult(
+            "mixed-type signal (deferred)",
+            JUDGMENT,
+            f"contract block detected (root='{detected_root}') but pyyaml unavailable; cannot determine deterministically",
+        )
 
     return {
         "path": str(skill_md_path),
         "declared_type": declared_type,
+        "yaml_root": yaml_root,
         "universal": [asdict(r) for r in universal],
+        "yaml_contract": [asdict(r) for r in yaml_results],
         "type_specific": [asdict(r) for r in type_specific],
         "mixed_type": asdict(mixed),
     }
@@ -407,18 +546,24 @@ def render_text(report: dict[str, Any]) -> str:
     lines: list[str] = []
     lines.append(f"audit: {report['path']}")
     lines.append(f"declared_type: {report['declared_type']}")
+    if report.get("yaml_root"):
+        lines.append(f"yaml_root: {report['yaml_root']}")
     lines.append("")
     lines.append("== Universal ==")
     for r in report["universal"]:
         suffix = f" -- {r['note']}" if r["note"] else ""
         lines.append(f"  [{r['verdict']}] {r['row']}{suffix}")
     lines.append("")
-    lines.append(f"== Type-specific ({report['declared_type']}) ==")
-    if not report["type_specific"]:
-        lines.append("  (no recognized skill-type; type-specific checks skipped)")
-    for r in report["type_specific"]:
+    lines.append("== YAML contract ==")
+    for r in report.get("yaml_contract", []):
         suffix = f" -- {r['note']}" if r["note"] else ""
         lines.append(f"  [{r['verdict']}] {r['row']}{suffix}")
+    if report["type_specific"]:
+        lines.append("")
+        lines.append(f"== Type-specific (legacy fallback, {report['declared_type']}) ==")
+        for r in report["type_specific"]:
+            suffix = f" -- {r['note']}" if r["note"] else ""
+            lines.append(f"  [{r['verdict']}] {r['row']}{suffix}")
     lines.append("")
     lines.append("== Mixed-type ==")
     mt = report["mixed_type"]
