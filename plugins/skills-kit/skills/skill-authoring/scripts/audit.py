@@ -36,6 +36,7 @@ from _shared import (
     has_red_flags_list,
     has_red_green_refactor,
     has_tickbox_list,
+    is_user_only,
     parse_body,
     parse_frontmatter,
 )
@@ -230,14 +231,22 @@ def check_pattern_skill(body: Body, skill_dir: Path) -> list[CheckResult]:
     return out
 
 
-def check_technique_skill(body: Body, skill_dir: Path) -> list[CheckResult]:
+def check_technique_skill(body: Body, skill_dir: Path, fm: Frontmatter | None) -> list[CheckResult]:
     out: list[CheckResult] = []
     step_count = count_ordered_steps(body.text)
-    out.append(CheckResult(
-        ">=1 technique with ordered steps",
-        PASS if step_count >= 1 else FAIL,
-        f"{step_count} ordered-step entries detected",
-    ))
+    user_only = is_user_only(fm)
+    if user_only:
+        out.append(CheckResult(
+            "ordered-step body (conditional, IF NOT user-only)",
+            NA,
+            "user-only (disable-model-invocation: true); the technique IS the slash-command",
+        ))
+    else:
+        out.append(CheckResult(
+            "ordered-step body (conditional, IF NOT user-only)",
+            PASS if step_count >= 1 else FAIL,
+            f"{step_count} ordered-step entries detected",
+        ))
     if step_count > 3:
         out.append(CheckResult(
             "workflow checklist (conditional, IF >3 steps)",
@@ -358,7 +367,10 @@ def audit(skill_md_path: Path) -> dict[str, Any]:
     declared_type = fm.fields.get("skill-type") if fm else None
     type_specific: list[CheckResult] = []
     if declared_type in TYPE_RUNNERS:
-        type_specific = TYPE_RUNNERS[declared_type](body, skill_dir)
+        if declared_type == "technique-skill":
+            type_specific = check_technique_skill(body, skill_dir, fm)
+        else:
+            type_specific = TYPE_RUNNERS[declared_type](body, skill_dir)
 
     score, signals = mixed_type_signal(body.text)
     if score >= 2:

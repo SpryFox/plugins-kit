@@ -112,9 +112,9 @@ Examples: `flatten-with-flags`, `test-invariants`, `reducing-complexity` (from t
 
 | Contract | Items |
 |---|---|
-| **Required blocks** | SKILL.md file with frontmatter and trigger; ≥1 technique (each with ordered steps and ≥1 gotcha) |
+| **Required blocks** | SKILL.md file with frontmatter and trigger; ≥1 technique with body content (ordered steps for agent-invoked techniques; behavior + examples for user-only / `disable-model-invocation: true` techniques where the technique IS the slash-command); ≥1 gotcha |
 | **Required patterns** | activation metadata, exclusion clause, technique, known gotchas |
-| **Conditionally required patterns** | workflow checklist — IF the technique has more than 3 steps (criterion: count `step` blocks); utility bundle — IF the procedure has deterministic steps that would otherwise be regenerated each call (criterion: any step where output depends only on input); self-correcting loop — IF the procedure produces output that can be programmatically validated (criterion: a validator script or rubric exists); plan-validate-execute — IF the procedure has batch operations or irreversible side effects (criterion: any step that modifies external state at scale or is hard to undo) |
+| **Conditionally required patterns** | ordered-step body — IF the skill is not user-only (criterion: frontmatter does not set `disable-model-invocation: true`); workflow checklist — IF the technique has more than 3 steps (criterion: count `step` blocks); utility bundle — IF the procedure has deterministic steps that would otherwise be regenerated each call (criterion: any step where output depends only on input); self-correcting loop — IF the procedure produces output that can be programmatically validated (criterion: a validator script or rubric exists); plan-validate-execute — IF the procedure has batch operations or irreversible side effects (criterion: any step that modifies external state at scale or is hard to undo) |
 | **Prohibited patterns** | adversarial pressure testing |
 | **Audit** | Can the agent apply the method to a novel scenario? Try variation and missing-information tests. |
 

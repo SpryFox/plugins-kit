@@ -117,11 +117,23 @@ def has_lookup_table(body_text: str) -> bool:
     return bool(re.search(r"^\|.+\|.+\|.+\|$", body_text, re.MULTILINE))
 
 
-def type_signals(body_text: str) -> dict:
+def is_user_only(fm) -> bool:
+    """User-only attribute: frontmatter sets disable-model-invocation: true."""
+    if fm is None:
+        return False
+    val = fm.fields.get("disable-model-invocation")
+    return val is not None and str(val).lower() == "true"
+
+
+def type_signals(body_text: str, fm=None) -> dict:
     """Score each canonical skill type based on structural markers in the body.
 
     Returns a dict mapping each of the five canonical type names to an integer
     score. Higher = more evidence the skill is that type.
+
+    If frontmatter is provided, user-only skills (disable-model-invocation: true)
+    receive a strong technique-skill signal even when their body has no ordered
+    steps -- the technique is the slash-command itself.
     """
     scores = {t: 0 for t in CANONICAL_TYPES}
 
@@ -147,6 +159,8 @@ def type_signals(body_text: str) -> dict:
         scores["technique-skill"] += 1
     if has_tickbox_list(body_text):
         scores["technique-skill"] += 1
+    if is_user_only(fm):
+        scores["technique-skill"] += 3
 
     # reference signals
     if has_lookup_table(body_text):
