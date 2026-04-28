@@ -5,156 +5,113 @@ skill-type: reference-skill
 description: Use when interpreting SessionStart bootstrap messages or configuring user/project dependency manifests. Do NOT use for non-bootstrap debugging.
 ---
 
-## Skill Purpose
+# Bootstrap
 
-Understand bootstrap plugin behavior: what it checks, what messages it produces, how to configure it at user and project levels, and how to interpret SessionStart output.
-
-## When to Use
-
-- Interpreting bootstrap messages during SessionStart
-- Configuring user-level or project-level bootstrap requirements
-- Understanding what conditions the bootstrap engine can remediate
-- Debugging why a tool, venv, or plugin isn't being set up correctly
-
-## Bootstrap Message Types
-
-The engine produces four message outcomes on session start:
-
-| Outcome | What happened | User sees |
-|---------|--------------|-----------|
-| **Silent pass** | All checks passed or cache hit | Nothing |
-| **Silent install** | Tool missing, installed automatically, re-check passed | Nothing (logged internally) |
-| **Silent skip** | First session on fresh machine, Python bootstrapping | Nothing (engine runs next session) |
-| **Fix-all** | Something needs user action | Remediation message with `fix-all` prompt |
-
-**Healthy steady state**: Bootstrap is working correctly when it's invisible.
-
-**Verify bootstrap ran**: Each plugin gets its own log at `~/.claude/plugins/data/<marketplace>/<plugin-name>/bootstrap.log`. Check `<marketplace>/bootstrap/bootstrap.log` for the engine itself, or `plugins-kit/unreal-kit/bootstrap.log` for unreal-kit, etc. If a plugin's log file doesn't exist, bootstrap never reached that plugin.
-
-## How Bootstrap Remediation Works
-
-Bootstrap uses a two-phase model: **auto-remediate first, escalate to fix-all only when user action is required**.
-
-### Phase 1: Auto-remediation (silent)
-
-The engine tries to resolve issues without user involvement:
-
-- **Tool installs**: Missing CLI tool with a known install command → run the install, re-check, continue silently if it works
-- **Config autodetect**: Plugin manifests can declare an `"autodetect"` script in their `config` block. The engine calls it before validating required fields — if the script discovers and fills the values (e.g. finding a `.uproject` by scanning from CWD), no user prompt is needed
-- **Default values**: Required config fields with a `"default"` in the manifest are applied automatically
-
-If auto-remediation resolves everything, the user sees nothing.
-
-### Phase 2: Fix-all (user action needed)
-
-When issues remain that the engine can't resolve silently, it aggregates all failures into a single **fix-all message** delivered via the SessionStart hook response:
-
-- **`additionalContext`** (seen by the agent): Numbered remediation steps — install commands to run, config values to ask for, files to write. Ends with "type 'fix-all' or 'fixed' to re-run bootstrap."
-- **`systemMessage`** (seen by the user): The bootstrap log showing what was checked and what failed
-
-**The fix-all interaction**: The user sees the failure summary and types `fix-all`. The agent then executes the numbered steps — running install commands, asking the user for paths or API keys, writing config files. After remediation, bootstrap re-runs to verify everything is resolved.
-
-### Example: Plugin with config autodetect
-
-A plugin declares two required fields (`uproject`, `engine_dir`) and an autodetect script:
-1. Engine copies default config (empty values) to the plugin's data directory
-2. Engine calls the autodetect function — it scans the filesystem and fills both values
-3. Engine validates required fields — both are present, no fix-all needed
-4. If autodetect only finds one value, the other becomes a fix-all item: the agent asks the user for it
-
-## Remediable Condition Categories
-
-| Category | Examples | Remediation |
-|----------|----------|-------------|
-| **Tool** | CLI tool not installed (`uv`, `git`, `gh`) | Platform-specific install command, then re-check |
-| **PATH** | Directory not in PATH (`~/.local/bin`) | Modify persistent PATH config |
-| **Venv** | Python venv missing or broken | `uv sync` from `pyproject.toml` |
-| **Git dependency** | Repo not cloned or out of date | `git clone` or `git pull` |
-| **JSON config** | File lacks expected entries | Merge missing entries into target JSON |
-| **INI settings** | Application config setting not enabled | Write setting to config/ini file |
-| **PyPI package** | Extracted file missing locally | Download from PyPI and extract |
-| **Marketplace** | Not registered or stale | `claude plugin marketplace add/update` |
-| **Plugin** | Not installed, out of date, or wrong scope | Install, update, or reinstall at correct scope |
-| **User config** | Config information missing (API keys, paths) | Ask user via fix-all flow |
-
-## Configuration Files
-
-The engine supports a 4-layer `bootstrap.json` model following the same pattern as Claude Code's `settings.json` / `settings.local.json`:
-
-| Priority | File | Scope | Checked in? |
-|----------|------|-------|-------------|
-| 4 (highest) | `<project>/.claude/bootstrap.local.json` | Project-local | No (gitignored) |
-| 3 | `<project>/.claude/bootstrap.json` | Project | Yes |
-| 2 | `~/.claude/bootstrap.local.json` | User-local | N/A |
-| 1 (lowest) | `~/.claude/bootstrap.json` | User | N/A |
-
-**User-level** (`~/.claude/bootstrap.json`): Personal tools and PATH entries that should exist on every machine, across all projects.
-
-**Project-level** (`<project>/.claude/bootstrap.json`): Project-specific tools, marketplaces, and plugins that team members need.
-
-**Local overrides** (`bootstrap.local.json`): Machine-specific overrides not committed to git (e.g. custom install paths, disabled tools).
-
-### Merge Semantics
-
-- **Arrays** (tools, plugins, marketplaces): Unioned by identity key (`name`, `ref`). Same identity in multiple layers = higher-priority fields win.
-- **Objects** (venv, config): Deep-merged, higher priority wins for conflicts.
-- **path_entries**: String list union, deduplicated, order preserved.
-- **Scalars**: Higher priority wins.
-
-### Example
-
-User-level `~/.claude/bootstrap.json`:
-```json
-{
-  "tools": [
-    {"name": "git", "install": {"macos": "brew install git"}},
-    {"name": "uv"}
-  ],
-  "path_entries": ["~/.local/bin"]
-}
-```
-
-Project-level `.claude/bootstrap.json`:
-```json
-{
-  "tools": [
-    {"name": "node", "install": {"macos": "brew install node"}}
-  ],
-  "marketplaces": [
-    {"name": "team-plugins", "source": "https://github.com/team/plugins.git"}
-  ]
-}
-```
-
-Layered configs are merged before plugin `bootstrap.json` files are processed.
-
-## Gotchas
-
-- **Healthy bootstrap is invisible.** No output on session start means everything checked clean -- not that bootstrap is broken. Verify by checking each plugin's log at `~/.claude/plugins/data/<marketplace>/<plugin>/bootstrap.log`. If the log doesn't exist, bootstrap never reached that plugin.
-- **`bootstrap.local.json` files are gitignored.** Per-machine overrides won't propagate to teammates; don't put shared config there.
-- **Layer order matters.** Higher-priority layers win on conflict; arrays union by identity key, objects deep-merge, scalars override. A user-level entry can be silently shadowed by a project-level entry with the same identity.
-- **Autodetect runs before required-field validation.** A plugin's autodetect script can fill required fields silently; if autodetect partially succeeds, the remaining fields surface as fix-all items.
-- **`fix-all` re-runs the engine.** The remediation flow ends with bootstrap re-running to verify resolution; if the user types `fix-all` and the issues persist, the cause is likely outside the engine's known remediation paths.
+Reference for the bootstrap engine's behavior, message types, configuration files, and remediable conditions. The contract data below is the load-bearing surface; deeper detail lives in the references list.
 
 ```yaml
-conditional_loading:
-  engine_keywords:
-    keywords: [engine, internals, processing order, self-setup, manifest phase, script phase, messaging protocol, execution flow, throttling, first run, clean install, phases, design principles, shared library, hybrid model]
-    load_references:
-      - references/engine-internals.md
-
-  manifest_keywords:
-    keywords: [bootstrap.json, manifest, schema, fields, variable expansion, layered config, merge semantics, identity keys, example]
-    load_references:
-      - references/manifest-reference.md
-
-  remediation_keywords:
-    keywords: [condition, remediation, check method, tool missing, venv broken, marketplace, plugin scope, fix-all, blocking, manual operation]
-    load_references:
-      - references/remediation-reference.md
-
-  setup_keywords:
-    keywords: [setup pattern, config setup, setup.py, interactive setup, --check, --describe, --apply, --init-defaults, missing config, API keys]
-    load_references:
-      - references/plugin-setup-pattern.md
+reference_skill:
+  _schema_version: "1"
+  identity: Reference for the bootstrap engine's behavior, message types, configuration files, and remediable conditions.
+  scope:
+    covers:
+      - SessionStart bootstrap message interpretation
+      - bootstrap.json schema and merge semantics
+      - remediable condition categories
+      - configuration-file layering
+      - the auto-remediate / fix-all flow
+    excludes:
+      - non-bootstrap plugin debugging
+      - plugin authoring beyond bootstrap config
+  facts:
+    - id: message_outcomes
+      summary: Bootstrap produces four message outcomes on session start.
+      keywords: [silent pass, silent install, silent skip, fix-all, healthy state, no output, message types, outcomes, session start outcomes]
+      detail: |
+        | Outcome        | What happened                                | User sees                       |
+        |----------------|----------------------------------------------|---------------------------------|
+        | silent pass    | All checks passed or cache hit               | Nothing                         |
+        | silent install | Tool missing, installed, re-check passed     | Nothing (logged internally)    |
+        | silent skip    | First session on fresh machine               | Nothing (engine runs next)      |
+        | fix-all        | User action required                         | Remediation message + prompt    |
+      gotchas:
+        - Healthy bootstrap is invisible -- no output means everything checked clean, not that bootstrap is broken. Verify by checking each plugin's log at ~/.claude/plugins/data/<marketplace>/<plugin>/bootstrap.log. If the log doesn't exist, bootstrap never reached that plugin.
+    - id: remediation_phases
+      summary: The engine remediates silently first; only escalates to fix-all when user action is required.
+      keywords: [auto-remediation, fix-all, two-phase, silent install, remediation flow, autodetect, default values]
+      detail: |
+        Phase 1 (silent): tool installs (run install command, re-check); config autodetect (plugin manifest's "autodetect" script discovers and fills required fields, e.g. scanning CWD for a .uproject); default values from manifest "default" fields.
+        Phase 2 (fix-all): aggregates remaining failures into a single fix-all message. additionalContext (seen by the agent) carries numbered remediation steps; systemMessage (seen by the user) carries the bootstrap log of what was checked and what failed. User types "fix-all" or "fixed" to re-run bootstrap after remediation.
+      example:
+        input: A plugin declares uproject and engine_dir as required fields, plus an autodetect script that scans CWD.
+        output: Engine copies the default config (empty values), calls autodetect, fills both fields, validates required-field presence, no fix-all needed. If autodetect only finds uproject, engine_dir becomes a fix-all item.
+      gotchas:
+        - Autodetect runs before required-field validation. A plugin's autodetect script can fill required fields silently; if autodetect partially succeeds, the remaining fields surface as fix-all items.
+        - fix-all re-runs the engine after remediation. If issues persist after fix-all, the cause is likely outside the engine's known remediation paths.
+    - id: condition_categories
+      summary: Ten categories of remediable condition the engine knows how to address.
+      keywords: [tool, PATH, venv, git dependency, JSON config, INI settings, PyPI package, marketplace, plugin, user config, condition categories, remediation]
+      detail: |
+        | Category       | Examples                              | Remediation                              |
+        |----------------|---------------------------------------|------------------------------------------|
+        | Tool           | uv, git, gh CLI not installed         | Platform-specific install + re-check     |
+        | PATH           | ~/.local/bin not in PATH              | Modify persistent PATH config            |
+        | Venv           | Python venv missing or broken         | uv sync from pyproject.toml              |
+        | Git dependency | Repo not cloned or out of date        | git clone or git pull                    |
+        | JSON config    | File lacks expected entries           | Merge missing entries into target JSON   |
+        | INI settings   | Application config setting not set    | Write setting to config/ini file         |
+        | PyPI package   | Extracted file missing locally        | Download from PyPI and extract           |
+        | Marketplace    | Not registered or stale               | claude plugin marketplace add/update     |
+        | Plugin         | Not installed, out of date, wrong scope | Install / update / reinstall            |
+        | User config    | API keys, paths missing               | Ask user via fix-all flow                |
+    - id: config_layers
+      summary: bootstrap.json supports a 4-layer override hierarchy.
+      keywords: [bootstrap.json, layered config, project local, user level, override, merge semantics, priority, gitignored]
+      detail: |
+        Priority 4 (highest) -> <project>/.claude/bootstrap.local.json (gitignored)
+        Priority 3 -> <project>/.claude/bootstrap.json (committed)
+        Priority 2 -> ~/.claude/bootstrap.local.json (per-machine)
+        Priority 1 (lowest) -> ~/.claude/bootstrap.json (per-user)
+      example:
+        input: User has uv globally and node per-project.
+        output: User-level declares {tools:[uv]}; project-level declares {tools:[node]}; final merged set is both. Same identity in multiple layers means higher-priority fields win.
+      gotchas:
+        - bootstrap.local.json files are gitignored; per-machine overrides do not propagate to teammates.
+        - Layer order matters. Higher-priority layers win on conflict; arrays union by identity key, objects deep-merge, scalars override. A user-level entry can be silently shadowed by a project-level entry with the same identity.
+    - id: merge_semantics
+      summary: Layered configs merge by identity key for arrays, deep-merge for objects, override for scalars.
+      keywords: [merge semantics, union, identity key, deep merge, path entries, scalar override]
+      detail: |
+        - Arrays (tools, plugins, marketplaces): unioned by identity key (name, ref). Same identity in multiple layers means higher-priority fields win.
+        - Objects (venv, config): deep-merged; higher priority wins for conflicts.
+        - path_entries: string-list union, deduplicated, order preserved.
+        - Scalars: higher priority wins.
+        Layered configs are merged before plugin bootstrap.json files are processed.
+  groupings:
+    - name: engine_behavior
+      keywords: [engine, session start, processing order, messages, remediation flow]
+      fact_ids: [message_outcomes, remediation_phases]
+    - name: config_files
+      keywords: [bootstrap.json, manifest, layers, merge, override]
+      fact_ids: [config_layers, merge_semantics]
+    - name: catalogues
+      keywords: [conditions, categories, remediation table]
+      fact_ids: [condition_categories]
+  references:
+    - id: engine_internals
+      path: references/engine-internals.md
+      keywords: [engine, internals, processing order, self-setup, manifest phase, script phase, messaging protocol, execution flow, throttling, first run, clean install, phases, design principles, shared library, hybrid model]
+      summary: Engine internals deep-dive.
+    - id: manifest_reference
+      path: references/manifest-reference.md
+      keywords: [bootstrap.json, manifest, schema, fields, variable expansion, layered config, merge semantics, identity keys, example]
+      summary: bootstrap.json manifest field reference.
+    - id: remediation_reference
+      path: references/remediation-reference.md
+      keywords: [condition, remediation, check method, tool missing, venv broken, marketplace, plugin scope, fix-all, blocking, manual operation]
+      summary: Per-condition remediation reference.
+    - id: plugin_setup_pattern
+      path: references/plugin-setup-pattern.md
+      keywords: [setup pattern, config setup, setup.py, interactive setup, --check, --describe, --apply, --init-defaults, missing config, API keys]
+      summary: Plugin setup-pattern recipe.
 ```
