@@ -133,12 +133,16 @@ claude --plugin-dir ~/Dev/plugins-kit/plugins/my-plugin
 
 `--plugin-dir` loads the plugin directly from disk (no cache copy) and makes no persistent changes — it doesn't modify `installed_plugins.json`, the cache, or `known_marketplaces.json`. Ending the session reverts to the marketplace-installed version. Use `/reload-plugins` to pick up file changes within a session (hooks require a full restart).
 
-**Publishing changes** — the plugin cache syncs from the remote repository's default branch, not the local working copy. Develop on the `dev` branch; merge to `master` only when releasing a version bump. This prevents silent divergence (fresh installs between releases getting HEAD code cached under the old version string). **Merging to master and pushing are publishing actions — always ask the user for confirmation before doing them.** To publish:
+**Publishing changes** — the plugin cache syncs from the remote repository's default branch, not the local working copy. Develop on the `dev` branch; merge to `master` only when releasing a version bump. This prevents silent divergence (fresh installs between releases getting HEAD code cached under the old version string).
+
+Publishing (merging to `master` and pushing) is reversible-but-visible: nothing is destroyed, but it goes out to other machines. The bar is "user has expressed publish intent for this work," not "user has reconfirmed each git command." Treat unambiguous go-signals — `go`, `ship it`, `publish`, `do it`, `close the loop`, `push` — as authorizing the **entire** publish flow including downstream dependents (e.g. update06). Don't re-prompt for sub-steps once intent is clear; that's procedural friction, not safety. Confirm only when intent is genuinely ambiguous (partial work, no version bump in sight, unrelated WIP staged, or the user is mid-thought).
+
+To publish:
 
 1. Bump the plugin version in both files — they must match:
    - `plugins/<name>/.claude-plugin/plugin.json` (the plugin's own manifest)
    - `.claude-plugin/marketplace.json` (the marketplace-level listing)
-2. Ask the user to confirm, then merge `dev` to `master` and push
+2. Merge `dev` to `master` and push (intent established per above)
 3. Users with `autoUpdate: true` receive the update on next session start
 4. Users without auto-update run `/plugin marketplace update` then `/plugin update`
 
@@ -184,13 +188,7 @@ Then bump update06's own version in both `plugin.json` and `marketplace.json`, c
 
 **Always use `uv run python` in shell scripts** — never bare `python` or `python3`. On Windows, the system PATH contains Microsoft Store stubs (`WindowsApps/python.exe`) that take precedence over any user PATH entry, causing bare `python`/`python3` to fail with "Permission denied" (exit 126) in Git Bash. On macOS, bare `python` often doesn't exist. Since bootstrap guarantees `uv` is available, `uv run python` is the standard way to invoke Python from any shell script in this project. It resolves the correct Python, activates the venv (giving access to installed packages), and works on all platforms.
 
-**Plan non-trivial tasks**: Before implementing any non-trivial task:
-1. Enter plan mode (EnterPlanMode)
-2. Explore the codebase and design the approach
-3. Write the plan as a proposed task update: "Update Task #{id} ({name}) with the following plan: {plan details}"
-4. Exit plan mode (ExitPlanMode) — user reviews and approves
-5. Update the task description with the approved plan (TaskUpdate)
-6. Implement the task according to the plan
+**Plan non-trivial tasks**: Plan when both (a) the task is non-trivial, and (b) the implementation could go several reasonable directions. Share the plan, get a thumbs-up, then implement. Skip planning when the path is obvious or the user has already framed the approach — in those cases extra ceremony reads as procedural friction, not rigor. When you do plan, use plan mode (`EnterPlanMode`) as the sanctioned space to think and propose; don't ritualize the steps. The goal is alignment on intent, not a checklist.
 
 **Skill-based document placement** (package cohesion): When creating a document, ask "what skill does this belong to?" — the same way you'd ask "what package does this class belong in?" Apply these cohesion principles:
 
