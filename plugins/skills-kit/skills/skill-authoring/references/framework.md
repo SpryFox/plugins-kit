@@ -65,6 +65,20 @@ middle ground.
 
 ---
 
+## Description requirements
+
+The frontmatter `description` is the only signal Claude uses to decide whether to load a skill. Every skill, regardless of type, must satisfy these:
+
+- **Length: ≤160 characters.** A description that doesn't fit in 160 characters is summarizing capability rather than naming a trigger.
+- **Form: directive.** Open with "Use when..." or "Invoke when...". Capability summaries ("Enables...", "Provides...", "Manages...") cause Claude to follow the description as a workflow instead of reading the body.
+- **Condition: clear and unambiguous.** The trigger must name a specific situation when invocation is the right move. Vague conditions ("when you need help with X", "for any X work") are evidence the skill is doing too much or doesn't have a real role.
+- **Cost-justified.** Every skill load is tokens and a tool-call boundary. A trigger that fires on topical adjacency ("...for any Python work...", "...whenever you read code...") violates the user's trust by burning tool calls without bringing value. Be specific about when the skill earns its load cost.
+- **Exclusion clause: present.** Append a "Do NOT use for..." clause that bounds the activation surface. Positive triggers alone do not bound activation; the exclusion is what keeps adjacent skills from triggering each other's loads.
+
+These requirements are universal -- they apply to every skill regardless of type contract. The auditing process checks them as the first step (after the mixed-type check).
+
+---
+
 ## Type contracts
 
 A skill claiming a type must satisfy the **required** rows and the

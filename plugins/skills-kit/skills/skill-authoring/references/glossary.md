@@ -63,14 +63,28 @@ reference file.
 **Frontmatter**
 The YAML header at the top of a SKILL.md file. Holds `name` (≤64 chars,
 lowercase letters/numbers/hyphens, no reserved words "anthropic" or
-"claude"), `description` (≤1024 chars), and optionally `allowed-tools` and
-`metadata`.
+"claude"), `description` (≤160 chars; see Trigger entry for content rules),
+and optionally `allowed-tools` and `metadata`.
 
 **Trigger**
-The "Use when..." clause inside the `description` field. The signal Claude
-uses to decide whether to load the skill. A trigger should describe
-conditions and key terms, not summarize the skill's workflow — workflow
-summaries cause Claude to follow the description instead of reading the body.
+The directive clause inside the `description` field. The single signal
+Claude uses to decide whether to load the skill, and the only purpose
+the description serves. A trigger must:
+
+- Be **directive**: "Use when..." or "Invoke when...". Capability
+  summaries ("Enables...", "Provides...", "Manages...") cause Claude to
+  follow the description instead of reading the body.
+- Name a **clear, unambiguous condition** for invocation. If the
+  condition isn't crisp, the skill's design probably has a deeper flaw
+  -- the skill is doing too much or doesn't have a real role.
+- Be **cost-justified, not over-aggressive**. Every skill load is tokens
+  and a tool-call boundary; the trigger condition must justify that
+  cost. A description that fires on topical adjacency ("...for any
+  Python work...", "...whenever you read code...") violates the user's
+  trust by burning tool calls without bringing value.
+- Stay within the **length budget** (≤160 chars). A description that
+  doesn't fit in 160 chars is summarizing capability, not naming a
+  trigger.
 
 **Exclusion**
 A "Do NOT use for..." clause appended to `description`. Prevents

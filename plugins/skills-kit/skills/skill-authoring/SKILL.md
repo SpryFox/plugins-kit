@@ -2,7 +2,7 @@
 _schema_version: 1
 name: skill-authoring
 skill-type: domain-skill
-description: Use when authoring, auditing, or refining a Claude Code skill -- covers vocabulary, the five-type contract framework, principles, patterns, and a worked audit example. Do NOT use for invoking an existing skill or for general writing tasks unrelated to skill design.
+description: Use when authoring, auditing, or refining a Claude Code skill. Do NOT use for invoking existing skills or for general writing tasks.
 ---
 
 # Skill Authoring

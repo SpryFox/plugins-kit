@@ -91,14 +91,16 @@ def check_universal(fm: Frontmatter | None, body: Body, skill_dir: Path) -> list
         desc = fm.fields["description"]
         out.append(CheckResult("frontmatter.description present", PASS))
         out.append(CheckResult(
-            "description <= 1024 chars",
-            PASS if len(desc) <= 1024 else FAIL,
+            "description <= 160 chars",
+            PASS if len(desc) <= 160 else FAIL,
             f"len={len(desc)}",
         ))
+        desc_lc = desc.lower().lstrip()
+        directive = desc_lc.startswith("use when") or desc_lc.startswith("invoke when")
         out.append(CheckResult(
-            "activation metadata (Use when...)",
-            PASS if "use when" in desc.lower() else JUDGMENT,
-            "no 'use when' phrase; trigger may be expressed differently" if "use when" not in desc.lower() else "",
+            "directive form ('Use when...' / 'Invoke when...')",
+            PASS if directive else FAIL,
+            "description should open with 'Use when...' or 'Invoke when...'" if not directive else "",
         ))
         excl = bool(re.search(r"\bdo not use\b|\bdon'?t use\b", desc, re.IGNORECASE))
         out.append(CheckResult(

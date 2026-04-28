@@ -1,7 +1,8 @@
 ---
 _schema_version: 1
 name: local-code-review
-description: Multi-agent code review of a Perforce changelist using Claude subagents (CLAUDE.md compliance + bug audits + per-issue validation)
+skill-type: technique-skill
+description: Use when the user requests a code review of a pending Perforce changelist. Do NOT use for git diffs or non-Perforce review workflows.
 ---
 
 # Local Code Review
