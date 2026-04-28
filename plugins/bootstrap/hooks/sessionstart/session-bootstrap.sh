@@ -259,9 +259,16 @@ fi
 # On Windows, write ~/.local/bin and the standalone Python dir to the registry
 # so that future Claude Code sessions inherit them regardless of parent shell.
 if [[ "$OS" == MINGW* ]] || [[ "$OS" == MSYS* ]]; then
+    # Anchor powershell.exe to an absolute path. SessionStart hooks can
+    # inherit a stripped PATH (no System32\WindowsPowerShell\v1.0) and a
+    # bare-name lookup then fails with "not found" — silently here, because
+    # of `|| true` below. Resolving SYSTEMROOT once up front avoids that.
+    _SYSROOT_U=$(cygpath -u "${SYSTEMROOT:-C:\\Windows}" 2>/dev/null || echo "/c/Windows")
+    PWSH_EXE="$_SYSROOT_U/System32/WindowsPowerShell/v1.0/powershell.exe"
+    [ -x "$PWSH_EXE" ] || PWSH_EXE="powershell.exe"
     for _path_entry in "$LOCAL_BIN" "$STANDALONE_PYTHON_BIN"; do
         _win_path=$(cygpath -w "$_path_entry" 2>/dev/null || echo "$_path_entry" | sed 's|/|\\|g')
-        _ps_result=$(powershell.exe -NoProfile -NonInteractive -Command "
+        _ps_result=$("$PWSH_EXE" -NoProfile -NonInteractive -Command "
             \$entry = '$_win_path'
             \$current = [Environment]::GetEnvironmentVariable('Path', 'User')
             if (-not \$current) { \$current = '' }

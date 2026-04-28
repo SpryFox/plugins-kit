@@ -100,55 +100,95 @@ def add_path_to_shell_config(path_entry: str) -> Tuple[bool, str]:
 def _add_path_to_windows_registry(path_entry: str) -> Tuple[bool, str]:
     """Add a path entry to the Windows User PATH (HKCU\\Environment).
 
-    Uses PowerShell's [Environment]::SetEnvironmentVariable with 'User' scope.
-    Reads from 'User' scope only (not $env:Path which merges system+user).
-    Does NOT use setx (truncates at 1024 chars).
+    Writes the registry directly via winreg — no subprocess, so the call does
+    not depend on powershell.exe being resolvable on the inherited PATH.
+    SessionStart hooks frequently inherit a stripped PATH (e.g. when launched
+    from a parent that lacks System32\\WindowsPowerShell\\v1.0), which made
+    the previous PowerShell-based implementation fail with WinError 2.
+
+    Reads from User scope only (not the merged Machine+User PATH). Preserves
+    the existing Path value type (REG_EXPAND_SZ vs REG_SZ). Broadcasts
+    WM_SETTINGCHANGE so other top-level windows pick up the change, matching
+    the behavior of .NET's [Environment]::SetEnvironmentVariable.
 
     Returns:
         (success, message) tuple
     """
-    import subprocess
-
     # The registry is global state — it ignores HOME/USERPROFILE redirection,
     # so tests that point HOME at a tmp dir would otherwise leak permanent
     # entries into the real user's PATH. Tests set this var to opt out.
     if os.environ.get("BOOTSTRAP_SKIP_REGISTRY"):
         return True, "skipped Windows registry write (BOOTSTRAP_SKIP_REGISTRY set)"
 
-    expanded = os.path.expanduser(path_entry)
-    # Convert Unix-style path to Windows-style for the registry
-    win_path = expanded.replace("/", "\\")
+    try:
+        import winreg
+    except ImportError:
+        return False, "winreg unavailable (non-Windows Python build)"
 
-    ps_script = (
-        "$entry = '" + win_path + "'\n"
-        "$current = [Environment]::GetEnvironmentVariable('Path', 'User')\n"
-        "if (-not $current) { $current = '' }\n"
-        "$parts = $current -split ';' | Where-Object { $_ -ne '' }\n"
-        "$norm = $entry.TrimEnd('\\\\')\n"
-        "$found = $false\n"
-        "foreach ($p in $parts) {\n"
-        "  if ($p.TrimEnd('\\\\') -ieq $norm) { $found = $true; break }\n"
-        "}\n"
-        "if (-not $found) {\n"
-        "  $newPath = ($entry + ';' + $current).TrimEnd(';')\n"
-        "  [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')\n"
-        "  Write-Output 'added'\n"
-        "} else {\n"
-        "  Write-Output 'already_present'\n"
-        "}\n"
-    )
+    expanded = os.path.expanduser(path_entry)
+    win_path = expanded.replace("/", "\\")
+    norm_target = win_path.rstrip("\\").lower()
 
     try:
-        result = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", ps_script],
-            capture_output=True, text=True, timeout=15,
-        )
-        if result.returncode == 0:
-            output = result.stdout.strip()
-            if output == "added":
-                return True, f"added {win_path} to Windows User PATH (registry)"
-            elif output == "already_present":
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, "Environment", 0,
+            winreg.KEY_READ | winreg.KEY_WRITE,
+        ) as key:
+            try:
+                current, value_type = winreg.QueryValueEx(key, "Path")
+            except FileNotFoundError:
+                current, value_type = "", winreg.REG_EXPAND_SZ
+
+            parts = [p for p in current.split(";") if p]
+            if any(p.rstrip("\\").lower() == norm_target for p in parts):
                 return True, f"{win_path} already in Windows User PATH"
-        return False, f"powershell exit {result.returncode}: {result.stderr.strip()}"
-    except (subprocess.SubprocessError, OSError, FileNotFoundError) as e:
-        return False, f"failed to write Windows User PATH: {e}"
+
+            new_value = (win_path + ";" + current).rstrip(";") if current else win_path
+            winreg.SetValueEx(key, "Path", 0, value_type, new_value)
+    except OSError as e:
+        return False, (
+            f"failed to write Windows User PATH: {e} "
+            f"[diag: {_path_diagnostic()}]"
+        )
+
+    _broadcast_environment_change()
+    return True, f"added {win_path} to Windows User PATH (registry)"
+
+
+def _path_diagnostic() -> str:
+    """Snapshot of PATH state for failure messages.
+
+    Captures length, entry count, and whether the canonical Windows binary
+    directories are visible — enough to distinguish "stripped PATH" from
+    "registry permission" failures the next time something goes wrong.
+    """
+    p = os.environ.get("PATH", "")
+    entries = [d for d in p.split(os.pathsep) if d]
+    has_system32 = any("system32" in d.lower() for d in entries)
+    has_powershell = any("windowspowershell" in d.lower() for d in entries)
+    return (
+        f"PATH={len(p)} chars / {len(entries)} entries; "
+        f"System32={has_system32}; PowerShell={has_powershell}"
+    )
+
+
+def _broadcast_environment_change() -> None:
+    """Notify top-level windows that environment variables changed.
+
+    Best-effort: a failure here does not roll back the registry write.
+    Matches the broadcast behavior of .NET's SetEnvironmentVariable, which
+    is what the previous PowerShell implementation relied on implicitly.
+    """
+    try:
+        import ctypes
+        HWND_BROADCAST = 0xFFFF
+        WM_SETTINGCHANGE = 0x001A
+        SMTO_ABORTIFHUNG = 0x0002
+        result = ctypes.c_long()
+        ctypes.windll.user32.SendMessageTimeoutW(
+            HWND_BROADCAST, WM_SETTINGCHANGE, 0,
+            ctypes.c_wchar_p("Environment"),
+            SMTO_ABORTIFHUNG, 5000, ctypes.byref(result),
+        )
+    except (OSError, AttributeError, ImportError):
+        pass
