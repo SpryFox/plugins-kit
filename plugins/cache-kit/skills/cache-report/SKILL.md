@@ -2,6 +2,7 @@
 name: cache-report
 skill-type: technique-skill
 description: Use when the user asks about cache hit rate, token usage, or prompt-caching stats. Do NOT use for runtime cache configuration.
+disable-model-invocation: true
 ---
 
 ## Instructions

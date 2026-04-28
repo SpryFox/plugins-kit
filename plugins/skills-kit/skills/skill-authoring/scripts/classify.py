@@ -34,7 +34,7 @@ def classify(skill_md_path: Path) -> dict:
     body = parse_body(content)
 
     declared = fm.fields.get("skill-type") if fm else None
-    scores = type_signals(body.text)
+    scores = type_signals(body.text, fm)
 
     sorted_types = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
     top_type, top_score = sorted_types[0]
