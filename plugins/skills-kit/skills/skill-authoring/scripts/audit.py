@@ -36,9 +36,11 @@ from _shared import (
     has_red_flags_list,
     has_red_green_refactor,
     has_tickbox_list,
+    has_yaml_block,
     is_user_only,
     parse_body,
     parse_frontmatter,
+    strip_code_fences,
 )
 
 
@@ -331,16 +333,26 @@ def check_domain_skill(body: Body, skill_dir: Path) -> list[CheckResult]:
 
 
 def mixed_type_signal(body_text: str) -> tuple[int, list[str]]:
+    """Detect cross-type signals on the narrative body (code fences stripped).
+
+    Skill bodies can include structured data inside fenced code blocks (yaml,
+    json, python). That structured data is reference content for machine
+    comprehension, not narrative or procedure -- it must not raise the mixed-
+    type score by its internal shape. We strip fences before counting any
+    narrative-driven signal, and treat the presence of a YAML block itself as
+    a reference-content marker (not technique).
+    """
+    narrative = strip_code_fences(body_text)
     signals: list[str] = []
-    if has_excuse_reality_table(body_text) or has_red_green_refactor(body_text):
+    if has_excuse_reality_table(narrative) or has_red_green_refactor(narrative):
         signals.append("discipline-content (rule+counter or RED/GREEN/REFACTOR)")
-    if has_recognition_marker(body_text) or has_counter_example(body_text):
+    if has_recognition_marker(narrative) or has_counter_example(narrative):
         signals.append("pattern-content (recognition / counter-example)")
-    if count_ordered_steps(body_text) >= 1:
+    if count_ordered_steps(narrative) >= 1:
         signals.append("technique-content (ordered steps)")
-    if has_lookup_table(body_text):
-        signals.append("reference-content (lookup tables)")
-    if has_conditional_loading(body_text):
+    if has_lookup_table(narrative) or has_yaml_block(body_text):
+        signals.append("reference-content (lookup tables / YAML blocks)")
+    if has_conditional_loading(narrative):
         signals.append("domain-content (Conditional Loading index)")
     return len(signals), signals
 

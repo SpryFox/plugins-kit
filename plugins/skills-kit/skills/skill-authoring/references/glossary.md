@@ -157,6 +157,21 @@ documentation; the rest are framework principles, the last adapted from
 Anthropic's best-practices doc. Patterns derive from principles; type
 contracts compose patterns.
 
+**Audience-Claude (skills are written for Claude, not users).**
+Skills are runtime context for Claude, not documentation for humans.
+Claude is the translator: when a user asks a question, Claude loads the
+skill, picks the relevant data, and presents it to the user in the
+user's natural language. This shapes authoring choices -- structured
+data (YAML, tables, code-fenced blocks) is appropriate because Claude
+consumes it; user-friendly prose is unnecessary because Claude
+generates it on demand. The user is the audience of Claude's reply,
+not of the skill itself.
+*Audit consequence: structural choices (YAML data blocks, dense tables,
+condensed lists) are evaluated for whether they aid Claude's
+comprehension, not for whether they read smoothly as prose.*
+*Realized by: chat-term relevance hints (structured data carries the
+user-language that should trigger it).*
+
 **CRP — Common Reuse Principle (read-together).**
 If a reader loads one section of a SKILL.md or reference file, they should
 plausibly need the rest. When sections serve different reading tasks, split
@@ -240,6 +255,17 @@ which skill to load. *(Anthropic best-practices doc.)*
 A "Do NOT use for..." appended to `description`. Bounds the activation
 surface that activation metadata alone leaves open. *(Generative Programmer
 14-pattern synthesis; cites Ruben Hassid.)*
+
+**Chat-term relevance hints**
+Keywords or short summaries embedded inside a skill's structured data
+(YAML blocks, table rows, capability entries) that match user-language
+phrasing, so Claude can route the user's words to the right data piece
+without needing to read full reference text. The conditional-loading
+block is the domain-skill version; in-record `keywords:` lists are the
+same pattern applied per-entry. Without these hints, Claude has to
+read body content top-to-bottom hunting for relevance; with them,
+Claude jumps to the right slot directly.
+*Fulfills: Audience-Claude, Tool-call efficiency, Inference efficiency.*
 
 #### Context economy
 

@@ -57,6 +57,22 @@ def parse_body(content: str) -> Body:
     return Body(text=body_text, lines=len(lines), tokens_approx=tokens_approx)
 
 
+def strip_code_fences(body_text: str) -> str:
+    """Return body with fenced code blocks (```...```) removed.
+
+    Skill bodies are written for Claude. Structured data inside fenced blocks
+    (yaml, json, python, etc.) is reference content for machine comprehension,
+    not narrative or procedure. Type-signal heuristics should operate on the
+    narrative body without code-block contamination.
+    """
+    return re.sub(r"```.*?```", "", body_text, flags=re.DOTALL)
+
+
+def has_yaml_block(body_text: str) -> bool:
+    """Detect a fenced YAML block. Strong reference-content signal."""
+    return bool(re.search(r"^```ya?ml\s*$", body_text, re.MULTILINE))
+
+
 def has_heading(body_text: str, *names: str) -> bool:
     pattern = r"^#{1,6}\s+(?:" + "|".join(re.escape(n) for n in names) + r")\b"
     return bool(re.search(pattern, body_text, re.MULTILINE | re.IGNORECASE))
@@ -131,49 +147,57 @@ def type_signals(body_text: str, fm=None) -> dict:
     Returns a dict mapping each of the five canonical type names to an integer
     score. Higher = more evidence the skill is that type.
 
+    Heuristic operates on body with fenced code blocks stripped. Code blocks
+    (yaml, json, python) are structured reference data for machine comprehension
+    and do not signal type by their internal content. Presence of a YAML block
+    is itself a reference-content signal (separate from its contents).
+
     If frontmatter is provided, user-only skills (disable-model-invocation: true)
     receive a strong technique-skill signal even when their body has no ordered
     steps -- the technique is the slash-command itself.
     """
+    narrative = strip_code_fences(body_text)
     scores = {t: 0 for t in CANONICAL_TYPES}
 
-    # discipline signals
-    if has_excuse_reality_table(body_text):
+    # discipline signals (narrative-only)
+    if has_excuse_reality_table(narrative):
         scores["discipline-skill"] += 2
-    if has_red_green_refactor(body_text):
+    if has_red_green_refactor(narrative):
         scores["discipline-skill"] += 2
-    if has_red_flags_list(body_text):
+    if has_red_flags_list(narrative):
         scores["discipline-skill"] += 1
 
-    # pattern signals
-    if has_recognition_marker(body_text):
+    # pattern signals (narrative-only)
+    if has_recognition_marker(narrative):
         scores["pattern-skill"] += 1
-    if has_counter_example(body_text):
+    if has_counter_example(narrative):
         scores["pattern-skill"] += 2
 
-    # technique signals
-    steps = count_ordered_steps(body_text)
+    # technique signals (narrative-only; ignore numbered lines inside code)
+    steps = count_ordered_steps(narrative)
     if steps >= 1:
         scores["technique-skill"] += 1
     if steps > 3:
         scores["technique-skill"] += 1
-    if has_tickbox_list(body_text):
+    if has_tickbox_list(narrative):
         scores["technique-skill"] += 1
     if is_user_only(fm):
         scores["technique-skill"] += 3
 
     # reference signals
-    if has_lookup_table(body_text):
+    if has_lookup_table(narrative):
         scores["reference-skill"] += 1
-    if has_heading(body_text, "Gotcha", "Gotchas", "Known gotchas"):
+    if has_yaml_block(body_text):
         scores["reference-skill"] += 1
-    if has_heading(body_text, "Example", "Examples"):
+    if has_heading(narrative, "Gotcha", "Gotchas", "Known gotchas"):
+        scores["reference-skill"] += 1
+    if has_heading(narrative, "Example", "Examples"):
         scores["reference-skill"] += 1
 
     # domain signals
-    if has_conditional_loading(body_text):
+    if has_conditional_loading(narrative):
         scores["domain-skill"] += 2
-    if has_companion_declaration(body_text):
+    if has_companion_declaration(narrative):
         scores["domain-skill"] += 2
 
     return scores
