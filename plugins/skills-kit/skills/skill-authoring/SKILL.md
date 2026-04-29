@@ -40,6 +40,7 @@ domain_skill:
       - Do not invent frontmatter. A SKILL.md without YAML frontmatter is flagged, not patched.
       - Do not rely on the description to summarize the workflow. The description is a trigger, not a summary.
       - Do not assume Claude needs explanatory prose. Every loaded paragraph justifies its tokens.
+      - 'Do not YAML content that does not benefit from structure. YAML is the right shape for records, tables, indexes, contract data; prose is the right shape for identity sentences, orientation paragraphs, and narrative explanations. Test "does this structure aid Claude''s comprehension better than prose would?" If the answer is unclear, prose is the default.'
   index:
     references:
       - id: glossary

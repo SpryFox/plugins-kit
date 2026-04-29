@@ -77,6 +77,16 @@ The frontmatter `description` is the only signal Claude uses to decide whether t
 
 These requirements are universal -- they apply to every skill regardless of type contract. The auditing process checks them as the first step (after the mixed-type check).
 
+## Content-form choice
+
+YAML is the right shape for some content; prose is the right shape for other content. A skill chooses by asking "does this structure aid Claude's comprehension better than prose would?"
+
+- **Use YAML** when the information is structurally repetitive: records with the same shape (facts, rules, capabilities, steps, references), lookup tables, indexes, contract data, anything with keywords routing per record. The chat-term relevance hint pattern only works when records have a discrete YAML shape carrying their own keywords.
+- **Use prose** when the information is naturally narrative: an identity sentence, an orientation paragraph, a single-paragraph explanation that does not decompose into discrete records. Prose is the right shape for content that reads as one continuous thought rather than as a collection of routable items.
+- **Embedded, not pure-YAML.** SKILL.md keeps a markdown wrapper -- title, identity sentence, brief orientation -- around fenced YAML blocks. Pure-YAML SKILL.md files are harder to skim during review and lose the orientation surface. The YAML carries the load-bearing contract; the markdown carries the priming.
+
+YAML for the sake of YAML obscures content. If you cannot articulate why a piece of information is better as YAML than as prose, leave it as prose.
+
 ---
 
 ## Type contracts
