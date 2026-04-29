@@ -25,6 +25,30 @@ the same contracts in human-readable form. They are kept for review
 clarity and for skills not yet migrated, but the YAML schemas are
 authoritative when the two diverge.
 
+## Schemas are floors, not ceilings
+
+The per-type YAML schemas validate the required minimum: which keys
+must be present, what their structure must be, and which prohibited
+keys signal cross-type drift. Authors may add load-bearing structured
+keys beyond what the schema enumerates -- e.g. an `exceptions:` list
+inside an anti-pattern entry, a `narration:` sub-block describing
+agent narration patterns inside a technique, a `false_positive_guardrails:`
+record inside a multi-agent review technique. The schema does not
+enumerate every key an author may use; it enumerates the floor that
+must be there.
+
+This matters because the framework biases toward structured data (see
+Content-form choice). Forbidding extras would push authors toward
+unstructured prose when they want to add legitimate structure the
+schema didn't anticipate. The schema is a contract on the floor, not
+a straitjacket on the ceiling.
+
+Mixed-type drift is detected via the explicit `forbidden_keys:` list
+on each schema (e.g. a `rules:` key inside `reference_skill:` is
+forbidden because rules belong to discipline-skills). Forbidden keys
+are deliberate cross-type signals; unknown keys not in the forbidden
+list are permitted.
+
 ---
 
 ## Goals
@@ -99,13 +123,13 @@ These requirements are universal -- they apply to every skill regardless of type
 
 ## Content-form choice
 
-YAML is the right shape for some content; prose is the right shape for other content. A skill chooses by asking "does this structure aid Claude's comprehension better than prose would?"
+The default for LLM-facing content is structured YAML. Skills are runtime context for Claude (Audience-Claude); structure aids Claude's comprehension and enables routing, keyword matching, and validation that prose cannot. **When in doubt, bias toward structured data.**
 
-- **Use YAML** when the information is structurally repetitive: records with the same shape (facts, rules, capabilities, steps, references), lookup tables, indexes, contract data, anything with keywords routing per record. The chat-term relevance hint pattern only works when records have a discrete YAML shape carrying their own keywords.
-- **Use prose** when the information is naturally narrative: an identity sentence, an orientation paragraph, a single-paragraph explanation that does not decompose into discrete records. Prose is the right shape for content that reads as one continuous thought rather than as a collection of routable items.
+- **Use YAML by default** for LLM-facing content: records with the same shape (facts, rules, capabilities, steps, references, anti-patterns, gotchas), lookup tables, indexes, contract data, anything where keywords route per record. Structure carries assertions prose cannot -- an `anti_patterns:` list with each entry as a record asserts implicitly that every item is genuinely an anti-pattern; a markdown bullet list carries no such assertion.
+- **Use prose only when** (a) the content is naturally narrative -- an identity sentence, an orientation paragraph, a single-paragraph explanation that does not decompose into discrete records; or (b) the hierarchy carries no meaning over prose. The bar for prose is "I can articulate why this would be worse as YAML." If you cannot articulate that, default to YAML.
 - **Embedded, not pure-YAML.** SKILL.md keeps a markdown wrapper -- title, identity sentence, brief orientation -- around fenced YAML blocks. Pure-YAML SKILL.md files are harder to skim during review and lose the orientation surface. The YAML carries the load-bearing contract; the markdown carries the priming.
 
-YAML for the sake of YAML obscures content. If you cannot articulate why a piece of information is better as YAML than as prose, leave it as prose.
+The previous default ("if unclear, prose") was wrong-direction for an Audience-Claude framework. Structure is the default; prose is the documented exception.
 
 ---
 
@@ -142,9 +166,9 @@ Examples: `flatten-with-flags`, `test-invariants`, `reducing-complexity` (from t
 
 | Contract | Items |
 |---|---|
-| **Required blocks** | SKILL.md file with frontmatter and trigger; ≥1 technique with body content (ordered steps for agent-invoked techniques; behavior + examples for user-only / `disable-model-invocation: true` techniques where the technique IS the slash-command); ≥1 gotcha |
+| **Required blocks** | SKILL.md file with frontmatter and trigger; ≥1 technique with ordered-step body (`steps:` list, min 1 step); ≥1 gotcha. `output_template:` is an optional companion to `steps:` carrying the output-shape contract for the agent's reply -- not a substitute for steps. Even user-only slash-command skills reduce to a 1-step procedure ("invoke command; render output") and write that step explicitly. |
 | **Required patterns** | activation metadata, exclusion clause, technique, known gotchas |
-| **Conditionally required patterns** | ordered-step body — IF the skill is not user-only (criterion: frontmatter does not set `disable-model-invocation: true`); workflow checklist — IF the technique has more than 3 steps (criterion: count `step` blocks); utility bundle — IF the procedure has deterministic steps that would otherwise be regenerated each call (criterion: any step where output depends only on input); self-correcting loop — IF the procedure produces output that can be programmatically validated (criterion: a validator script or rubric exists); plan-validate-execute — IF the procedure has batch operations or irreversible side effects (criterion: any step that modifies external state at scale or is hard to undo) |
+| **Conditionally required patterns** | workflow checklist — IF the technique has more than 3 steps (criterion: count `step` blocks); utility bundle — IF the procedure has deterministic steps that would otherwise be regenerated each call (criterion: any step where output depends only on input); self-correcting loop — IF the procedure produces output that can be programmatically validated (criterion: a validator script or rubric exists); plan-validate-execute — IF the procedure has batch operations or irreversible side effects (criterion: any step that modifies external state at scale or is hard to undo) |
 | **Prohibited patterns** | adversarial pressure testing |
 | **Audit** | Can the agent apply the method to a novel scenario? Try variation and missing-information tests. |
 

@@ -4,6 +4,16 @@ Each canonical skill type carries a schema. Schemas are Python dicts using
 a small rule vocabulary (no external schema language). The validator walks
 the schema and emits per-row pass/fail verdicts.
 
+Schemas are floors, not ceilings. The schema validates the required
+minimum is present and well-formed; authors may add load-bearing
+structured keys beyond what the schema enumerates (e.g. an `exceptions:`
+list inside an anti-pattern entry, a `narration:` sub-block inside a
+technique). Mixed-type drift is detected via the explicit
+`forbidden_keys` list on each schema -- forbidden keys are deliberate
+cross-type signals; unknown keys not in the forbidden list are
+permitted. This biases authors toward adding structure rather than
+falling back to unstructured prose.
+
 Rule vocabulary:
 
 - {"required": True}                       -- key must be present
@@ -136,10 +146,13 @@ _TECHNIQUE_STEP = {"keys": {
     "on_failure": {"type": "string", "required": False},
 }}
 
-# Single unified technique_skill schema. Each technique must have steps OR
-# output_template (both is allowed). User-only skills typically use
-# output_template; complex slash-command skills with real procedures use
-# steps. The validator enforces "at least one" via a custom rule.
+# Unified technique_skill schema. Every technique requires ordered steps
+# (min_len 1). output_template is an optional companion field carrying the
+# output-shape contract for the agent's reply -- not an alternative to
+# steps. Trigger model (auto vs user-only) is metadata; it does not change
+# what the body must contain. Even user-only slash-command skills reduce
+# to a 1-step procedure ("invoke command; render output") and write that
+# step explicitly.
 TECHNIQUE_SKILL_SCHEMA = {
     "root": "technique_skill",
     "keys": {
@@ -159,10 +172,10 @@ TECHNIQUE_SKILL_SCHEMA = {
                     "keywords": KEYWORDS_RULE,
                     "goal": {"type": "string", "required": True},
                     "preconditions": {"type": "list", "required": False},
-                    "steps": {"type": "list", "required": False, "min_len": 1, "items": _TECHNIQUE_STEP,
-                              "note": "required IF output_template is absent (procedure-as-body)"},
+                    "steps": {"type": "list", "required": True, "min_len": 1, "items": _TECHNIQUE_STEP,
+                              "note": "ordered-step procedure body; required for every technique regardless of trigger_model"},
                     "output_template": {"type": "string", "required": False,
-                                        "note": "required IF steps are absent (output-template-as-body)"},
+                                        "note": "optional output-shape contract for the agent's reply; companion to steps, not a substitute"},
                     "arguments": {"type": "list", "required": False, "items": {"keys": {
                         "name": {"type": "string", "required": True},
                         "required": {"type": "bool", "required": True},
@@ -180,7 +193,6 @@ TECHNIQUE_SKILL_SCHEMA = {
     },
     "forbidden_keys": ["rules", "counters", "facts", "patterns",
                        "apply_when", "do_not_apply_when", "members", "index"],
-    "techniques_must_have_body": True,  # custom rule: each technique needs steps OR output_template
 }
 
 # Backwards-compat aliases (the old variant names still resolve)
@@ -490,19 +502,5 @@ def validate(yaml_data: dict, schema: dict) -> tuple[list, list]:
             isinstance(f, dict) and f.get("example") for f in facts
         ):
             fails.append((f"{root}.facts[*].example", "at least one fact must carry example"))
-
-    if schema.get("techniques_must_have_body"):
-        techniques = block.get("techniques", [])
-        if isinstance(techniques, list):
-            for i, t in enumerate(techniques):
-                if not isinstance(t, dict):
-                    continue
-                has_steps = isinstance(t.get("steps"), list) and len(t["steps"]) > 0
-                has_template = isinstance(t.get("output_template"), str) and t["output_template"].strip()
-                if not (has_steps or has_template):
-                    fails.append((
-                        f"{root}.techniques[{i}]",
-                        "technique must have either steps[] (procedure body) or output_template (output body)",
-                    ))
 
     return fails, checked

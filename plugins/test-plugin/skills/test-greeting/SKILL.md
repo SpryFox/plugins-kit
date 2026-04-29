@@ -35,6 +35,15 @@ technique_skill:
         - name: FAVORITE_COLOR
           required: true
           description: Sourced from ~/.claude/plugins/data/test-plugin/config.yaml.
+      steps:
+        - n: 1
+          action: Read GREETING_NAME and FAVORITE_COLOR from ~/.claude/plugins/data/test-plugin/config.yaml.
+          tool: Read
+          expected: Two values resolved from the config file.
+          on_failure: If the config file is missing or incomplete, tell the user to restart their session so the bootstrap engine can create it with defaults. Do not improvise values.
+        - n: 2
+          action: Render the output_template with the resolved values substituted in for {GREETING_NAME} and {FAVORITE_COLOR}.
+          expected: A one-line greeting in the user's chat.
       output_template: |
         Hello, {GREETING_NAME}! Your favorite color is {FAVORITE_COLOR}.
       gotchas:

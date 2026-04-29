@@ -40,6 +40,14 @@ technique_skill:
         - name: "--detailed"
           required: false
           description: Include per-request breakdown.
+      steps:
+        - n: 1
+          action: Resolve the cache_report.py path from installed_plugins.json under the plugins-kit:cache-kit entry, then invoke it with $ARGUMENTS.
+          tool: python3
+          expected: stdout containing the cache hit-rate, token usage, and (if --detailed) per-request breakdown.
+          on_failure: If installed_plugins.json is missing or the plugin id is not present, surface the error to the user verbatim. Do not improvise the script path.
+        - n: 2
+          action: Display the script's stdout verbatim in the user's chat. Do not summarize, paraphrase, or omit any lines.
       output_template: |
         Display the script's stdout verbatim. Do not summarize, paraphrase, or omit any lines.
       gotchas:
