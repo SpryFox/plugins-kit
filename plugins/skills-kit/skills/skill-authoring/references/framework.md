@@ -5,6 +5,26 @@ satisfy. Per SSOT, vocabulary lives in `skill-glossary.md` — types,
 building blocks, patterns, principles, and attributes. Read the glossary
 first; this document references entries by name without redefining them.
 
+## Canonical contract surface (schema v1, locked 2026-04-28)
+
+The **canonical** contract per skill type is the YAML schema declared in
+`plugins/skills-kit/skills/skill-authoring/scripts/schemas.py`. Each
+skill carries a `<type>:` YAML block in its SKILL.md body; the audit
+script validates that block against the schema. A skill is well-formed
+when its YAML contract block parses successfully against its type's
+schema.
+
+Schema v1 was locked after all six existing plugins-kit skills converted
+cleanly (universal rows pass + schema-validation pass + single-root
+deterministic mixed-type signal). Future schema changes ship as v2
+alongside v1; the validator dispatches by `_schema_version:` in each
+skill's YAML root.
+
+The markdown tables in the **Type contracts** section below describe
+the same contracts in human-readable form. They are kept for review
+clarity and for skills not yet migrated, but the YAML schemas are
+authoritative when the two diverge.
+
 ---
 
 ## Goals

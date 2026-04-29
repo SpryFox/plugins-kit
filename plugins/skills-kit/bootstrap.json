@@ -1,0 +1,8 @@
+{
+  "venv": {
+    "check_imports": ["yaml"]
+  },
+  "plugins": [
+    {"ref": "plugins-kit:skills-kit", "enabled": true}
+  ]
+}

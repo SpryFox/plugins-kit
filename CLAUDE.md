@@ -275,3 +275,51 @@ python plugins/bootstrap/engine/bootstrap_engine.py --plugin-root plugins/bootst
 ## Preferences
 
 - **Never use the memory system** (`~/.claude/projects/*/memory/`). Always update `CLAUDE.md` instead — it is machine-independent and checked into the repo, so all machines and sessions share the same context.
+
+## Insights
+
+```yaml
+claude_md:
+  _schema_version: "1"
+  scope:
+    directory: plugins-kit (root)
+    covers:
+      - dependency management posture across plugins
+      - how to install or update plugin dependencies
+      - bootstrap engine / hook invocation
+    excludes:
+      - per-plugin internals (covered by per-plugin CLAUDE.md / bootstrap.json)
+  insights:
+    - id: bootstrap_json_for_deps
+      keywords: [bootstrap.json, plugin dependencies, venv, pyyaml, uv, no manual install, dependency manifest]
+      summary: Plugin Python dependencies are declared in bootstrap.json + pyproject.toml and installed by the bootstrap engine using uv. Do not run pip / python -m venv manually.
+      detail: |
+        Each plugin that ships Python scripts declares its venv requirements in bootstrap.json
+        ("venv": { "check_imports": [...] }) and its actual dependencies in pyproject.toml. The
+        bootstrap engine creates a venv at ~/.claude/plugins/data/<marketplace>/<plugin>/.venv/
+        using uv, installs deps from pyproject.toml, and verifies the check_imports succeed. Do
+        not pip install at the user or system level; do not python -m venv manually. If a plugin
+        needs a new dep, add it to that plugin's pyproject.toml and update check_imports in
+        bootstrap.json.
+      origin: User directive 2026-04-28 during YAML contract refactor; existing pattern in unreal-kit/bootstrap.json + p4-kit/bootstrap.json.
+      added: "2026-04-28"
+    - id: run_bootstrap_hook_directly
+      keywords: [bootstrap hook, sessionstart, force update, plugin refresh, install update]
+      summary: To force a plugin install or update outside a normal session start, run the bootstrap hook directly.
+      detail: |
+        The bootstrap hook lives at plugins/bootstrap/hooks/sessionstart/session-bootstrap.sh
+        and is the entry point Claude Code calls on SessionStart. To force-refresh plugins or
+        re-run dependency installs, invoke it directly via bash. The engine reads the layered
+        bootstrap.json hierarchy, runs the manifest+script phases, and emits the same hook JSON
+        it would on a real session start. Useful when a plugin's bootstrap.json has changed and
+        you need the venv refreshed before the next session.
+      origin: User directive 2026-04-28.
+      added: "2026-04-28"
+  conventions:
+    - rule: When adding a new plugin Python dependency, update <plugin>/pyproject.toml AND <plugin>/bootstrap.json venv.check_imports together.
+      keywords: [pyproject.toml, bootstrap.json, dependency, venv, check_imports]
+      why: pyproject.toml drives the actual install (via uv); check_imports tells the bootstrap engine what to verify post-install. Skipping check_imports leads to silent install failures.
+    - rule: Never invoke pip, python -m venv, or any other Python package manager manually for plugin dependencies.
+      keywords: [no manual install, pip, venv, plugin deps, bootstrap-only]
+      why: Plugin dependency installs go through the bootstrap engine so they end up in the right per-plugin venv at ~/.claude/plugins/data/<marketplace>/<plugin>/.venv/. Manual installs land in the wrong location and confuse the engine's cache.
+```
