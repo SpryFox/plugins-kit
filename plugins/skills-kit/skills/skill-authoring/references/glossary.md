@@ -166,6 +166,17 @@ data (YAML, tables, code-fenced blocks) is appropriate because Claude
 consumes it; user-friendly prose is unnecessary because Claude
 generates it on demand. The user is the audience of Claude's reply,
 not of the skill itself.
+
+*Form choice (not "everything is YAML"):* use YAML when the information
+is structurally repetitive -- records with the same shape, lookup
+tables, indexes, contract data, keyword-routed entries. Use prose when
+the information is naturally narrative -- an identity sentence, an
+orientation paragraph, a paragraph-length explanation that does not
+decompose into discrete records. YAML for the sake of YAML obscures
+content; the test is "does this structure aid Claude's comprehension
+better than prose would?" If the answer is unclear, prose is the
+default.
+
 *Audit consequence: structural choices (YAML data blocks, dense tables,
 condensed lists) are evaluated for whether they aid Claude's
 comprehension, not for whether they read smoothly as prose.*
