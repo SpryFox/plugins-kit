@@ -295,19 +295,11 @@ def check_pattern_skill(body: Body, skill_dir: Path) -> list[CheckResult]:
 def check_technique_skill(body: Body, skill_dir: Path, fm: Frontmatter | None) -> list[CheckResult]:
     out: list[CheckResult] = []
     step_count = count_ordered_steps(body.text)
-    user_only = is_user_only(fm)
-    if user_only:
-        out.append(CheckResult(
-            "ordered-step body (conditional, IF NOT user-only)",
-            NA,
-            "user-only (disable-model-invocation: true); the technique IS the slash-command",
-        ))
-    else:
-        out.append(CheckResult(
-            "ordered-step body (conditional, IF NOT user-only)",
-            PASS if step_count >= 1 else FAIL,
-            f"{step_count} ordered-step entries detected",
-        ))
+    out.append(CheckResult(
+        "ordered-step body",
+        PASS if step_count >= 1 else FAIL,
+        f"{step_count} ordered-step entries detected",
+    ))
     if step_count > 3:
         out.append(CheckResult(
             "workflow checklist (conditional, IF >3 steps)",
@@ -458,10 +450,59 @@ def check_yaml_contract(yaml_data: dict) -> tuple[list[CheckResult], str | None]
     return results, root_key
 
 
+def audit_claude_md(claude_md_path: Path, content: str) -> dict[str, Any]:
+    """Audit a CLAUDE.md insight file. Skips skill-frontmatter universal checks
+    (CLAUDE.md does not carry skill metadata); validates only the claude_md
+    YAML contract block.
+    """
+    body = parse_body(content)
+    yaml_data, yaml_err, detected_root = extract_yaml_contract(body.text)
+    yaml_results: list[CheckResult] = []
+    yaml_root: str | None = None
+
+    if yaml_data is not None:
+        if "claude_md" not in yaml_data:
+            roots = list(yaml_data.keys()) if isinstance(yaml_data, dict) else []
+            yaml_results.append(CheckResult(
+                "yaml: claude_md root key",
+                FAIL,
+                f"CLAUDE.md must carry a claude_md: YAML block; found roots {roots}",
+            ))
+        else:
+            yaml_results, yaml_root = check_yaml_contract(yaml_data)
+    elif yaml_err == "no-yaml-parser":
+        yaml_results.append(CheckResult(
+            f"yaml: contract block detected (root='{detected_root}')",
+            JUDGMENT,
+            "pyyaml not installed; YAML contract validation unavailable.",
+        ))
+    else:
+        yaml_results.append(CheckResult(
+            "yaml: claude_md contract block",
+            FAIL,
+            "no fenced yaml block with a claude_md root key found",
+        ))
+
+    return {
+        "path": str(claude_md_path),
+        "kind": "claude_md",
+        "declared_type": None,
+        "yaml_root": yaml_root,
+        "universal": [],
+        "yaml_contract": [asdict(r) for r in yaml_results],
+        "type_specific": [],
+        "mixed_type": asdict(CheckResult("mixed-type signal (n/a for CLAUDE.md)", NA)),
+    }
+
+
 def audit(skill_md_path: Path) -> dict[str, Any]:
     if not skill_md_path.exists():
         return {"error": f"file not found: {skill_md_path}"}
     content = skill_md_path.read_text(encoding="utf-8")
+
+    if skill_md_path.name.lower() == "claude.md":
+        return audit_claude_md(skill_md_path, content)
+
     skill_dir = skill_md_path.parent
 
     fm = parse_frontmatter(content)

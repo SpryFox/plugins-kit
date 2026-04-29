@@ -167,15 +167,25 @@ consumes it; user-friendly prose is unnecessary because Claude
 generates it on demand. The user is the audience of Claude's reply,
 not of the skill itself.
 
-*Form choice (not "everything is YAML"):* use YAML when the information
-is structurally repetitive -- records with the same shape, lookup
-tables, indexes, contract data, keyword-routed entries. Use prose when
-the information is naturally narrative -- an identity sentence, an
-orientation paragraph, a paragraph-length explanation that does not
-decompose into discrete records. YAML for the sake of YAML obscures
-content; the test is "does this structure aid Claude's comprehension
-better than prose would?" If the answer is unclear, prose is the
-default.
+*Form choice (bias toward structured data):* the default for LLM-facing
+content is structured YAML. Use prose only when (a) the content is
+naturally narrative -- an identity sentence, an orientation paragraph,
+a single-paragraph explanation that does not decompose into discrete
+records; or (b) structure carries no meaning over prose. **When in
+doubt, bias toward structured data.** Structure carries assertions
+prose cannot: an `anti_patterns:` list with each entry as a record
+asserts implicitly that every item is genuinely an anti-pattern; a
+markdown bullet list carries no such assertion. Records are routable,
+keyword-able, and validatable; prose is none of those. The test is
+"does this structure aid Claude's comprehension better than prose
+would?" -- the default answer for LLM-facing content is yes.
+
+Schemas are floors, not ceilings. The per-type schema names the
+required minimum; authors may add load-bearing structured keys beyond
+the schema (an `exceptions:` list inside an anti-pattern entry, a
+`narration:` sub-block inside a technique). Forbidding extras would
+push authors toward unstructured prose when they want to add legitimate
+structure, which contradicts the bias-toward-structured-data default.
 
 *Audit consequence: structural choices (YAML data blocks, dense tables,
 condensed lists) are evaluated for whether they aid Claude's
