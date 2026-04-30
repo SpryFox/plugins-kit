@@ -2,7 +2,7 @@
 _schema_version: 1
 name: statusline
 skill-type: technique-skill
-description: Use when the user invokes /statusline or asks to inspect, customize, or reset their Claude Code status line. Do NOT volunteer styling concepts the user hasn't mentioned.
+description: Use when the user invokes /statusline or asks to inspect, customize, or reset their Claude Code status line. Do NOT use for unrelated UI customization.
 disable-model-invocation: true
 ---
 
@@ -75,12 +75,48 @@ technique_skill:
     - id: inspect
       name: Inspect current statusline
       keywords: [/statusline, what is my statusline, current statusline, explain my statusline]
+      goal: Tell the user what their current statusline displays, in plain language.
+      steps:
+        - n: 1
+          action: Walk settings.json layers (project-local -> project -> user) and find the first one with statusLine.command.
+        - n: 2
+          action: Read the script at that path and identify components, colors, thresholds, separators.
+        - n: 3
+          action: Summarize in plain language and ask whether they want to change anything.
+      gotchas:
+        - Do not suggest specific changes; just ask "Want to customize anything?".
+        - If no statusLine is configured anywhere, offer to install claude-ui-kit's default.
     - id: edit
       name: Apply a user-requested edit
       keywords: [change, customize, edit, swap, replace, drop, add, color, threshold, progress bar, separator]
+      goal: Apply exactly the change the user requested, without volunteering extras.
+      steps:
+        - n: 1
+          action: If the active script lives in the plugin data dir, copy it to a user-owned location and point settings.json at the copy.
+        - n: 2
+          action: Touch customized.flag in the plugin data dir so bootstrap stops managing it.
+        - n: 3
+          action: Apply the requested edit, preserving the input contract (DATA=$(cat); jq from stdin) and single-line output.
+        - n: 4
+          action: Verify by piping a small fake JSON payload through the script and showing the rendered output.
+      gotchas:
+        - Never edit the in-plugin script in place; bootstrap overwrites it.
+        - Do not invent extra features (themes, gradients, etc.) the user did not ask for.
+        - Project-specific data goes under <cwd>/.local-data/claude-ui-kit/, not /tmp.
     - id: reset
       name: Reset to claude-ui-kit default
       keywords: [reset, restore default, undo customization, default statusline]
+      goal: Restore the plugin default statusline cleanly.
+      steps:
+        - n: 1
+          action: Delete the user-owned statusline script and the customized.flag.
+        - n: 2
+          action: Repoint the relevant settings.json layer's statusLine.command back at the plugin's default script.
+        - n: 3
+          action: Verify the new active statusline by re-running inspection.
+      gotchas:
+        - Confirm with the user before deleting their customized script.
+        - Update the same settings.json layer that currently holds the active statusLine; do not touch other layers.
 ```
 
 ```yaml
