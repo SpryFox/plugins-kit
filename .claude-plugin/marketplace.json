@@ -8,8 +8,8 @@
   "plugins": [
     {
       "name": "unreal-kit",
-      "description": "Unreal Engine Python API automation: asset inspection, reference graph traversal, script execution, and data extraction",
-      "version": "0.7.3",
+      "description": "Unreal Engine automation: Python API for asset inspection and data extraction; MCP server for live Editor authoring (actors, Blueprints, materials, PIE)",
+      "version": "0.8.0",
       "author": {
         "name": "Christina"
       },
