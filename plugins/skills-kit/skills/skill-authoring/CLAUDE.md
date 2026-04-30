@@ -126,6 +126,44 @@ claude_md:
         accident. Decision recorded as Dec-3 in the project's lessons-learned log;
         PR #12 landed the documentation.
       added: "2026-04-29"
+    - id: dec_4_anti_patterns_promoted_field
+      keywords:
+        - anti-patterns
+        - structured field
+        - structure asserts
+        - lookalike-but-wrong
+        - technique-skill optional
+        - discipline-skill optional
+        - schema extension
+      summary: "anti_patterns: was promoted from a load-bearing extra (schemas-are-floors territory) to a first-class optional field on technique_skill and discipline_skill. The structured record shape implicitly asserts every entry is a genuine anti-pattern; a markdown bullet list carries no such assertion."
+      detail: |
+        Schemas-as-floors (Dec-3) said extras are always allowed; it did not say extras
+        cannot be promoted to documented optional fields. anti_patterns: is the first
+        such promotion. Authors can still add an inline anti-patterns list under any
+        skill type as an extra (per Dec-3), but technique_skill and discipline_skill
+        now carry a recommended structured shape with the keys id / name / keywords /
+        why_it_seems_right / why_it_is_wrong / alternative.
+
+        The promotion exists because anti-patterns are the canonical example of "structure
+        asserts." Containment in a list of records with these specific keys implicitly
+        asserts every item is a genuine anti-pattern; a markdown bullet list under an
+        H3 carries no such assertion. The five-key record shape forces authors to name
+        why the lookalike seems right (the rationalization), why it is actually wrong
+        (the failure mode), and what to do instead (the alternative pointer). That
+        decomposition is what makes the entry useful at audit time -- a list of "don't
+        do X" bullets without rationalization counters cannot survive a pressure test.
+
+        Codified in: schemas.py ANTI_PATTERNS_RULE (constant, reused by both schemas);
+        framework.md schemas_are_floors.promoted_extensions block listing the new field
+        and its rationale.
+      origin: |
+        Phase 4.6 P4 work (2026-04-30). Surface: the session dialog that named four new
+        value propositions on top of the embodiment-closure gap fixes; anti_patterns:
+        as a first-class field was one of the four. Finding: anti-patterns lists were
+        already a documented schemas-are-floors example (in framework.md and
+        scripts/CLAUDE.md), but unstandardized; promoting to a typed shape benefits
+        consistency across plugins-kit skills.
+      added: "2026-04-30"
     - id: ssot_canonical_split
       keywords:
         - SSOT

@@ -42,6 +42,19 @@ framework:
       This matters because the framework biases toward structured data (see Content-form choice). Forbidding extras would push authors toward unstructured prose when they want to add legitimate structure the schema didn't anticipate. The schema is a contract on the floor, not a straitjacket on the ceiling.
       
       Mixed-type drift is detected via the explicit `forbidden_keys:` list on each schema (e.g. a `rules:` key inside `reference_skill:` is forbidden because rules belong to discipline-skills). Forbidden keys are deliberate cross-type signals; unknown keys not in the forbidden list are permitted.
+    promoted_extensions:
+      - field: anti_patterns
+        applies_to: [technique_skill, discipline_skill]
+        required: false
+        record_shape: [id, name, keywords, why_it_seems_right, why_it_is_wrong, alternative]
+        rationale: |
+          Anti-patterns are the canonical example of "structure asserts." Containment in
+          a list of records carrying these specific keys implicitly asserts every item
+          is a real anti-pattern; a markdown bullet list carries no such assertion. A
+          common-enough load-bearing extension was promoted to a first-class optional
+          field on the two skill types whose surface (procedure or rule) frequently
+          benefits from naming the lookalike-but-wrong moves an agent would reach for.
+        keywords: [anti-pattern record, named anti-patterns, lookalike-but-wrong, structured assertion, technique-skill optional, discipline-skill optional]
 
   framework_goals:
     - id: auditability
