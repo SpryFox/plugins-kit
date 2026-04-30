@@ -272,6 +272,108 @@ claude_md:
         framing question pushed past "tool" to the broader "wrapper around
         external capability provider" framing, which generalizes cleanly.
       added: "2026-04-30"
+    - id: dec_7_visibility_rubric_for_examples_and_anti_patterns
+      keywords:
+        - visibility rubric
+        - L1 L2 L3 visibility
+        - common trigger-relevant esoteric
+        - example-grain content allocation
+        - anti-pattern grain
+        - frequency vs trigger-relevance
+        - powershell layering audit
+        - example/anti-pattern visibility criterion
+      summary: "L1/L2/L3 visibility criterion at the example/anti-pattern grain: L1 if COMMON, L2 if DIRECTLY RELATED to why the agent invokes the skill (trigger-relevance dominates frequency when both fire), L3 if ESOTERIC. Codifies the decision rule the framework had been silent on at the example/anti-pattern grain."
+      detail: |
+        The framework's L1/L2/L3 content-allocation section names what each
+        level holds (CLAUDE.md ambient, SKILL.md triggered, references/ on-
+        demand) but was silent on which examples or anti-patterns belong
+        where -- the visibility decision recurs at the example/anti-pattern
+        grain (a single gotcha, a single anti-pattern record, a single
+        escaping example), not just at the major-content grain.
+
+        The canonical criterion (apply verbatim):
+        - L1 (CLAUDE.md): if they are COMMON. Frequency dominates -- the
+          example/anti-pattern fires in most sessions touching the area;
+          ambient cost is justified.
+        - L2 (SKILL.md): if they are DIRECTLY RELATED to why the agent
+          invokes the skill. Stays in SKILL.md regardless of frequency
+          when this fires. Trigger-relevance dominates frequency when both
+          fire (e.g. a PowerShell -Command escaping gotcha that's
+          literally why the skill exists belongs in SKILL.md, not
+          CLAUDE.md, even if also common).
+        - L3 (references/): if they are ESOTERIC. One-in-a-hundred edge
+          cases, third-party-tool-specific quirks, environment-specific
+          footguns most invocations never hit. Specificity dominates --
+          ambient cost is not justified, but the content must be
+          reachable when the rare situation fires.
+
+        Codified in: framework.md "Visibility criterion for examples and
+        anti-patterns" sub-section, under the existing L1/L2/L3 content
+        allocation block.
+      origin: |
+        Surface: powershell layering audit (D:/Dev/p4/spiritcrossing/main/
+        tmp/writing-skills-research/powershell-layering-audit.md) found 5
+        of 7 SKILL.md gotchas should have been in CLAUDE.md (frequency
+        criterion fired). The user clarified the rubric mid-audit; the
+        rubric works at the example/anti-pattern grain, not just the
+        major-content grain.
+        Finding: framework named the levels but did not articulate the
+        visibility-decision criterion at the example/anti-pattern grain.
+        Follow-up: framework.md sub-section added; this Dec-7 codification.
+      added: "2026-04-30"
+    - id: dec_8_step_tracker_or_checklist_for_explicit_step_tracking
+      keywords:
+        - step tracking
+        - workflow checklist OR
+        - TaskCreate invocation
+        - tickbox checklist alternative
+        - F-4-3-2 refinement
+        - explicit step-tracking discipline
+        - markdown syntax incidental
+        - step tracker scratch file
+      summary: "Workflow-checklist conditional row restated as OR-form: paste-able `- [ ]` checklist OR explicit step-tracker invocation (TaskCreate, scratch file, etc.) at procedure start. The underlying goal is the discipline of explicit step-tracking, not the specific markdown syntax."
+      detail: |
+        F-4-3-2 originally treated workflow-checklist `- [ ]` lists as
+        required when a technique-skill has >3 steps. User question
+        (2026-04-30) sharpened the rule: the goal is explicit step-
+        tracking, not the specific markdown syntax. If the skill already
+        invokes TaskCreate (or another step tracker) at the start of the
+        procedure, parallel `- [ ]` markdown adds no information.
+
+        The refined rule (apply verbatim):
+        Ship a paste-able `- [ ]` checklist OR explicitly invoke a step
+        tracker (TaskCreate, scratch file, etc.) at the start of the
+        procedure. Either satisfies the underlying goal of preventing
+        premature completion claims; the markdown syntax is one path, not
+        the only one.
+
+        Implementation:
+        - framework.md technique-skill table row + conditional_requirements
+          example restated as the OR-form, with a note that the goal is
+          the discipline of explicit step-tracking.
+        - _shared.py adds has_step_tracker_invocation() detector
+          (recognizes TaskCreate / TaskWrite / TodoWrite invocations and
+          explicit prose markers like "track steps in", "step tracker",
+          "scratch file for steps").
+        - audit.py technique-skill row "explicit step-tracking
+          (conditional, IF >3 steps): checklist OR tracker invocation"
+          passes when EITHER signal is present.
+        - schemas.py keeps `checklist:` as an optional field with a note
+          that the OR-form is enforced at audit.py level on the rendered
+          SKILL.md body, not in the YAML schema (the schema cannot detect
+          a step-tracker invocation in step text).
+        - tests/skills-kit/ extended to demonstrate a technique-skill with
+          a TaskCreate invocation in step body but no `- [ ]` markdown
+          still passes the conditional row.
+      origin: |
+        Surface: user question on workflow-checklist purpose during the
+        powershell-bundle session (2026-04-30).
+        Finding: the markdown syntax is incidental to the underlying step-
+        tracking discipline; F-4-3-2's "checklist required" rule is over-
+        strict because it conflates the syntax with the goal.
+        Follow-up: framework.md condition restated as OR; audit.py and
+        _shared.py updated correspondingly; pytest case added.
+      added: "2026-04-30"
     - id: ssot_canonical_split
       keywords:
         - SSOT
