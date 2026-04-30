@@ -7,20 +7,24 @@ Opinionated defaults and customization skills for Claude Code's UI surfaces. Cur
 When the plugin is installed (and no other `statusLine` is already configured), it writes a `statusLine` block into the project's `.claude/settings.local.json` (per-user, gitignored/p4ignored — safe in source-controlled projects) pointing at the bundled script. The default shows:
 
 ```
-📁 dirname  │  🧠 4%  │  ⏳ 12%  │  📅 38%
+📁 dirname  │  🧠 96%  │  🔋 88%  │  📅 62%
 ```
 
-- **🧠 context %** — turns orange at 30%, red at 70%
-- **⏳ 5-hour rate limit** — turns orange at 70%, red at 90%
-- **📅 7-day rate limit** — gray (no thresholds)
+All percentages are **capacity remaining** — higher is better, lower triggers warning colors.
 
-Override thresholds via env vars in `settings.json`:
+- **🧠 context remaining** — turns orange at 70%, red at 30%
+- **🔋 5-hour budget remaining** — turns orange at 30%, red at 10%
+- **📅 7-day budget remaining** — gray (no thresholds)
+
+If a `<cwd>/.local-data/claude-ui-kit/systemmessage.<keyword>.txt` file exists, the most recently modified one is appended to the line as `💬 <message>` (capped at 20 chars). Plugins write these to surface short alerts; deleting the file clears the alert.
+
+Override thresholds via env vars in `settings.json` (values are in "% remaining" — colors trigger at-or-below):
 
 ```json
 {
   "env": {
-    "STATUSLINE_CTX_ORANGE_AT": "40",
-    "STATUSLINE_CTX_RED_AT": "80"
+    "STATUSLINE_CTX_ORANGE_AT": "60",
+    "STATUSLINE_CTX_RED_AT": "20"
   }
 }
 ```

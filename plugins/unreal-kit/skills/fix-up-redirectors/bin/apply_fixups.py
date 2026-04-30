@@ -24,7 +24,6 @@ UE5.x note: `unreal.AssetTools.fixup_referencers` does NOT exist in current
 Python bindings. Steps 3-5 are the supported substitute.
 """
 import os
-import stat as _stat
 import sys
 
 sys.path.insert(0, os.path.expanduser('~/.claude/plugins/data/plugins-kit/unreal-kit/lib'))
@@ -35,7 +34,8 @@ ensure_dependencies()
 sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(__file__), '..', 'lib')))
 import unreal
 from p4cli import (
-    create_pending_cl, delete_files, edit_files, get_p4_user, run_p4, run_p4_or_die,
+    create_pending_cl, delete_files, edit_files, get_p4_user, reopen_files,
+    run_p4, run_p4_or_die,
 )
 from redirector_record import load_safe_set, save_apply_manifest
 
@@ -165,26 +165,80 @@ for pkg in loaded_referencers:
 print(f"Force-saved {saved} referencer package(s) "
       f"({len(save_failures)} failures)")
 
-# 6) p4 delete the redirector .uasset files. `p4 delete` opens each for
-#    delete and removes the local file, so this is a single self-contained
-#    step. We chmod first so any read-only flags don't prevent the unlink
-#    that p4 performs internally.
+# 6) Delete each redirector via UE, then have P4 record the deletes.
+#    `EditorAssetLibrary.delete_asset` unloads the package from memory and
+#    removes the local .uasset, releasing the Windows file handle that UE
+#    would otherwise be holding. Without this step, `p4 delete`'s internal
+#    unlink fights UE for the file lock and the batch fails partway.
+ue_deleted = 0
+ue_delete_failures = []
+for r in records:
+    pkg = r['pkg']
+    try:
+        if unreal.EditorAssetLibrary.does_asset_exist(pkg):
+            if unreal.EditorAssetLibrary.delete_asset(pkg):
+                ue_deleted += 1
+                continue
+        ue_delete_failures.append(pkg)
+    except Exception as exc:
+        ue_delete_failures.append(f"{pkg}: {exc}")
+print(f"UE-deleted {ue_deleted} redirector asset(s) "
+      f"({len(ue_delete_failures)} failures)")
+
+# Force a GC pass so any lingering handles on package objects are released
+# before P4 tries to record the delete.
+try:
+    unreal.SystemLibrary.collect_garbage(0)
+except Exception:
+    pass
+
+# UE's source-control plugin auto-opens the deletes into the default CL.
+# `p4 delete -c <CL>` does NOT move already-opened files - it just no-ops.
+# Use `p4 reopen -c <CL>` to herd them into our pending CL, falling back
+# to `p4 delete -c <CL>` for any that source control didn't auto-open.
 delete_failures = []
 if redirector_files:
-    for path in redirector_files:
+    rc, out, _err = run_p4(['-x', '-', 'fstat', '-T', 'depotFile,action,change'],
+                           stdin='\n'.join(redirector_files))
+    auto_opened = []
+    not_opened = []
+    cur_path = None
+    cur_action = None
+    cur_change = None
+    if rc == 0:
+        for line in out.splitlines():
+            line = line.strip()
+            if not line:
+                if cur_path and cur_action == 'delete':
+                    auto_opened.append(cur_path)
+                elif cur_path and cur_action is None:
+                    not_opened.append(cur_path)
+                cur_path = cur_action = cur_change = None
+            elif line.startswith('... depotFile '):
+                cur_path = line[len('... depotFile '):]
+            elif line.startswith('... action '):
+                cur_action = line[len('... action '):]
+            elif line.startswith('... change '):
+                cur_change = line[len('... change '):]
+        if cur_path and cur_action == 'delete':
+            auto_opened.append(cur_path)
+        elif cur_path and cur_action is None:
+            not_opened.append(cur_path)
+
+    if auto_opened:
         try:
-            if os.path.isfile(path):
-                os.chmod(path, _stat.S_IWRITE | _stat.S_IREAD)
-        except OSError:
-            pass
-    try:
-        delete_files(cl_num, redirector_files)
-        print(f"Opened {len(redirector_files)} redirector(s) for delete in CL {cl_num}.")
-    except SystemExit:
-        # delete_files calls run_p4_or_die which sys.exits on rc!=0; capture
-        # so we still emit a manifest before bailing.
-        delete_failures = list(redirector_files)
-        sys.stderr.write("[apply_fixups] WARN: p4 delete batch failed; see error above.\n")
+            reopen_files(cl_num, auto_opened)
+            print(f"Reopened {len(auto_opened)} UE-auto-deleted redirector(s) into CL {cl_num}.")
+        except SystemExit:
+            delete_failures.extend(auto_opened)
+            sys.stderr.write("[apply_fixups] WARN: p4 reopen batch failed; see error above.\n")
+    if not_opened:
+        try:
+            delete_files(cl_num, not_opened)
+            print(f"Opened {len(not_opened)} redirector(s) for delete in CL {cl_num}.")
+        except SystemExit:
+            delete_failures.extend(not_opened)
+            sys.stderr.write("[apply_fixups] WARN: p4 delete batch failed; see error above.\n")
 
 # 7) Manifest.
 manifest = {

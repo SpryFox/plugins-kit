@@ -19,12 +19,14 @@ Then extract via `jq`. Parsing every field in a single jq call (with `@tsv`) is 
 | Working directory | `.cwd` | Absolute path. Use `\| split("/") \| last` for basename. |
 | Session id | `.session_id` | UUID for the current session |
 | Context window size | `.context_window.context_window_size` | Total tokens |
-| Context remaining % | `.context_window.remaining_percentage` | 0-100 (use `100 - x` for "used") |
+| Context remaining % | `.context_window.remaining_percentage` | 0-100 (CAPACITY remaining; use `100 - x` for "used") |
 | Input tokens used | `.context_window.current_usage.input_tokens` | |
 | Cache creation tokens | `.context_window.current_usage.cache_creation_input_tokens` | |
 | Cache read tokens | `.context_window.current_usage.cache_read_input_tokens` | |
-| 5-hour rate-limit % used | `.rate_limits.five_hour.used_percentage` | 0-100, may be null |
-| 7-day rate-limit % used | `.rate_limits.seven_day.used_percentage` | 0-100, may be null |
+| 5-hour rate-limit % used | `.rate_limits.five_hour.used_percentage` | 0-100, may be null. Default statusline shows `100 - x` as remaining capacity. |
+| 7-day rate-limit % used | `.rate_limits.seven_day.used_percentage` | 0-100, may be null. Default statusline shows `100 - x` as remaining capacity. |
+
+The default statusline normalizes all three percentages to **capacity remaining** so the user-facing numbers share one mental model: higher = healthier, lower = warning.
 
 Always guard nulls with `// 0` or `// ""`. Use `try ... catch` around computations that depend on multiple fields.
 

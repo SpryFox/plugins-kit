@@ -22,16 +22,25 @@ Always end with `\033[0m` to reset. Use `\033[2m` for dim, `\033[1m` for bold. T
 
 ## Threshold-based coloring
 
-Used for context %, rate limits, etc. Pattern:
+The default statusline expresses **capacity remaining** (higher = better) for all percentages, so colors trigger when the value drops AT OR BELOW the threshold:
 
 ```bash
-if   [ "$VALUE" -ge "$RED_AT" ];    then CLR="\033[38;5;196m"
-elif [ "$VALUE" -ge "$ORANGE_AT" ]; then CLR="\033[38;5;208m"
+if   [ "$VALUE" -le "$RED_AT" ];    then CLR="\033[38;5;196m"
+elif [ "$VALUE" -le "$ORANGE_AT" ]; then CLR="\033[38;5;208m"
 else                                     CLR="\033[38;5;250m"
 fi
 ```
 
-Default thresholds in `scripts/statusline.sh` are overridable via env vars: `STATUSLINE_CTX_ORANGE_AT`, `STATUSLINE_CTX_RED_AT`, `STATUSLINE_SESS_ORANGE_AT`, `STATUSLINE_SESS_RED_AT`. Set these in `settings.json` -> `env`.
+Default thresholds in `scripts/statusline.sh`:
+
+| Var | Default | Meaning |
+|---|---|---|
+| `STATUSLINE_CTX_ORANGE_AT` | `70` | Context turns orange when remaining ≤ 70% |
+| `STATUSLINE_CTX_RED_AT` | `30` | Context turns red when remaining ≤ 30% |
+| `STATUSLINE_SESS_ORANGE_AT` | `30` | 5-hour budget turns orange when remaining ≤ 30% |
+| `STATUSLINE_SESS_RED_AT` | `10` | 5-hour budget turns red when remaining ≤ 10% |
+
+Override in `settings.json` -> `env`. If you build a custom statusline that displays "% used" instead, flip the comparison back to `-ge` and pick used-side thresholds (e.g. orange at 70% used).
 
 ## Progress bars
 
