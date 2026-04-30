@@ -66,6 +66,16 @@
       },
       "source": "./plugins/skills-kit",
       "category": "development"
+    },
+    {
+      "name": "claude-ui-kit",
+      "description": "Opinionated defaults and customization skills for Claude Code's UI — currently ships the statusline (threshold colors + /statusline skill); future home for other UI surfaces",
+      "version": "0.1.0",
+      "author": {
+        "name": "Christina"
+      },
+      "source": "./plugins/claude-ui-kit",
+      "category": "development"
     }
   ]
 }
