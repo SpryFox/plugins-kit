@@ -9,7 +9,7 @@
     {
       "name": "unreal-kit",
       "description": "Unreal Engine Python API automation: asset inspection, reference graph traversal, script execution, and data extraction",
-      "version": "0.7.2",
+      "version": "0.7.3",
       "author": {
         "name": "Christina"
       },
@@ -70,7 +70,7 @@
     {
       "name": "claude-ui-kit",
       "description": "Opinionated defaults and customization skills for Claude Code's UI — currently ships the statusline (threshold colors + /statusline skill); future home for other UI surfaces",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "author": {
         "name": "Christina"
       },

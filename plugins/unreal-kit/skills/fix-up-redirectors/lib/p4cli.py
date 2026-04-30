@@ -151,6 +151,16 @@ def delete_files(cl_num, files, batch_size=200):
                       what=f'p4 delete batch {i // batch_size}')
 
 
+def reopen_files(cl_num, files, batch_size=200):
+    """Move already-opened files into the given CL via `p4 reopen -c`. Used
+    when UE's source-control plugin auto-opens files in the default CL and
+    we need to herd them into our pending CL."""
+    for i in range(0, len(files), batch_size):
+        batch = files[i:i + batch_size]
+        run_p4_or_die(['-x', '-', 'reopen', '-c', cl_num], stdin='\n'.join(batch),
+                      what=f'p4 reopen batch {i // batch_size}')
+
+
 def get_p4_user():
     """Return the current P4 user. Prefers $P4USER env var; falls back to
     `p4 -F %userName% info` so callers don't need to set the env var.
