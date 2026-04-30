@@ -344,13 +344,19 @@ DOMAIN_SKILL_SCHEMA = {
 
 # Capability-skill: a skill whose primary content is a structured set of
 # capabilities wrapping an external capability provider (tool / MCP server /
-# API / service / IDE / framework). Conceptually IS-A technique-skill --
-# capabilities ARE techniques+ per the glossary. The capability_skill schema
-# requires capabilities: at root (replacing technique-skill's techniques:),
-# an external_capability declaration (what is wrapped), and a layering
-# manifest (L1/L2/L3 content allocation across CLAUDE.md / SKILL.md /
-# references/). Members and Conditional Loading are conditionally required
-# when capabilities grow into separate member skills.
+# API / service / IDE / framework / harness). Conceptually IS-A
+# technique-skill -- capabilities ARE techniques+ per the glossary. The
+# capability_skill schema requires capabilities: at root (replacing
+# technique-skill's techniques:), an external_capability declaration
+# (what is wrapped), and a layering manifest (L1/L2/L3 content allocation
+# across CLAUDE.md / SKILL.md / references/). Members and Conditional
+# Loading are conditionally required when capabilities grow into separate
+# member skills. Harness-targeted skills (those whose primary content
+# wraps the Claude Code harness's exposed surfaces -- hooks, settings,
+# MCP config, status line, slash-command runtime) qualify as
+# capability-skills with kind: harness when their content shape is
+# capabilities-wrapping-an-external-thing rather than rules / lookup
+# tables / techniques.
 CAPABILITY_SKILL_SCHEMA = {
     "root": "capability_skill",
     "keys": {
@@ -359,7 +365,7 @@ CAPABILITY_SKILL_SCHEMA = {
         "scope": SCOPE_RULE,
         "external_capability": {"type": "dict", "required": True, "keys": {
             "kind": {"type": "string", "required": True,
-                     "note": "tool | mcp_server | api | service | ide | framework"},
+                     "note": "tool | mcp_server | api | service | ide | framework | harness"},
             "name": {"type": "string", "required": True,
                      "note": "the external thing's name (e.g. git, Unreal MCP Server, Favro API)"},
             "description": {"type": "string", "required": True,
