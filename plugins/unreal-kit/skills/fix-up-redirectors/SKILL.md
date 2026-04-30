@@ -66,6 +66,8 @@ The classifier runs `p4 opened -a` once for the workspace, then buckets each red
 
 The report also tracks how many `safe` redirectors touch a `.umap` referencer, just for visibility.
 
+> Phase 2 does NOT consult the code-references cache. That happens lazily in Phase 4 prep below, so we don't pay for a full source scan unless the user actually decides to apply.
+
 ## Phase 3 - Present the report
 
 Read `tmp/redirectors/report.json` and print this exact summary:
@@ -86,10 +88,42 @@ Then ask: **"Want me to fix the N safe ones in a new CL? [y/N]"**
 
 Do NOT proceed without explicit yes.
 
-## Phase 4 - Apply fixups (UE Python, after approval)
+## Phase 3.5 - Filter against code references (host Python, only at apply time)
+
+A redirector that's still referenced from C++/C#/Python source must NOT be fixed - the code would silently start pointing at a missing asset. We treat code references the same way we treat P4 checkouts: a hard block.
+
+The cache lives at `./.local-data/code_references.yaml` (per-project, not checked in). It's only required when applying. The filter script regenerates it transparently if it's missing or older than 24 hours; otherwise it reuses the cached scan:
 
 ```bash
-SAFE_JSON=tmp/redirectors/safe.json \
+uv run python \
+  "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/bin/filter_safe_by_code_refs.py" \
+  --safe-in tmp/redirectors/safe.json \
+  --safe-out tmp/redirectors/safe_filtered.json \
+  --report-out tmp/redirectors/code_refs_report.json \
+  --max-age-hours 24
+```
+
+The scan walks the cwd by default. Override with `--root <path>` if your code lives elsewhere. Default extensions cover C/C++/C#/Python/INI plus `.uproject`/`.uplugin`; override with `--extensions` (comma-separated) to include configs (`.yaml`, `.json`) if your project encodes asset paths in data.
+
+If any redirectors get dropped here, re-print an updated count to the user before proceeding:
+
+```
+Code-ref filter: <kept>/<total> remain after dropping <dropped> referenced from source.
+```
+
+To force a fresh scan ahead of time (e.g. you just renamed a bunch of assets in source):
+
+```bash
+uv run python \
+  "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/bin/scan_code_references.py"
+```
+
+## Phase 4 - Apply fixups (UE Python, after approval)
+
+Use `safe_filtered.json` from Phase 3.5, NOT the raw `safe.json`:
+
+```bash
+SAFE_JSON=tmp/redirectors/safe_filtered.json \
   "${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/ue-runner.cmd" \
   "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/bin/apply_fixups.py"
 ```
@@ -97,7 +131,7 @@ SAFE_JSON=tmp/redirectors/safe.json \
 To prepend a project-specific CL tag (e.g. for naming conventions like `[Mix, Tool]`), pass it via env:
 
 ```bash
-CL_DESC_SUFFIX="[Mix, Tool]" SAFE_JSON=tmp/redirectors/safe.json \
+CL_DESC_SUFFIX="[Mix, Tool]" SAFE_JSON=tmp/redirectors/safe_filtered.json \
   "${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/ue-runner.cmd" \
   "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/bin/apply_fixups.py"
 ```
@@ -134,6 +168,7 @@ If there are blocked redirectors, suggest: **"Tell the blocked users to run `/fi
 
 - **Skipping validation in phase 4.** Never call `fixup_referencers` without first verifying the CL's opened set matches what discovery promised. A surprise file in the CL means the world moved between discovery and apply.
 - **Treating "checked out by me in another CL" as safe.** It's not. Other-CL checkouts are still blocked - the file would land in the wrong CL otherwise.
+- **Skipping the code-references filter.** Phase 3.5 isn't optional. A redirector that compiles into a string literal in C++/C#/Python source will silently break that code if you fix the redirector and the target asset later moves or is renamed. Always run the filter; never feed `safe.json` directly into Phase 4.
 
 ## Architecture
 
@@ -143,6 +178,7 @@ The skill follows a facade-over-libs structure:
 - `lib/p4cli.py` — host-side P4 CLI (find, run, parse opened, where mapping)
 - `lib/package_paths.py` — UE-side mount-point map and package -> on-disk path
 - `lib/redirector_record.py` — YAML/JSON I/O for the discovery and safe-set files
+- `lib/code_refs.py` — host-side source scanner + cache I/O for `./.local-data/code_references.yaml` (24h freshness)
 
 The libs are also useful for one-off redirector-related scripts. Import them directly:
 
