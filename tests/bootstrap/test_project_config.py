@@ -534,11 +534,12 @@ class TestLegacyFileMigration:
 
         assert not any("migrated" in e for e in action_entries)
 
-    def test_no_op_when_both_paths_present(self, tmp_path, monkeypatch):
-        """If both files somehow exist, the new one wins; legacy is left alone.
+    def test_both_paths_legacy_older_deletes_legacy(self, tmp_path, monkeypatch):
+        """Both paths exist and legacy mtime <= new mtime: drop the legacy file.
 
-        We deliberately do not delete the legacy file in this case — the user can
-        decide whether the leftover is meaningful (e.g. they manually re-created it).
+        Earlier engine versions wrote the new path from defaults without honoring
+        legacy_file, leaving an orphaned legacy file alongside a fresh new one.
+        We delete the legacy so future sessions don't keep flagging the conflict.
         """
         project_dir = tmp_path / "project"
         project_dir.mkdir()
@@ -553,6 +554,10 @@ class TestLegacyFileMigration:
         new_path.parent.mkdir(parents=True)
         save_yaml_config(str(new_path), {"foo": "from-new"})
 
+        # Make legacy strictly older than new.
+        legacy_stat = os.stat(legacy_path)
+        os.utime(legacy_path, (legacy_stat.st_atime, legacy_stat.st_mtime - 60))
+
         plugin_root = str(tmp_path / "plugin")
         os.makedirs(plugin_root)
         plugin_data_dir = str(tmp_path / "data")
@@ -564,9 +569,81 @@ class TestLegacyFileMigration:
             action_entries, ok_entries=[], plugin_name="myplugin",
         )
 
-        assert legacy_path.is_file(), "legacy left in place when new path already exists"
+        assert not legacy_path.exists(), "stale legacy should be removed"
         assert load_yaml_config(str(new_path))["foo"] == "from-new"
-        assert not any("migrated" in e for e in action_entries)
+        assert any("removed stale legacy" in e for e in action_entries)
+
+    def test_both_paths_legacy_same_age_deletes_legacy(self, tmp_path, monkeypatch):
+        """Tie-break: same mtime is treated as legacy older — delete legacy."""
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        monkeypatch.chdir(project_dir)
+
+        legacy_dir = project_dir / ".claude"
+        legacy_dir.mkdir()
+        legacy_path = legacy_dir / "myplugin.yaml"
+        save_yaml_config(str(legacy_path), {"foo": "from-legacy"})
+
+        new_path = project_dir / ".local-data" / "myplugin" / "config.yaml"
+        new_path.parent.mkdir(parents=True)
+        save_yaml_config(str(new_path), {"foo": "from-new"})
+
+        # Force identical mtime on both files.
+        new_stat = os.stat(new_path)
+        os.utime(legacy_path, (new_stat.st_atime, new_stat.st_mtime))
+
+        plugin_root = str(tmp_path / "plugin")
+        os.makedirs(plugin_root)
+        plugin_data_dir = str(tmp_path / "data")
+        os.makedirs(plugin_data_dir)
+
+        action_entries = []
+        _process_project_config(
+            self._common_section(), plugin_data_dir, plugin_root,
+            action_entries, ok_entries=[], plugin_name="myplugin",
+        )
+
+        assert not legacy_path.exists(), "same-age legacy should be removed"
+        assert load_yaml_config(str(new_path))["foo"] == "from-new"
+        assert any("removed stale legacy" in e for e in action_entries)
+
+    def test_both_paths_legacy_newer_overwrites_new(self, tmp_path, monkeypatch):
+        """Both paths exist and legacy mtime > new mtime: legacy wins, overwrites new.
+
+        The user edited the legacy after the new file was auto-created; preserve
+        their changes by promoting the legacy copy to the new path.
+        """
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        monkeypatch.chdir(project_dir)
+
+        legacy_dir = project_dir / ".claude"
+        legacy_dir.mkdir()
+        legacy_path = legacy_dir / "myplugin.yaml"
+        save_yaml_config(str(legacy_path), {"foo": "from-legacy"})
+
+        new_path = project_dir / ".local-data" / "myplugin" / "config.yaml"
+        new_path.parent.mkdir(parents=True)
+        save_yaml_config(str(new_path), {"foo": "from-new"})
+
+        # Make legacy strictly newer than new.
+        new_stat = os.stat(new_path)
+        os.utime(legacy_path, (new_stat.st_atime, new_stat.st_mtime + 60))
+
+        plugin_root = str(tmp_path / "plugin")
+        os.makedirs(plugin_root)
+        plugin_data_dir = str(tmp_path / "data")
+        os.makedirs(plugin_data_dir)
+
+        action_entries = []
+        _process_project_config(
+            self._common_section(), plugin_data_dir, plugin_root,
+            action_entries, ok_entries=[], plugin_name="myplugin",
+        )
+
+        assert not legacy_path.exists(), "legacy should be moved (not left as a duplicate)"
+        assert load_yaml_config(str(new_path))["foo"] == "from-legacy"
+        assert any("migrated" in e and "overwrote stale new path" in e for e in action_entries)
 
     def test_no_op_when_legacy_file_field_omitted(self, tmp_path, monkeypatch):
         """Plugins without legacy_file declared: nothing migrates, normal flow runs."""

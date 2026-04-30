@@ -938,19 +938,37 @@ def _process_project_config(project_config_section, plugin_data_dir, plugin_root
 
     project_config_path = os.path.join(os.getcwd(), config_file)
 
-    # One-shot legacy migration: if the manifest declares a legacy_file and that
-    # path exists in CWD while the new path does not, move it. The downstream
-    # logic then runs against the new path as if it had always been there.
-    # Idempotent: a second session with both paths absent (or only the new path
-    # present) is a no-op.
+    # Legacy migration: when the manifest declares a legacy_file, reconcile the
+    # old and new paths so downstream logic can run against the new path as if
+    # it had always been there. Four cases:
+    #   1. only legacy exists           -> move legacy to new path
+    #   2. both exist, legacy <= new    -> delete legacy (new is fresher/equal)
+    #   3. both exist, legacy >  new    -> move legacy to new (overwrite stale)
+    #   4. only new exists, or neither  -> no-op (downstream handles creation)
+    # Cases 2/3 cover sessions that ran before legacy_file was honored: the
+    # engine had already created a new file from defaults/autodetect, leaving
+    # the legacy file orphaned alongside it. mtime decides which copy wins.
     if legacy_file:
         legacy_path = os.path.join(os.getcwd(), legacy_file)
-        if os.path.isfile(legacy_path) and not os.path.isfile(project_config_path):
+        legacy_exists = os.path.isfile(legacy_path)
+        new_exists = os.path.isfile(project_config_path)
+        if legacy_exists and not new_exists:
             os.makedirs(os.path.dirname(project_config_path), exist_ok=True)
             os.replace(legacy_path, project_config_path)
             action_entries.append(
                 f"project config: migrated {legacy_path} -> {project_config_path}"
             )
+        elif legacy_exists and new_exists:
+            if os.path.getmtime(legacy_path) <= os.path.getmtime(project_config_path):
+                os.remove(legacy_path)
+                action_entries.append(
+                    f"project config: removed stale legacy {legacy_path} (new path {project_config_path} is fresher)"
+                )
+            else:
+                os.replace(legacy_path, project_config_path)
+                action_entries.append(
+                    f"project config: migrated {legacy_path} -> {project_config_path} (overwrote stale new path)"
+                )
 
     file_changed = False  # Track whether project_data was modified from disk state
 
