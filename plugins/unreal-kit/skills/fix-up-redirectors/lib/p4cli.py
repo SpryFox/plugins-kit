@@ -1,0 +1,171 @@
+"""Host-side P4 CLI helpers. Stdlib-only.
+
+CCP: changes to the P4 CLI invocation contract change here. Used together by
+anything talking to P4 from a Claude script - hence the small module.
+"""
+import os
+import shutil
+import subprocess
+import sys
+from collections import defaultdict
+
+
+def find_p4():
+    """Locate the p4 binary. Engine-bundled Pythons often have a sanitized PATH
+    on Windows that doesn't see Perforce's install dir, so we fall back to the
+    standard Windows install locations."""
+    candidates = [
+        shutil.which('p4'),
+        shutil.which('p4.exe'),
+        r'C:\Program Files\Perforce\p4.exe',
+        r'C:\Program Files (x86)\Perforce\p4.exe',
+    ]
+    for c in candidates:
+        if c and os.path.isfile(c):
+            return c
+    return 'p4'
+
+
+P4 = find_p4()
+
+
+def run_p4(args, stdin=None):
+    """Run a p4 command. Returns (rc, stdout, stderr); does not raise."""
+    result = subprocess.run([P4] + list(args), capture_output=True, text=True, input=stdin, check=False)
+    return result.returncode, result.stdout, result.stderr
+
+
+def run_p4_or_die(args, stdin=None, what=None):
+    """Run a p4 command. Exits with a clear error on non-zero return."""
+    rc, out, err = run_p4(args, stdin=stdin)
+    if rc != 0:
+        label = what or f"p4 {' '.join(args)}"
+        sys.stderr.write(f"{label} failed (rc={rc}):\n{err}\n")
+        sys.exit(1)
+    return out
+
+
+def get_workspace_mapping():
+    """Return ((depot_root, local_root)) for the workspace's primary //... mapping.
+
+    Both roots have trailing '/...' stripped and are forward-slashed."""
+    out = run_p4_or_die(['where', '//...'], what='p4 where //...')
+    for line in out.splitlines():
+        line = line.strip()
+        if not line or line.startswith('-'):
+            continue
+        parts = line.split(' ')
+        if len(parts) < 3:
+            continue
+        depot, _client, local = parts[0], parts[1], ' '.join(parts[2:])
+        if depot.endswith('/...'):
+            depot = depot[:-4]
+        if local.endswith('\\...'):
+            local = local[:-4]
+        elif local.endswith('/...'):
+            local = local[:-4]
+        return depot.rstrip('/'), local.replace('\\', '/').rstrip('/')
+    sys.exit("Could not parse `p4 where //...`")
+
+
+def local_to_depot(local_path, depot_root, local_root):
+    """Convert a local file path to its depot path. Returns None if not in workspace."""
+    lp = local_path.replace('\\', '/')
+    lr = local_root.replace('\\', '/')
+    if not lp.lower().startswith(lr.lower()):
+        return None
+    rel = lp[len(lr):]
+    return depot_root + rel
+
+
+def parse_opened(opened_output):
+    """Parse `p4 opened -a` output. Returns dict keyed by lowercase depot path,
+    each value a list of {user, client, change} dicts.
+
+    Example line:
+        //depot/main/foo.uasset#3 - edit change 12345 (binary+l) by alice@workspace
+    """
+    opened = defaultdict(list)
+    for line in opened_output.splitlines():
+        if ' - ' not in line or ' by ' not in line:
+            continue
+        depot_path = line.split('#', 1)[0].strip()
+        if not depot_path.startswith('//'):
+            continue
+        change = 'default'
+        if 'change ' in line:
+            after = line.split('change ', 1)[1]
+            tok = after.split()[0]
+            if tok.isdigit():
+                change = tok
+        userclient = line.rsplit(' by ', 1)[1].strip()
+        if '@' in userclient:
+            user, client = userclient.split('@', 1)
+        else:
+            user, client = userclient, ''
+        opened[depot_path.lower()].append({
+            'user': user,
+            'client': client,
+            'change': change,
+        })
+    return opened
+
+
+def get_opened_map():
+    """Return the parsed `p4 opened -a` map for the whole workspace."""
+    out = run_p4_or_die(['opened', '-a'], what='p4 opened -a')
+    return parse_opened(out)
+
+
+def create_pending_cl(description, client=None):
+    """Create a new pending CL with the given description. Returns the CL number."""
+    spec_lines = ["Change: new"]
+    if client:
+        spec_lines.append(f"Client: {client}")
+    spec_lines.append("Description:")
+    for line in description.splitlines():
+        spec_lines.append("\t" + line)
+    spec = "\n".join(spec_lines) + "\n"
+
+    out = run_p4_or_die(['change', '-i'], stdin=spec, what='p4 change -i')
+    for tok in out.split():
+        if tok.isdigit():
+            return tok
+    sys.exit(f"Could not parse new CL number from: {out!r}")
+
+
+def edit_files(cl_num, files, batch_size=200):
+    """Open files for edit in the given CL, batching to avoid command-line length limits."""
+    for i in range(0, len(files), batch_size):
+        batch = files[i:i + batch_size]
+        run_p4_or_die(['-x', '-', 'edit', '-c', cl_num], stdin='\n'.join(batch),
+                      what=f'p4 edit batch {i // batch_size}')
+
+
+def get_opened_in_cl(cl_num):
+    """Return a set of lowercase depot paths currently opened in the given CL."""
+    out = run_p4_or_die(['opened', '-c', cl_num], what=f'p4 opened -c {cl_num}')
+    depots = set()
+    for line in out.splitlines():
+        if ' - ' in line:
+            depot = line.split('#', 1)[0].strip().lower()
+            if depot.startswith('//'):
+                depots.add(depot)
+    return depots
+
+
+def where_batch(local_paths):
+    """Resolve a batch of local paths to depot paths via `p4 where`. Returns
+    set of lowercase depot paths."""
+    if not local_paths:
+        return set()
+    out = run_p4_or_die(['-x', '-', 'where'], stdin='\n'.join(local_paths), what='p4 where (batch)')
+    depots = set()
+    for line in out.splitlines():
+        line = line.strip()
+        if not line or line.startswith('-'):
+            continue
+        parts = line.split(' ')
+        if len(parts) >= 3 and parts[0].startswith('//'):
+            depots.add(parts[0].lower())
+    return depots
