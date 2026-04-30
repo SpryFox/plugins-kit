@@ -4,8 +4,12 @@ version = "0.1.0"
 requires-python = ">=3.10"
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "websocket-client>=1.6"]
+dev = ["pytest>=8.0", "pyyaml", "websocket-client>=1.6"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["plugins/bootstrap", "plugins/bootstrap/engine"]
+pythonpath = [
+    "plugins/bootstrap",
+    "plugins/bootstrap/engine",
+    "plugins/skills-kit/skills/skill-authoring/scripts",
+]
