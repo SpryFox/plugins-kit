@@ -1,6 +1,6 @@
 {
   "name": "unreal-kit",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Unreal Engine Python API automation: asset inspection, reference graph traversal, script execution, and data extraction",
   "author": {
     "name": "Christina"
