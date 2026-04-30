@@ -374,6 +374,61 @@ claude_md:
         Follow-up: framework.md condition restated as OR; audit.py and
         _shared.py updated correspondingly; pytest case added.
       added: "2026-04-30"
+    - id: dec_9_yaml_steps_canonical_for_yaml_contract_skills
+      keywords:
+        - yaml steps canonical
+        - markdown checklist legacy
+        - two-source-of-truth drift
+        - shape hierarchy
+        - workflow checklist YAML preference
+        - contract skill canonical surface
+        - mixed-shape promote to yaml
+        - dec-8 follow-up
+      summary: "When a skill is on the YAML contract, the `steps:` list IS the canonical step-tracking surface. Markdown `- [ ]` checklists are the right form for legacy / non-YAML-contract skills only; pairing them with YAML `steps:` creates two-source-of-truth drift. The hierarchy: YAML `steps:` for contract skills; markdown `- [ ]` for legacy; mixed shapes promote to YAML and drop the markdown."
+      detail: |
+        Dec-8 made the workflow-checklist row OR-form (paste-able `- [ ]`
+        checklist OR step-tracker invocation). It did not say which form
+        is preferred when a skill has a choice. The unspoken default after
+        Dec-8 left it ambiguous whether YAML-contract skills should also
+        carry a parallel markdown checklist.
+
+        The clarification: a YAML `steps:` block already satisfies the
+        explicit-step-tracking discipline. It is structured, schema-
+        validated, keyword-able, and authoritative. Adding a parallel
+        markdown `- [ ]` checklist alongside the YAML duplicates the
+        information in two places; the two surfaces drift independently
+        as the skill evolves, and audit tooling has to reason about which
+        is the source of truth. The right hierarchy:
+
+        - YAML-contract skills: `steps:` only. The schema is the
+          authority; do not pair with markdown `- [ ]`.
+        - Legacy / non-YAML-contract skills: markdown `- [ ]` is the
+          right form. The OR-form Dec-8 produced is what carries the
+          explicit-step-tracking discipline for skills not yet on the
+          contract.
+        - Mixed shapes: promote to YAML and drop the markdown rather
+          than maintaining both. Avoid blanket-converting SC's markdown
+          checklists to YAML pre-emptively -- the conversion happens as
+          the skill is brought onto the YAML contract.
+
+        Codified in: framework.md conditional_requirements row note
+        (canonical_form_when_on_yaml_contract sub-clause), framework.md
+        technique-skill table row parenthetical, this insight.
+      origin: |
+        Surface: user question 2026-04-30 after CL 145525 landed (the
+        F-4-3-2 SC application that added 26 markdown `## Workflow
+        Checklist` sections to SC technique-skills). The question
+        surfaced the unresolved hierarchy: which form is canonical when
+        a skill is on the YAML contract?
+        Finding: a YAML `steps:` block already satisfies Dec-8 step-
+        tracking; pairing it with a parallel markdown checklist creates
+        a two-source-of-truth drift hazard. Dec-8 was syntactically
+        correct but did not name the canonical-form hierarchy.
+        Follow-up: framework.md canonical_form_when_on_yaml_contract
+        sub-clause added under the existing Dec-8 note; technique-skill
+        table row extended to name the YAML-canonical preference; this
+        Dec-9 insight added.
+      added: "2026-04-30"
     - id: ssot_canonical_split
       keywords:
         - SSOT
