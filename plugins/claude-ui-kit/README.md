@@ -1,0 +1,78 @@
+# claude-ui-kit
+
+Opinionated defaults and customization skills for Claude Code's UI surfaces. Currently ships the **statusline** (the bar at the bottom of the prompt) with threshold-aware default colors and a `/statusline` skill for customizing it. Future home for other UI tweaks (notifications, output formatting, etc.) as the surface area grows.
+
+## Status line
+
+When the plugin is installed (and no other `statusLine` is already configured), it writes a `statusLine` block into the project's `.claude/settings.local.json` (per-user, gitignored/p4ignored — safe in source-controlled projects) pointing at the bundled script. The default shows:
+
+```
+📁 dirname  │  🧠 4%  │  ⏳ 12%  │  📅 38%
+```
+
+- **🧠 context %** — turns orange at 30%, red at 70%
+- **⏳ 5-hour rate limit** — turns orange at 70%, red at 90%
+- **📅 7-day rate limit** — gray (no thresholds)
+
+Override thresholds via env vars in `settings.json`:
+
+```json
+{
+  "env": {
+    "STATUSLINE_CTX_ORANGE_AT": "40",
+    "STATUSLINE_CTX_RED_AT": "80"
+  }
+}
+```
+
+## On/off
+
+The plugin's installation is the on/off switch. To use it, add it to your project or user `bootstrap.json`:
+
+```json
+{
+  "plugins": [
+    {"ref": "plugins-kit:claude-ui-kit", "enabled": true}
+  ]
+}
+```
+
+To opt out, set `"enabled": false` (or just don't list it).
+
+## Conflict avoidance
+
+The bootstrap install script:
+
+- **Skips entirely** if you already have any `statusLine` configured in `~/.claude/settings.json`, the project's `.claude/settings.json`, or the project's `.claude/settings.local.json` — UNLESS that statusLine points at this plugin (then it refreshes the path on upgrade).
+- **Surfaces a fix-all prompt** if a non-plugin statusLine is detected, so you can type `replace my status line` to switch.
+- **Stays quiet permanently** if the user customizes via `/statusline` (a marker file in the plugin data dir disables further automatic management).
+
+## /statusline skill
+
+Run `/statusline` in any session. The skill reads your active statusline script, summarizes what it displays, and asks if you want to change anything. It only acts on what you ask for — it won't pitch themes, gradients, or other concepts unless you bring them up.
+
+Example interactions:
+
+- *"Change the context % to a yellow progress bar"* — done.
+- *"Drop the 7-day number"* — done.
+- *"Reset to default"* — restores the plugin default and clears any customization.
+
+When you customize, the skill copies the script to `~/.claude/statusline.sh` (or `<project>/.claude/statusline.sh` for a project-scoped version) and points settings.json there, so bootstrap won't overwrite your edits.
+
+## Layout
+
+```
+claude-ui-kit/
+  .claude-plugin/
+    plugin.json
+  bootstrap.json              # sync_to_data + script entry-point
+  scripts/
+    statusline.sh             # the default status line script (synced to data dir)
+    install_statusline.py     # bootstrap script: writes settings.json conditionally
+  skills/
+    statusline/
+      SKILL.md                # /statusline skill definition
+      references/
+        components.md         # what data the script can read
+        styling.md            # ANSI palettes, progress bars, gradients, themes
+```

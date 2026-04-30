@@ -27,12 +27,13 @@ def main():
 
     print(f"Scanning {args.root} for code references...")
     t0 = time.time()
-    refs, file_count, scanned_count = scan(args.root, extensions=extensions)
+    refs, file_count, scanned_count, mounts = scan(args.root, extensions=extensions)
     elapsed = time.time() - t0
 
-    save(args.out, refs, args.root, file_count, scanned_count, extensions)
+    save(args.out, refs, args.root, file_count, scanned_count, extensions, mounts=mounts)
 
     print(f"Scanned {file_count} files ({scanned_count} matched extension) in {elapsed:.1f}s")
+    print(f"Mounts: {', '.join(sorted(mounts)) if mounts else '(none discovered)'}")
     print(f"Found {len(refs)} unique content references")
     print(f"Wrote {args.out}")
 

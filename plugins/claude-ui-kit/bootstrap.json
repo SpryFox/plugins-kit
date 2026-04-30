@@ -1,0 +1,9 @@
+{
+  "sync_to_data": [
+    {"src": "scripts", "dst": "scripts"}
+  ],
+  "script": {
+    "path": "scripts/install_statusline.py",
+    "entry_point": "install"
+  }
+}

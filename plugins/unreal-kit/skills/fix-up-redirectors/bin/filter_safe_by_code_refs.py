@@ -24,8 +24,8 @@ def _maybe_regenerate(refs_path, root, max_age_hours, extensions):
     else:
         print(f"Code-refs cache is {age:.1f}h old (fresh).")
         return
-    refs, file_count, scanned_count = scan(root, extensions=extensions)
-    save(refs_path, refs, root, file_count, scanned_count, extensions)
+    refs, file_count, scanned_count, mounts = scan(root, extensions=extensions)
+    save(refs_path, refs, root, file_count, scanned_count, extensions, mounts=mounts)
     print(f"Wrote {refs_path}: {len(refs)} references from {file_count} files.")
 
 
