@@ -67,6 +67,7 @@ CONTRACT_ROOT_KEYS = (
     "technique_skill",
     "discipline_skill",
     "domain_skill",
+    "capability_skill",
     "claude_md",
 )
 

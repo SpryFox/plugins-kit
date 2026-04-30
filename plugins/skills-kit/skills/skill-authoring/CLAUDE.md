@@ -224,6 +224,54 @@ claude_md:
         project-plan.md P7 row marked killed and Phase 4.6 closed; new "Phase 6
         -- Post-rollout optimizations" section in project-plan.md queues the
         intelligent-YAML-navigation work.
+    - id: dec_6_capability_skill_type_and_layering
+      keywords:
+        - capability-skill
+        - wrapper skill
+        - external capability provider
+        - tool / mcp / api / service / ide / framework
+        - L1 L2 L3 layering
+        - CLAUDE.md SKILL.md references content allocation
+        - frequency of need test
+      summary: "Capability-skill added as the 6th skill type. A capability-skill wraps an external capability provider (tool / MCP server / API / service / IDE / framework) with the project's setup and conventions. Conceptually inherits technique-skill (capabilities are techniques+); schema requires capabilities: at root, external_capability declaration, layering manifest (L1/L2/L3 content allocation), and capability-skill-level gotchas. Member skills + Conditional Loading fire conditionally when capabilities grow."
+      detail: |
+        Surface: Phase 4.3 SC audit Bucket C (reference-shape audit) flagged
+        ue-mcp-server, hooks, ue-coding for re-bucket as F-4-3-C-4/5/6 --
+        mixed-type drift, "reference-skill that's actually mixed." The
+        deeper finding: tool-shape and wrapper-shape skills don't fit
+        reference-skill or technique-skill or domain-skill cleanly. Their
+        content shape is "structured capabilities wrapping an external
+        thing" -- which is its own coherent shape.
+
+        Three options were considered:
+        - Use subset (force reference-skill): bad, loses domain structure
+          for rich tool skills.
+        - Use superset (force domain-skill): bad, fabricates members for
+          flat tool skills.
+        - New type via inheritance (capability-skill IS-A technique-skill
+          + capability-specific structure): best fit; conditional rows
+          support the growth curve from flat to rich.
+
+        Naming: "tool-skill" was too narrow (MCP servers, APIs, services
+        aren't tools). "Wrapper-skill" too generic. "Capability-skill"
+        composes with the existing Capability pattern (a capability-skill
+        is a skill of capabilities). The naming layers cleanly: capability
+        (unit) -> capability-skill (type that aggregates them).
+
+        L1/L2/L3 content layering principle ships in the same change as a
+        new framework section. The principle is general (applies to any
+        skill with multi-load-level potential) but most load-bearing for
+        capability-skills (which have significant L1 territory because
+        the wrapped thing is used widely). The schema's required
+        layering manifest enforces it for capability-skills; for other
+        types it is authoring guidance.
+      origin: |
+        Phase 4.3 SC audit (F-4-3-8 mixed-type drift on tool-shape skills)
+        + the git/ domain-skill build that demonstrated the layering
+        principle in practice (worked example for the principle). User
+        framing question pushed past "tool" to the broader "wrapper around
+        external capability provider" framing, which generalizes cleanly.
+      added: "2026-04-30"
     - id: ssot_canonical_split
       keywords:
         - SSOT

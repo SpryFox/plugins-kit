@@ -16,6 +16,7 @@ CANONICAL_TYPES = {
     "technique-skill",
     "discipline-skill",
     "domain-skill",
+    "capability-skill",
 }
 
 
@@ -199,5 +200,15 @@ def type_signals(body_text: str, fm=None) -> dict:
         scores["domain-skill"] += 2
     if has_companion_declaration(narrative):
         scores["domain-skill"] += 2
+
+    # capability signals (conservative; the YAML root is the deterministic
+    # signal -- false positives here are worse than missing the type, since
+    # most legacy skills use other markers)
+    if re.search(r"\bwraps?\s+(?:the\s+)?(?:\w+\s+){0,3}(?:tool|server|api|service|ide|framework|cli)\b",
+                 narrative, re.IGNORECASE):
+        scores["capability-skill"] += 2
+    if re.search(r"^#{1,6}\s+(?:Capabilit(?:y|ies)|External\s+capability)\b",
+                 narrative, re.MULTILINE | re.IGNORECASE):
+        scores["capability-skill"] += 1
 
     return scores

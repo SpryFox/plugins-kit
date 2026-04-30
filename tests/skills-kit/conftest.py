@@ -184,6 +184,42 @@ def minimal_domain_skill():
 
 
 @pytest.fixture
+def minimal_capability_skill():
+    """Minimal valid capability_skill: 1 capability + external_capability + layering + 1 gotcha."""
+    return {
+        "capability_skill": {
+            "_schema_version": "1",
+            "identity": "Capability-skill wrapping external thing X.",
+            "scope": {
+                "covers": ["X operations in this project"],
+                "excludes": ["unrelated tooling"],
+            },
+            "external_capability": {
+                "kind": "tool",
+                "name": "X CLI",
+                "description": "X provides operations Y and Z.",
+            },
+            "layering": {
+                "claude_md": [],
+                "skill_md": ["orientation paragraph", "capability list"],
+                "references": [],
+            },
+            "capabilities": [
+                {
+                    "id": "c1",
+                    "keywords": _kw("operation y", "x cli", "do y"),
+                    "user_objective": "Accomplish Y in the project workflow.",
+                    "operation": "x do-y --target=foo",
+                },
+            ],
+            "gotchas": [
+                "X CLI swallows stderr on Windows; redirect with 2>&1.",
+            ],
+        }
+    }
+
+
+@pytest.fixture
 def minimal_claude_md():
     """Minimal valid claude_md: scope + 1 insight with all required fields."""
     return {

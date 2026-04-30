@@ -45,6 +45,7 @@ CONTRACT_ROOT_TO_TYPE = {
     "technique_skill": "technique-skill",
     "discipline_skill": "discipline-skill",
     "domain_skill": "domain-skill",
+    "capability_skill": "capability-skill",
 }
 
 _YAML_BLOCK_RE = re.compile(r"^```ya?ml\s*\n(.*?)^```", re.MULTILINE | re.DOTALL)

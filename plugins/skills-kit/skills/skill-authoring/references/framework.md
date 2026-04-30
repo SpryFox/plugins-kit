@@ -206,6 +206,42 @@ framework:
         A YAML or table of `{name, trigger, file}` would enable automated audits.
 ```
 
+## Content allocation across CLAUDE.md / SKILL.md / references/
+
+A separate-from-type principle that governs how content is allocated across the three load levels. Most acutely required for capability-skills (which have ambient L1 territory because the wrapped external thing is used widely); applies to any skill that has SKILL.md plus references/ plus relevant project CLAUDE.md content.
+
+The three layers and their tests:
+
+### L1 -- CLAUDE.md (ambient, always loaded)
+
+Test: would the agent fail a tool call or violate a project convention without this knowledge in MOST sessions?
+
+Lives here: common operations the agent runs constantly; project-specific syntax substitutions; tool-call gotchas that fail safety checks; hard prohibitions; one-line skill-discovery breadcrumbs ("for advanced X, see /Y"). Every load-bearing fact in CLAUDE.md justifies its ambient cost.
+
+Does NOT live here: advanced procedures, deep mechanics, edge cases, syntax references for rare operations.
+
+### L2 -- SKILL.md (triggered, loaded on activation)
+
+Test: would a fresh agent need this to navigate to the right reference doc once the domain trigger fires?
+
+Lives here: identity sentence; brief orientation on the domain shape; capability surface (what operations exist); Conditional Loading index pointing at L3; behavioral guardrails that span the domain.
+
+Does NOT live here: deep step-by-step procedures (those are L3); tool-specific syntax tables (L3); content already in CLAUDE.md (L1 territory).
+
+### L3 -- references/*.md (on-demand, loaded by name)
+
+Test: is this content only relevant when one specific advanced situation fires?
+
+Lives here: step-by-step workflows for ONE operation; edge cases + error recovery; tool-specific syntax tables; worked examples; shared prerequisites extracted from multiple member skills (CCP cleanup).
+
+Does NOT live here: orientation (L2); ambient setup (L1).
+
+### The contested boundary: L1 vs L2
+
+The framework's progressive-disclosure pattern names L1/L2/L3 load levels but is silent on which content goes where. The rule above resolves it: **frequency of need + cost of absence**. Frequent + tool-call-failing -> L1. Situational + orientation-only -> L2. Specific + deep -> L3.
+
+For capability-skill, this allocation is required (the schema's `layering:` field declares the manifest). For other skill types, it is the default authoring guide; the schema does not enforce it.
+
 ## Type contracts
 
 A skill claiming a type must satisfy the **required** rows and the
@@ -248,6 +284,20 @@ Examples: `flatten-with-flags`, `test-invariants`, `reducing-complexity` (from t
 | **Audit** | Can the agent apply the method to a novel scenario? Try variation and missing-information tests. |
 
 Examples: `condition-based-waiting`, `root-cause-tracing` (from obra/superpowers); `/test-greeting`, `/cache-report`, `/local-code-review` (plugins-kit, all `trigger: user-only`).
+
+### capability-skill
+
+Conceptually IS-A technique-skill: capabilities are techniques+ per the glossary. The schema requires capabilities: at root in place of technique-skill's techniques:, plus three capability-skill-specific blocks: external_capability, layering, and capability records carrying structural metadata (user_objective, operation, optional reference_section).
+
+| Contract | Items |
+|---|---|
+| **Required blocks** | SKILL.md file with frontmatter and trigger; identity sentence; scope; external_capability declaration (kind: tool / mcp_server / api / service / ide / framework + name + description); layering manifest (claude_md + skill_md + references lists declaring L1/L2/L3 content allocation); >=1 capability record (id + keywords + user_objective + operation + optional sub_cases / scope_axes / reference_section / inline steps / gotchas); >=1 capability-skill-level gotcha |
+| **Required patterns** | activation metadata, exclusion clause, capability (each capability is a structured operation), known gotchas |
+| **Conditionally required patterns** | members + Conditional Loading reference index -- IF capabilities grow into separate member skills (criterion: presence of `members:` block); aggregated capability surface listing each member's contribution -- IF members exist; companion declaration -- IF a wrapper sibling skill exists; progressive disclosure -- IF SKILL.md body exceeds 500 lines or 3000 tokens (criterion: line/token count) |
+| **Prohibited patterns** | adversarial pressure testing (inherited from technique-skill); rule + counter pairs (capability-skills do not enforce rules under pressure); `techniques:` at root (capabilities: subsumes it); `index:` at root (members + Conditional Loading is the canonical shape) |
+| **Audit** | Does the capability surface accurately enumerate the operations a user might invoke? Does the layering manifest match the actual content allocation across CLAUDE.md / SKILL.md / references/? Are capability records structured (user_objective + operation + optional metadata), not freeform prose? |
+
+Examples: a skill wrapping a CLI tool (e.g. version-control mirror operations); a skill wrapping an MCP server's tool surface; a skill wrapping a third-party API for a specific project workflow. The plugins-kit ecosystem currently has skills that match this shape and will be re-classified as capability-skills in a follow-up audit.
 
 ### discipline-skill
 
