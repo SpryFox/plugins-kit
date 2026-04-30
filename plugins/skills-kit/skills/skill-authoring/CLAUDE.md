@@ -164,6 +164,66 @@ claude_md:
         scripts/CLAUDE.md), but unstandardized; promoting to a typed shape benefits
         consistency across plugins-kit skills.
       added: "2026-04-30"
+    - id: dec_5_hook_killed_keyword_surface_retained
+      keywords:
+        - y7 hook killed
+        - sparse keyword rag
+        - retrieval optimization deferred
+        - chat-term relevance hints
+        - keyword surface as documentation
+        - intelligent yaml navigation
+        - post-rollout optimization
+      origin: |
+        Phase 4.6 P7 framing review 2026-04-30. Surface: explanation of the proposed
+        hook mechanic to the user against worked examples from real records, followed
+        by the user's "is this a simplified RAG?" framing question. Finding: the
+        sparse-keyword agentic-RAG framing made the cost/benefit visible -- failure
+        modes (suggestion-when-not-relevant, spam, ignored hints) are real, retrieval
+        quality is bounded by keyword authoring quality, and hand-curated sparse
+        indexes have known precision/recall limits. The higher-value runtime is
+        Claude learning to navigate the YAML structure intelligently rather than a
+        hook injecting hand-tagged keyword matches. Decision: kill Y7 / P7 before
+        implementation; defer retrieval optimization to post-rollout.
+      added: "2026-04-30"
+      summary: "Y7 hook killed before implementation. The YAML keyword clusters remain on every record as documentation and as a navigation aid for direct reads; the hook that consumes them does not ship. Post-rollout optimization will revisit teaching Claude to search the YAML structure intelligently rather than inject hand-tagged keyword matches."
+      detail: |
+        The proposed Y7 hook was a sparse-keyword agentic RAG: walk a registered set
+        of YAML files, tokenize the user prompt, score keyword overlap per record,
+        inject top-N matches as additionalContext on UserPromptSubmit. Three named
+        failure modes (suggestion-ignored, suggestion-when-not-relevant, spam) plus
+        a 50/50 net-harm risk had been documented in the design spec; a 50-prompt
+        validation test plan was drafted before implementation.
+
+        User reasoning for killing it (verbatim summary):
+        1. RAG-as-such is not necessary for the current workflow; injecting a
+           simplified RAG to optimize a non-bottleneck creates new failure modes
+           without solving a real problem.
+        2. Keyword-score relevance matching tends to hit the same over-tagged
+           records repeatedly -- precision degrades exactly when retrieval would
+           need to be smartest.
+        3. The higher-value optimization is teaching Claude to navigate the YAML
+           structure intelligently (selectively reading by sub-grouping, by
+           keyword cluster, by record id), which is best revisited as a
+           post-rollout optimization once real usage surfaces what kinds of
+           navigation actually matter.
+
+        What stays: the keyword: clusters on every record (glossary, framework,
+        CLAUDE.md insights), the chat-term relevance hints principle in the
+        glossary, the schema requirement that every load-bearing record carries
+        keywords (>=3). These remain valuable as (a) human-readable navigation
+        signals when a reader scans a record, (b) inputs to direct-reading agents
+        who use the cluster as a navigation aid, (c) the index a future
+        intelligent-search runtime would consume.
+
+        What goes: Y7.1-Y7.5 hook implementation steps; the UserPromptSubmit hook
+        wiring; the 50-prompt validation corpus (drafted but never run). The test
+        plan at tmp/writing-skills-research/y7-validation-test-plan.md is parked
+        as a reference artifact, not a live workstream.
+
+        Codified in: yaml-refactor-design-spec.md Y7 section marked superseded;
+        project-plan.md P7 row marked killed and Phase 4.6 closed; new "Phase 6
+        -- Post-rollout optimizations" section in project-plan.md queues the
+        intelligent-YAML-navigation work.
     - id: ssot_canonical_split
       keywords:
         - SSOT
