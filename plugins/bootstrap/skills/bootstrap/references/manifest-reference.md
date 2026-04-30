@@ -65,7 +65,8 @@ A declarative configuration file covering automatable operations. The engine rea
     "check_imports": ["pytest"]
   },
   "project_config": {
-    "file": ".claude/p4-kit.yaml",
+    "file": ".local-data/p4-kit/config.yaml",
+    "legacy_file": ".claude/p4-kit.yaml",
     "required_fields": {
       "P4PORT": {"user_msg": "Perforce server address", "agent_msg": "Ask the user for P4PORT and write it to {config_path}"},
       "P4USER": {"user_msg": "Perforce username", "agent_msg": "Ask the user for P4USER and write it to {config_path}"},
@@ -173,12 +174,13 @@ The fix script self-elevates via UAC (`powershell Start-Process -Verb RunAs`), p
 
 ## `project_config` Section
 
-A per-project config file (under `<cwd>/.claude/<name>.yaml`) discovered or populated by an autodetect script. Runs before the `config` section so discovered values can be synced into the data-dir config. If autodetect returns `None` and the file is absent, downstream project-scoped phases (e.g. `ini_settings`) are skipped for that plugin.
+A per-project config file (under `<cwd>/.local-data/<plugin>/config.yaml`) discovered or populated by an autodetect script. Runs before the `config` section so discovered values can be synced into the data-dir config. If autodetect returns `None` and the file is absent, downstream project-scoped phases (e.g. `ini_settings`) are skipped for that plugin.
 
 ```json
 {
   "project_config": {
-    "file": ".claude/p4-kit.yaml",
+    "file": ".local-data/p4-kit/config.yaml",
+    "legacy_file": ".claude/p4-kit.yaml",
     "required_fields": {
       "P4PORT": {"user_msg": "Perforce server", "agent_msg": "Ask for P4PORT, write to {config_path}"},
       "DEFAULT_AGENT": {"user_msg": "Review agent", "agent_msg": "Ask for DEFAULT_AGENT", "default": "claude-opus"}
@@ -187,6 +189,12 @@ A per-project config file (under `<cwd>/.claude/<name>.yaml`) discovered or popu
   }
 }
 ```
+
+### `legacy_file` — one-shot path migration
+
+If the manifest declares `legacy_file`, the engine checks whether `<cwd>/<legacy_file>` exists at session start. If it does and `<cwd>/<file>` does not, the engine moves the file to the new path (creating parent dirs as needed) and emits a `project config: migrated <old> -> <new>` action entry. The downstream load/autodetect/required-fields flow then runs against the new path. The migration is idempotent — once the file lives at the new path, subsequent sessions see the legacy file as absent and skip the move.
+
+Use `legacy_file` only when an existing path is being relocated (e.g. moving project config out of `.claude/` and into `.local-data/`); it is not a general-purpose alias.
 
 ### `required_fields` — two forms
 
@@ -211,8 +219,9 @@ Both forms are supported; the dict form is preferred for new plugins.
 
 ### When to use `project_config` vs `config`
 
-- **`project_config`** holds per-project values that travel with the repo (committed to `.claude/<name>.yaml`). Good for: project-scoped identifiers the team shares (the `.uproject` path, the Perforce server), and any per-project default the user may want to override (e.g. `DEFAULT_AGENT`).
+- **`project_config`** holds per-project values that are machine- or developer-specific (the `.uproject` path on this developer's box, this developer's Perforce username), so they live under `<project>/.local-data/<plugin>/config.yaml` and are gitignored. Good for: project-scoped identifiers each developer fills in for themselves, and any per-project default the user may want to override (e.g. `DEFAULT_AGENT`).
 - **`config`** holds machine-global values that don't belong in version control (API keys, local install paths). Lives in `~/.claude/plugins/data/<plugin>/config.yaml`.
+- The razor: if it should be checked into source control, it goes in `<project>/.claude/`. If it shouldn't, it goes in `<project>/.local-data/<plugin>/` (project-scoped) or `~/.claude/plugins/data/<plugin>/` (user-scoped).
 
 Values set in `project_config` are automatically mirrored into the data-dir config after the project_config phase, so downstream code that reads the data-dir config (e.g. for simple getenv-style lookups) works unchanged.
 

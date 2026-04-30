@@ -1,7 +1,8 @@
 # UE Python Script Runner — global defaults
 #
 # Project-specific paths (engine_dir, uproject) go in:
-#   <project_root>/.claude/unreal-kit.yaml  (per-project, preferred)
+#   <project_root>/.local-data/unreal-kit/config.yaml  (per-project, preferred)
+#   <project_root>/.claude/unreal-kit.yaml             (legacy, auto-migrated by bootstrap)
 #   ~/.claude/plugins/data/plugins-kit/unreal-kit/config.yaml  (global, legacy fallback)
 #
 # Resolution order: CLI args → per-project config → global config → this file → hardcoded defaults

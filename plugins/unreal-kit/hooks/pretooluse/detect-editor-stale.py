@@ -2,9 +2,10 @@
 """Background detector for unreal-kit editor staleness.
 
 Reads the PreToolUse hook JSON from stdin (for cwd), reads
-${cwd}/.claude/unreal-kit.yaml for engine_dir, compares
-UnrealEditor-BuildSettings.dll mtime vs Engine/Build/Build.version mtime, and
-writes or removes the per-project marker plus the claude-ui-kit system message.
+${cwd}/.local-data/unreal-kit/config.yaml (or legacy ${cwd}/.claude/unreal-kit.yaml)
+for engine_dir, compares UnrealEditor-BuildSettings.dll mtime vs
+Engine/Build/Build.version mtime, and writes or removes the per-project marker
+plus the claude-ui-kit system message.
 
 Marker path:  <cwd>/.local-data/unreal-kit/editor-stale.flag
 System msg:   <cwd>/.local-data/claude-ui-kit/systemmessage.unreal-kit.txt
@@ -69,7 +70,10 @@ def main() -> int:
     marker = os.path.join(cwd, ".local-data", "unreal-kit", "editor-stale.flag")
     sysmsg = os.path.join(cwd, ".local-data", "claude-ui-kit", "systemmessage.unreal-kit.txt")
 
-    engine_dir = read_engine_dir(os.path.join(cwd, ".claude", "unreal-kit.yaml"))
+    config_path = os.path.join(cwd, ".local-data", "unreal-kit", "config.yaml")
+    if not os.path.isfile(config_path):
+        config_path = os.path.join(cwd, ".claude", "unreal-kit.yaml")
+    engine_dir = read_engine_dir(config_path)
     if not engine_dir:
         return 0
 

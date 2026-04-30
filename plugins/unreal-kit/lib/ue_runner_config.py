@@ -4,8 +4,14 @@ UE Python Script Runner — Configuration loading.
 Resolution order: CLI args → per-project config → global config → skill config → defaults.
 
 Per-project config lives at:
-    <project_root>/.claude/unreal-kit.yaml
+    <project_root>/.local-data/unreal-kit/config.yaml
 Written by bootstrap's project_config primitive during session start.
+
+Legacy path (read-only fallback during migration):
+    <project_root>/.claude/unreal-kit.yaml
+The bootstrap engine moves the file to the new path automatically; this fallback
+is here for sessions that read config before bootstrap has run, or for projects
+that haven't seen a session start since the path changed.
 
 Global config (legacy, migration fallback) lives at:
     ~/.claude/plugins/data/plugins-kit/unreal-kit/config.yaml
@@ -18,7 +24,8 @@ from pathlib import Path
 _PLUGIN_DIR = Path(__file__).resolve().parent.parent
 SKILL_CONFIG_PATH = _PLUGIN_DIR / "skills" / "ue-python-api" / "ue_runner_config.yaml"
 
-PROJECT_CONFIG_NAME = ".claude/unreal-kit.yaml"
+PROJECT_CONFIG_NAME = ".local-data/unreal-kit/config.yaml"
+LEGACY_PROJECT_CONFIG_NAME = ".claude/unreal-kit.yaml"
 
 _GLOBAL_CONFIG_PATH = Path.home() / ".claude" / "plugins" / "data" / "plugins-kit" / "unreal-kit" / "config.yaml"
 
@@ -74,7 +81,12 @@ class RunnerConfig:
 
 
 def find_project_config(start: Path | None = None) -> Path | None:
-    """Walk up from start (default CWD) looking for .claude/unreal-kit.yaml."""
+    """Walk up from start (default CWD) looking for the per-project config.
+
+    Prefers the current path (.local-data/unreal-kit/config.yaml). Falls back
+    to the legacy path (.claude/unreal-kit.yaml) for projects mid-migration —
+    bootstrap will move it on the next session start.
+    """
     current = (start or Path.cwd()).resolve()
     if not current.is_dir():
         current = current.parent
@@ -82,6 +94,9 @@ def find_project_config(start: Path | None = None) -> Path | None:
         candidate = current / PROJECT_CONFIG_NAME
         if candidate.is_file():
             return candidate
+        legacy = current / LEGACY_PROJECT_CONFIG_NAME
+        if legacy.is_file():
+            return legacy
         parent = current.parent
         if parent == current:
             break
@@ -90,9 +105,9 @@ def find_project_config(start: Path | None = None) -> Path | None:
 
 
 def write_project_config(project_root: Path, data: dict) -> Path:
-    """Write config to <project_root>/.claude/unreal-kit.yaml.
+    """Write config to <project_root>/.local-data/unreal-kit/config.yaml.
 
-    Creates the .claude/ directory if needed. Returns the config path.
+    Creates the parent directory if needed. Returns the config path.
     Uses forward slashes for Windows compatibility in YAML.
     """
     config_path = project_root / PROJECT_CONFIG_NAME
@@ -109,8 +124,9 @@ def load_config(config_path: str | Path | None = None) -> RunnerConfig:
     """Load config: defaults → skill config → per-project config → CLI.
 
     If config_path is given, use it directly. Otherwise, search for
-    per-project config (.claude/unreal-kit.yaml) by walking up from CWD,
-    falling back to the global config for migration.
+    per-project config (.local-data/unreal-kit/config.yaml, with legacy
+    .claude/unreal-kit.yaml fallback) by walking up from CWD, falling back
+    to the global config for migration.
     """
     # Start with defaults, layer skill-level config
     skill_data = _load_yaml(SKILL_CONFIG_PATH)

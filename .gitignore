@@ -11,3 +11,4 @@ build/
 uv.lock
 tmp/
 .claude/p4-kit.yaml
+.local-data/

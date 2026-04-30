@@ -6,7 +6,7 @@ The bootstrap plugin automatically handles all setup on session start. This docu
 
 | Item | What | Where |
 |------|------|-------|
-| Project config | `.uproject` path and engine directory | `<project_root>/.claude/unreal-kit.yaml` (per-project) |
+| Project config | `.uproject` path and engine directory | `<project_root>/.local-data/unreal-kit/config.yaml` (per-project; bootstrap auto-migrates from legacy `<project_root>/.claude/unreal-kit.yaml`) |
 | Remote execution | `bRemoteExecution=True` | `<Project>/Config/UserEngine.ini` |
 | Developer mode | `bIsDeveloperMode=True` | `<Project>/Config/UserEngine.ini` |
 | Host Python deps | `upyrc`, `pyyaml` | Plugin venv (managed by bootstrap) |
@@ -20,7 +20,7 @@ These issues should be rare since bootstrap runs automatically. Check if somethi
 
 If `ue_runner.py` reports "uproject path not configured":
 - Bootstrap may have failed to auto-detect the project. Check bootstrap output at session start.
-- Manually create `<project_root>/.claude/unreal-kit.yaml` with `uproject` and `engine_dir` fields.
+- Manually create `<project_root>/.local-data/unreal-kit/config.yaml` with `uproject` and `engine_dir` fields. (The legacy `.claude/unreal-kit.yaml` path is still read if present, but new files should use the new location.)
 - Legacy fallback: `~/.claude/plugins/data/plugins-kit/unreal-kit/config.yaml` is still checked if no per-project config is found.
 
 ### Remote execution not working

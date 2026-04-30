@@ -465,3 +465,129 @@ def autodetect():
         assert failures == []
         # Action must be logged (no silent bootstrap operations).
         assert any("defaults" in e and "DEFAULT_AGENT" in e for e in action_entries)
+
+
+class TestLegacyFileMigration:
+    """One-shot relocation: legacy_file -> file when only the legacy path exists.
+
+    The engine moves the legacy file to the new path on session start so the rest
+    of the project_config flow runs against the new location. Idempotent.
+    """
+
+    def _common_section(self):
+        return {
+            "file": ".local-data/myplugin/config.yaml",
+            "legacy_file": ".claude/myplugin.yaml",
+            "required_fields": ["foo"],
+        }
+
+    def test_migrates_legacy_file_to_new_path(self, tmp_path, monkeypatch):
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        monkeypatch.chdir(project_dir)
+
+        # Pre-existing legacy file with content
+        legacy_dir = project_dir / ".claude"
+        legacy_dir.mkdir()
+        legacy_path = legacy_dir / "myplugin.yaml"
+        save_yaml_config(str(legacy_path), {"foo": "bar"})
+
+        plugin_root = str(tmp_path / "plugin")
+        os.makedirs(plugin_root)
+        plugin_data_dir = str(tmp_path / "data")
+        os.makedirs(plugin_data_dir)
+
+        action_entries = []
+        ok_entries = []
+        _process_project_config(
+            self._common_section(), plugin_data_dir, plugin_root,
+            action_entries, ok_entries=ok_entries, plugin_name="myplugin",
+        )
+
+        new_path = project_dir / ".local-data" / "myplugin" / "config.yaml"
+        assert new_path.is_file(), "new path should exist after migration"
+        assert not legacy_path.exists(), "legacy path should be gone after migration"
+        assert load_yaml_config(str(new_path))["foo"] == "bar"
+        # Action must be logged (no silent bootstrap operations).
+        assert any("migrated" in e for e in action_entries)
+
+    def test_idempotent_when_only_new_path_exists(self, tmp_path, monkeypatch):
+        """Second session: legacy file already gone, new file present -> no-op."""
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        monkeypatch.chdir(project_dir)
+
+        new_path = project_dir / ".local-data" / "myplugin" / "config.yaml"
+        new_path.parent.mkdir(parents=True)
+        save_yaml_config(str(new_path), {"foo": "bar"})
+
+        plugin_root = str(tmp_path / "plugin")
+        os.makedirs(plugin_root)
+        plugin_data_dir = str(tmp_path / "data")
+        os.makedirs(plugin_data_dir)
+
+        action_entries = []
+        _process_project_config(
+            self._common_section(), plugin_data_dir, plugin_root,
+            action_entries, ok_entries=[], plugin_name="myplugin",
+        )
+
+        assert not any("migrated" in e for e in action_entries)
+
+    def test_no_op_when_both_paths_present(self, tmp_path, monkeypatch):
+        """If both files somehow exist, the new one wins; legacy is left alone.
+
+        We deliberately do not delete the legacy file in this case — the user can
+        decide whether the leftover is meaningful (e.g. they manually re-created it).
+        """
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        monkeypatch.chdir(project_dir)
+
+        legacy_dir = project_dir / ".claude"
+        legacy_dir.mkdir()
+        legacy_path = legacy_dir / "myplugin.yaml"
+        save_yaml_config(str(legacy_path), {"foo": "from-legacy"})
+
+        new_path = project_dir / ".local-data" / "myplugin" / "config.yaml"
+        new_path.parent.mkdir(parents=True)
+        save_yaml_config(str(new_path), {"foo": "from-new"})
+
+        plugin_root = str(tmp_path / "plugin")
+        os.makedirs(plugin_root)
+        plugin_data_dir = str(tmp_path / "data")
+        os.makedirs(plugin_data_dir)
+
+        action_entries = []
+        _process_project_config(
+            self._common_section(), plugin_data_dir, plugin_root,
+            action_entries, ok_entries=[], plugin_name="myplugin",
+        )
+
+        assert legacy_path.is_file(), "legacy left in place when new path already exists"
+        assert load_yaml_config(str(new_path))["foo"] == "from-new"
+        assert not any("migrated" in e for e in action_entries)
+
+    def test_no_op_when_legacy_file_field_omitted(self, tmp_path, monkeypatch):
+        """Plugins without legacy_file declared: nothing migrates, normal flow runs."""
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        monkeypatch.chdir(project_dir)
+
+        section = {
+            "file": ".local-data/myplugin/config.yaml",
+            "required_fields": ["foo"],
+        }
+
+        plugin_root = str(tmp_path / "plugin")
+        os.makedirs(plugin_root)
+        plugin_data_dir = str(tmp_path / "data")
+        os.makedirs(plugin_data_dir)
+
+        action_entries = []
+        # Should not raise; just runs the no-file branch.
+        _process_project_config(
+            section, plugin_data_dir, plugin_root,
+            action_entries, ok_entries=[], plugin_name="myplugin",
+        )
+        assert not any("migrated" in e for e in action_entries)

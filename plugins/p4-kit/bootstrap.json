@@ -26,7 +26,8 @@
     }
   ],
   "project_config": {
-    "file": ".claude/p4-kit.yaml",
+    "file": ".local-data/p4-kit/config.yaml",
+    "legacy_file": ".claude/p4-kit.yaml",
     "required_fields": {
       "P4PORT": {
         "user_msg": "Perforce server address (e.g. ssl:perforce:1666)",

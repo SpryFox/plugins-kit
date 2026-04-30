@@ -37,9 +37,10 @@ When the user requests a change:
   4. Apply the requested edit to the copied script.
 - **If the active script is already user-owned**, edit it directly.
 - **Preserve the script's input contract** (`DATA=$(cat)`, jq parses session JSON from stdin) and the basic output discipline (single line, ANSI escapes, `echo -e`).
-- **Data storage convention**:
-  - **Global configuration** (settings that apply across all projects, e.g. `customized.flag`) lives under `~/.claude/plugins/data/plugins-kit/claude-ui-kit/`.
-  - **Project-specific data** (caches, flags, counters, messages tied to *this* project, e.g. `systemmessage.*.txt`) lives under `<cwd>/.local-data/claude-ui-kit/`.
+- **Data storage convention** — the razor: if the file should be checked into source control, it goes in `<project>/.claude/`; if it shouldn't, it doesn't. Specifically:
+  - **Project-scoped, machine/developer-specific** (caches, flags, counters, messages tied to *this* project but not committed, e.g. `systemmessage.*.txt`) → `<cwd>/.local-data/claude-ui-kit/`.
+  - **User-scoped** (preferences that apply across all projects, e.g. `customized.flag`) → `~/.claude/plugins/data/plugins-kit/claude-ui-kit/`.
+  - `settings.local.json` is the one exception: machine-specific but lives in `.claude/` because the Claude Code harness reads it from there.
   - Do not write to `/tmp` or other ad-hoc paths.
 - After any edit, verify by piping a small fake JSON payload through the script and showing the user the rendered output.
 
