@@ -429,6 +429,70 @@ claude_md:
         table row extended to name the YAML-canonical preference; this
         Dec-9 insight added.
       added: "2026-04-30"
+    - id: dec_10_harness_targeted_capability_skill_eligibility
+      keywords:
+        - harness-targeted
+        - capability-skill kind
+        - kind harness
+        - claude code harness wrapper
+        - hooks settings status line MCP config wrapper
+        - harness-targeted attribute orthogonal to type
+        - borderline resolution
+      summary: "Harness-targeted skills (those whose primary content wraps the Claude Code harness's exposed surfaces -- hooks, settings, MCP config, status line, slash-command runtime) are eligible to be capability-skills when their content shape is capabilities-wrapping-an-external-thing. The capability_skill schema gains `harness` as an explicit kind value. Harness-targeted skills with rules / lookup tables / techniques content shape stay in their respective non-capability types and use the `harness-targeted: true` frontmatter flag as orthogonal cross-cutting categorization."
+      detail: |
+        Dec-6 introduced capability-skill as the wrapper-shape type and named
+        kinds tool / mcp_server / api / service / ide / framework. The Claude
+        Code harness was not explicitly named, leaving the question open
+        whether a skill that wraps `the project's hook conventions` or
+        `the project's settings.json patterns` (e.g. a hooks-skill) is a
+        capability-skill or a different type.
+
+        The resolution: yes -- harness-targeted skills CAN be capability-
+        skills when their content shape is capabilities-wrapping-an-
+        external-thing. The harness IS the external thing they wrap; its
+        exposed surfaces (hook trigger model, settings.json key surface,
+        MCP config schema, status line API, slash-command runtime contract)
+        are no different in structure from the surfaces a tool / MCP / API
+        / service / IDE / framework exposes. The capability_skill schema
+        gains `harness` as an explicit kind value; framework.md kind list
+        and Examples row updated accordingly.
+
+        Two crucial distinctions remain:
+        1. The `harness-targeted: true` frontmatter flag (shipped as a
+           cross-cutting categorization marker) is orthogonal to skill
+           type. A skill can be `skill-type: reference-skill` AND
+           `harness-targeted: true` (lookup table about hook syntax);
+           or `skill-type: capability-skill` AND
+           `harness-targeted: true` (wraps the hook system as
+           kind: harness). The flag is taxonomic; the type is structural.
+        2. Not every harness-targeted skill is a capability-skill.
+           Harness-targeted skills whose content is rules / lookup tables
+           / techniques (not capabilities-wrapping-an-external-thing)
+           stay in their respective non-capability types -- e.g. a
+           settings-tool-permissions reference-skill stays
+           reference-skill, even though it's harness-targeted.
+
+        Codified in: schemas.py CAPABILITY_SKILL_SCHEMA module docstring
+        + external_capability.kind note (adds "harness");
+        framework.md capability-skill required-blocks row (adds harness
+        to the kinds list); framework.md capability-skill Examples row
+        (adds harness wrapper as a worked example with the discrimination
+        criterion).
+      origin: |
+        Surface: Phase 4.3 SC audit BORDERLINE finding (project-plan.md
+        Tier 2). After CL 145493 shipped the `harness-targeted: true`
+        frontmatter flag for SC's my-tool-permissions-audit and
+        tool-permissions-audit, the question remained whether
+        harness-targeted skills with capability-wrapping content shape
+        qualify as capability-skills.
+        Finding: yes -- the harness IS just another external-capability
+        provider; nothing in Dec-6's framing excludes it. The original
+        kind list omitted harness only because the framing examples
+        were drawn from non-harness wrappers; the inclusion is a
+        documentation gap, not a type-system constraint.
+        Follow-up: schema kind note extended; framework.md kind list +
+        Examples row extended; this Dec-10 insight added.
+      added: "2026-04-30"
     - id: ssot_canonical_split
       keywords:
         - SSOT
