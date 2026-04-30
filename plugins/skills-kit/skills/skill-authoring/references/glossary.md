@@ -394,6 +394,13 @@ glossary:
         A skill whose primary content is one or more *techniques* (the procedural pattern). Composes pattern + reference into procedure(s), and may bundle scripts as canonical executable forms. A technique-skill invoked only by user slash command (rather than by LLM auto-discovery) carries the `trigger: user-only` attribute; this replaces what the project previously called `script-skill`.
       source: obra/superpowers (line 63)
 
+    - id: capability_skill
+      term: Capability-skill
+      keywords: [capability-skill, wrapper, external capability, tool wrapper, mcp wrapper, api wrapper, service wrapper, layering manifest, capabilities at root]
+      definition: |
+        A skill whose primary content is a structured set of *capabilities* (techniques+ per the Capability pattern) wrapping an external capability provider -- a tool, MCP server, API, service, IDE, or framework. The skill brings the external thing into the project's workflow with project-specific setup, conventions, and gotchas. Conceptually IS-A technique-skill: capabilities are techniques+, so capability-skill is a technique-skill with stronger structural requirements on each technique. The schema requires `capabilities:` at root (replacing technique-skill's `techniques:`), an `external_capability` declaration naming what is wrapped, a `layering` manifest declaring how content is allocated across CLAUDE.md / SKILL.md / references/, and >=1 capability-skill-level gotcha. Member skills + Conditional Loading + aggregated capability surface fire conditionally when capabilities grow into separate skills.
+      source: project addition (no upstream canonical reference; follows the project's audit-driven type evolution -- F-4-3-8 mixed-type drift in tool-shape skills surfaced the contract gap)
+
     - id: discipline_skill
       term: Discipline-skill
       keywords: [discipline-skill, enforces rule, pressure, wraps, target, rules, counters, compliance]

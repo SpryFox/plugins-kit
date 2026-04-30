@@ -341,6 +341,82 @@ DOMAIN_SKILL_SCHEMA = {
 }
 
 
+# Capability-skill: a skill whose primary content is a structured set of
+# capabilities wrapping an external capability provider (tool / MCP server /
+# API / service / IDE / framework). Conceptually IS-A technique-skill --
+# capabilities ARE techniques+ per the glossary. The capability_skill schema
+# requires capabilities: at root (replacing technique-skill's techniques:),
+# an external_capability declaration (what is wrapped), and a layering
+# manifest (L1/L2/L3 content allocation across CLAUDE.md / SKILL.md /
+# references/). Members and Conditional Loading are conditionally required
+# when capabilities grow into separate member skills.
+CAPABILITY_SKILL_SCHEMA = {
+    "root": "capability_skill",
+    "keys": {
+        "_schema_version": {"type": "string", "required": False},
+        "identity": IDENTITY_RULE,
+        "scope": SCOPE_RULE,
+        "external_capability": {"type": "dict", "required": True, "keys": {
+            "kind": {"type": "string", "required": True,
+                     "note": "tool | mcp_server | api | service | ide | framework"},
+            "name": {"type": "string", "required": True,
+                     "note": "the external thing's name (e.g. git, Unreal MCP Server, Favro API)"},
+            "description": {"type": "string", "required": True,
+                            "note": "what the external thing provides at high level"},
+        }},
+        "layering": {"type": "dict", "required": True, "keys": {
+            "claude_md": {"type": "list", "required": True,
+                          "note": "L1 -- list of content allocated to CLAUDE.md (ambient setup-for-success). Empty list permitted when no L1 content is needed."},
+            "skill_md": {"type": "list", "required": True, "min_len": 1,
+                         "note": "L2 -- list of content allocated to this SKILL.md (orientation + index + capabilities)"},
+            "references": {"type": "list", "required": True,
+                           "note": "L3 -- list of content allocated to references/. Empty list permitted when there is no deep-mechanics content yet."},
+        }},
+        "capabilities": {
+            "type": "list",
+            "required": True,
+            "min_len": 1,
+            "items": {"keys": {
+                "id": {"type": "string", "required": True},
+                "keywords": KEYWORDS_RULE,
+                "user_objective": {"type": "string", "required": True,
+                                   "note": "what the user wants to accomplish (in user-facing terms)"},
+                "operation": {"type": "string", "required": True,
+                              "note": "the operation the capability performs (in tool-facing terms)"},
+                "tool": {"type": "string", "required": False,
+                         "note": "optional specific tool/command identifier"},
+                "sub_cases": {"type": "list", "required": False},
+                "scope_axes": {"type": "list", "required": False},
+                "reference_section": {"type": "string", "required": False,
+                                      "note": "pointer to deep mechanics in references/"},
+                "steps": {"type": "list", "required": False, "items": _TECHNIQUE_STEP,
+                          "note": "optional inline steps for simple capabilities; complex ones link to reference_section"},
+                "gotchas": {"type": "list", "required": False},
+            }},
+        },
+        "members": {"type": "list", "required": False, "items": {"keys": {
+            "name": {"type": "string", "required": True},
+            "type": {"type": "string", "required": True,
+                     "note": "expected: capability_skill or technique_skill"},
+            "ref": {"type": "string", "required": True},
+            "keywords": KEYWORDS_RULE,
+        }}, "note": "conditionally fires the Conditional Loading + capability surface requirements when present"},
+        "companion": {"type": "dict", "required": False, "keys": {
+            "skill": {"type": "string", "required": True},
+            "description": {"type": "string", "required": True},
+        }},
+        "gotchas": {"type": "list", "required": True, "min_len": 1,
+                    "note": "capability-skill-level gotchas (provider quirks, project-specific failure modes); per-capability gotchas live inside each capability record"},
+        "anti_patterns": ANTI_PATTERNS_RULE,
+    },
+    "forbidden_keys": ["rules", "counters", "facts", "patterns",
+                       "apply_when", "do_not_apply_when", "techniques",
+                       "index"],
+    # techniques: forbidden because capabilities: subsumes it
+    # index: forbidden because members: + conditional loading is the right shape here
+}
+
+
 CLAUDE_MD_SCHEMA = {
     "root": "claude_md",
     "keys": {
@@ -377,6 +453,7 @@ SCHEMAS_BY_ROOT = {
     "pattern_skill": PATTERN_SKILL_SCHEMA,
     "discipline_skill": DISCIPLINE_SKILL_SCHEMA,
     "domain_skill": DOMAIN_SKILL_SCHEMA,
+    "capability_skill": CAPABILITY_SKILL_SCHEMA,
     "claude_md": CLAUDE_MD_SCHEMA,
     # technique_skill is dispatched by trigger_model; see resolve_technique_schema.
 }
@@ -410,7 +487,7 @@ def detect_mixed_type_yaml(yaml_data: dict) -> list[str]:
     if not isinstance(yaml_data, dict):
         return []
     canonical_roots = ["reference_skill", "pattern_skill", "technique_skill",
-                       "discipline_skill", "domain_skill"]
+                       "discipline_skill", "domain_skill", "capability_skill"]
     return [root for root in canonical_roots if root in yaml_data]
 
 
