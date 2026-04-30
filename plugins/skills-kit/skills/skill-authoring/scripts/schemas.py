@@ -54,6 +54,36 @@ SCOPE_RULE = {
 IDENTITY_RULE = {"type": "string", "required": True, "note": "one-sentence identity for the skill"}
 
 
+# anti_patterns is an optional first-class field on technique_skill and
+# discipline_skill -- skills that prescribe a procedure or enforce a rule
+# benefit from naming the lookalike-but-wrong moves a future agent might
+# reach for. The structured shape is the form-choice principle in
+# action: containment in a list of records carrying these specific keys
+# implicitly asserts every item is a genuine anti-pattern (a markdown
+# bullet list carries no such assertion).
+#
+# Each record names the anti-pattern, explains why it would seem right
+# in context, why it is actually wrong, and what to do instead. keywords
+# enables chat-term routing per the form-choice + chat-term-relevance
+# principles.
+ANTI_PATTERNS_RULE = {
+    "type": "list",
+    "required": False,
+    "items": {"keys": {
+        "id": {"type": "string", "required": True},
+        "name": {"type": "string", "required": True},
+        "keywords": KEYWORDS_RULE,
+        "why_it_seems_right": {"type": "string", "required": True,
+                                "note": "the lookalike rationalization an agent would reach for"},
+        "why_it_is_wrong": {"type": "string", "required": True,
+                             "note": "the failure mode this anti-pattern produces"},
+        "alternative": {"type": "string", "required": True,
+                         "note": "what to do instead -- typically a pointer to a technique or rule in the same skill"},
+    }},
+    "note": "named anti-patterns the skill discourages; the structured record shape asserts every entry is a real anti-pattern",
+}
+
+
 REFERENCE_SKILL_SCHEMA = {
     "root": "reference_skill",
     "keys": {
@@ -190,6 +220,7 @@ TECHNIQUE_SKILL_SCHEMA = {
                 },
             },
         },
+        "anti_patterns": ANTI_PATTERNS_RULE,
     },
     "forbidden_keys": ["rules", "counters", "facts", "patterns",
                        "apply_when", "do_not_apply_when", "members", "index"],
@@ -246,6 +277,7 @@ DISCIPLINE_SKILL_SCHEMA = {
                 "closed_by": {"type": "string", "required": True},
             }}},
         }},
+        "anti_patterns": ANTI_PATTERNS_RULE,
     },
     "forbidden_keys": ["facts", "patterns", "apply_when", "do_not_apply_when",
                        "members", "index", "tools", "scripts"],
