@@ -1,23 +1,22 @@
 ---
 _schema_version: 1
 name: ue-python-api
-skill-type: domain-skill
+skill-type: capability-skill
 description: Use when reading, writing, or extracting Unreal Editor data via Python. Do NOT use for blueprint edits or non-Python Editor work.
 ---
 
 # Unreal Engine Python API
 
-Unreal Engine Python API automation is the discipline of reading, writing, and extracting Unreal Editor data via Python scripts that work with or without the Editor open. This domain owns the runner, stubs, patterns, and reference set for that work.
+Wraps Unreal Engine's public Python scripting interface so a Claude agent can read, write, and extract Editor data via Python scripts that work with or without the Editor open.
 
 > **This is a generic, public MIT-licensed plugin.** All patterns, examples, and documentation must be engine-generic. Do not add project-specific asset paths, class names, workflows, or code patterns.
 
+The fenced YAML block below is the load-bearing contract: external_capability declaration, layering manifest, capability surface, gotchas, and references index. Markdown sections after the YAML carry orientation prose, code recipes, and the essential-classes table -- consult them after the YAML.
+
 ```yaml
-domain_skill:
+capability_skill:
   _schema_version: "1"
   identity: Unreal Engine Python API automation for reading, writing, and extracting Unreal Editor data via Python scripts that work with or without the Editor open.
-  companions:
-    siblings: []
-    note: No siblings within plugins-kit.
   scope:
     covers:
       - asset inspection, reference graph traversal, property reading and writing
@@ -28,95 +27,106 @@ domain_skill:
       - blueprint edits requiring graph manipulation (use a blueprint-details skill)
       - non-Python Editor UI work
       - project-specific asset paths or class names (this plugin must stay engine-generic)
-  orientation:
-    summary: |
-      Write a .py script using the Core Patterns recipes in the markdown body, run it via
-      bin/ue_runner.py (which auto-detects whether the Editor is open and picks remote vs.
-      commandlet mode), analyze results, iterate. Output goes to YAML in
-      <Project>/Saved/PythonOutput/.
-    vocabulary:
-      - term: ue_runner.py
-        definition: The host-side runner shipped at bin/ue_runner.py. Auto-detects Editor presence; falls back to commandlet when the Editor is closed.
-      - term: commandlet mode
-        definition: Headless UE process that loads the project and runs the script without opening the Editor UI. Asset loading, registry queries, property R/W, reference graph walks, and saves all work in commandlet mode.
-      - term: remote mode
-        definition: Sends the script over UDP multicast to a running Editor's upyrc listener.
-      - term: stubs
-        definition: Searchable API stubs at stubs/unreal.py for grep/IDE introspection.
-      - term: unreal-pip
-        definition: UE-side package manager. Bridges PyPI packages into UE's Python via the bootstrap pattern (sys.path injection + ensure_dependencies()).
-      - term: upyrc
-        definition: Host-side library used by ue_runner.py to send scripts over UDP multicast to a running Editor.
-    behavioral_guardrails:
-      - Always invoke ue_runner.py with the plugin venv Python (~/.claude/plugins/data/plugins-kit/unreal-kit/.venv/) so upyrc is available; system Python misses upyrc and degrades to slower commandlet-only mode.
-      - The Editor prefix in class names like EditorAssetLibrary is a UE C++ naming convention -- it does NOT mean those classes need the Editor running. They work in commandlet mode. Exception EditorUtilityLibrary, which queries the user's active selection and does require a running Editor.
-      - Output via unreal.log() is NOT captured by the terminal runner. To get results back, write YAML to <Project>/Saved/PythonOutput/ -- the runner auto-detects these.
-      - Never add project-specific asset paths, class names, workflows, or code patterns. This plugin is engine-generic and MIT-licensed; project-specific content goes in a project-side skill.
-  index:
+  external_capability:
+    kind: framework
+    name: Unreal Engine Python API
+    description: Unreal Engine's public Python scripting interface for asset inspection, property reading and writing, reference-graph traversal, batch operations via EditorAssetLibrary and AssetRegistryHelpers, and animation/datatable/level queries. Includes the ue_runner.py host-side runner that auto-detects whether the Editor is open and chooses remote (UDP multicast via upyrc) or commandlet (headless) execution.
+  layering:
+    claude_md: []
+    skill_md:
+      - orientation prose -- what the skill is and how scripts get run
+      - vocabulary glossary -- ue_runner, commandlet mode, remote mode, stubs, unreal-pip, upyrc
+      - capability surface -- run_script, search_stubs
+      - capability-skill-level gotchas -- provider quirks that fire regardless of capability
+      - essential-classes table and Core Patterns code recipes
     references:
-      - id: architecture
-        path: references/architecture.md
-        keywords: [required plugins, execution modes, remote vs commandlet, stubs, how it works, runner architecture]
-        summary: How the runner picks execution modes; what each mode supports.
-      - id: bootstrapped_setup
-        path: references/bootstrapped-setup.md
-        keywords: [setup, config, ini settings, venv, host deps, stubs, troubleshooting, first-run]
-        summary: First-run setup, ini settings, venv, host-side dependencies, common troubleshooting.
-      - id: asset_inspection
-        path: references/asset-inspection.md
-        keywords: [struct properties, nested objects, class hierarchy, blueprint inspection, soft references, asset deep dive]
-        summary: Asset inspection deep-dive patterns.
-      - id: reference_graph
-        path: references/reference-graph.md
-        keywords: [dependency chain, full graph walk, circular references, asset audit, dependency graph]
-        summary: Reference graph traversal patterns.
-      - id: animation_patterns
-        path: references/animation-patterns.md
-        keywords: [AnimSequence, AnimMontage, AnimBlueprint, emote set, skeleton, animation patterns]
-        summary: Animation and emote patterns.
-      - id: script_execution
-        path: references/script-execution.md
-        keywords: [startup scripts, commandlet, editor utility widget, slow task progress, batch, execution modes]
-        summary: Execution-mode-specific patterns.
-      - id: project_setup
-        path: references/project-setup.md
-        keywords: [project setup, .uproject, engine_dir, config keys, autodetect]
-        summary: Project-side setup steps and config.
-      - id: unreal_pip
-        path: references/unreal-pip.md
-        keywords: [unreal-pip, package manager, UE packages, site-packages, pip install, bootstrap pattern]
-        summary: UE-side dependency management via unreal-pip.
-      - id: upyrc
-        path: references/upyrc.md
-        keywords: [upyrc, remote execution, UDP multicast, remote control, send script to editor]
-        summary: Remote execution wire protocol.
-      - id: script_bootstrap
-        path: references/script-bootstrap.md
-        keywords: [two dependency sets, UE-side packages, host-side venv, stdlib constraint, ensure_dependencies internals, interaction flow]
-        summary: How ensure_dependencies bootstraps UE-side packages from inside a script.
+      - architecture.md -- runner architecture and execution-mode selection
+      - bootstrapped-setup.md -- first-run setup, ini, venv, troubleshooting
+      - asset-inspection.md -- asset inspection patterns
+      - reference-graph.md -- dependency-chain and full-graph walks
+      - animation-patterns.md -- AnimSequence/AnimMontage/AnimBlueprint/emote patterns
+      - script-execution.md -- execution-mode-specific patterns
+      - project-setup.md -- project-side setup and config keys
+      - unreal-pip.md -- UE-side dependency manager
+      - upyrc.md -- remote-execution wire protocol
+      - script-bootstrap.md -- ensure_dependencies internals
   capabilities:
     - id: run_script
       keywords: [run script, execute, commandlet, remote, ue_runner, run python, send to editor]
-      description: Run a Python script against the Unreal Editor (open or closed); auto-detects mode.
+      user_objective: Execute a Python script against the Unreal Editor, with the Editor either open (remote mode) or closed (commandlet mode).
       operation: python ${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/ue_runner.py <script>.py [--copy-output <dir>]
       tool: bin/ue_runner.py
       scope_axes: [editor-open, editor-closed]
       reference_section: architecture.md (execution modes)
+      gotchas:
+        - Output via unreal.log() is NOT captured by the terminal runner -- write YAML to <Project>/Saved/PythonOutput/ to return results to the agent.
+        - Invoke the runner with the plugin venv Python so upyrc is available; system Python misses upyrc and falls back to commandlet-only mode.
     - id: search_stubs
       keywords: [search stubs, find class, find method, API lookup, autocomplete equivalent]
-      description: Search the bundled stubs/unreal.py for class names or method signatures.
+      user_objective: Look up class names, method signatures, or property names in the bundled unreal.py stub file before authoring a script.
       operation: grep -i "<pattern>" ${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/stubs/unreal.py
       tool: grep
       scope_axes: [classes, methods]
       reference_section: architecture.md (stubs)
-  tools:
-    - name: ue_runner
-      command: bin/ue_runner.py
-      description: Auto-detecting runner for Editor or commandlet execution.
-  agent_binding:
-    agent_name: unreal-kit-a
-    auto_load: true
+  gotchas:
+    - Always invoke ue_runner.py with the plugin venv Python (~/.claude/plugins/data/plugins-kit/unreal-kit/.venv/) so upyrc is available; system Python misses upyrc and degrades to slower commandlet-only mode.
+    - The Editor prefix in class names like EditorAssetLibrary is a UE C++ naming convention -- it does NOT mean those classes need the Editor running. They work in commandlet mode. Exception EditorUtilityLibrary, which queries the user's active selection and does require a running Editor.
+    - Output via unreal.log() is NOT captured by the terminal runner. To get results back, write YAML to <Project>/Saved/PythonOutput/ -- the runner auto-detects these.
+    - Never add project-specific asset paths, class names, workflows, or code patterns. This plugin is engine-generic and MIT-licensed; project-specific content goes in a project-side skill.
+  references:
+    - id: architecture
+      path: references/architecture.md
+      keywords: [required plugins, execution modes, remote vs commandlet, stubs, how it works, runner architecture]
+      summary: How the runner picks execution modes; what each mode supports.
+    - id: bootstrapped_setup
+      path: references/bootstrapped-setup.md
+      keywords: [setup, config, ini settings, venv, host deps, stubs, troubleshooting, first-run]
+      summary: First-run setup, ini settings, venv, host-side dependencies, common troubleshooting.
+    - id: asset_inspection
+      path: references/asset-inspection.md
+      keywords: [struct properties, nested objects, class hierarchy, blueprint inspection, soft references, asset deep dive]
+      summary: Asset inspection deep-dive patterns.
+    - id: reference_graph
+      path: references/reference-graph.md
+      keywords: [dependency chain, full graph walk, circular references, asset audit, dependency graph]
+      summary: Reference graph traversal patterns.
+    - id: animation_patterns
+      path: references/animation-patterns.md
+      keywords: [AnimSequence, AnimMontage, AnimBlueprint, emote set, skeleton, animation patterns]
+      summary: Animation and emote patterns.
+    - id: script_execution
+      path: references/script-execution.md
+      keywords: [startup scripts, commandlet, editor utility widget, slow task progress, batch, execution modes]
+      summary: Execution-mode-specific patterns.
+    - id: project_setup
+      path: references/project-setup.md
+      keywords: [project setup, .uproject, engine_dir, config keys, autodetect]
+      summary: Project-side setup steps and config.
+    - id: unreal_pip
+      path: references/unreal-pip.md
+      keywords: [unreal-pip, package manager, UE packages, site-packages, pip install, bootstrap pattern]
+      summary: UE-side dependency management via unreal-pip.
+    - id: upyrc
+      path: references/upyrc.md
+      keywords: [upyrc, remote execution, UDP multicast, remote control, send script to editor]
+      summary: Remote execution wire protocol.
+    - id: script_bootstrap
+      path: references/script-bootstrap.md
+      keywords: [two dependency sets, UE-side packages, host-side venv, stdlib constraint, ensure_dependencies internals, interaction flow]
+      summary: How ensure_dependencies bootstraps UE-side packages from inside a script.
+  companion:
+    skill: unreal-kit-a
+    description: Sub-agent companion that pairs with this skill for UE Python automation tasks; auto-loaded for unreal-kit work.
 ```
+
+## Vocabulary
+
+- **ue_runner.py** -- The host-side runner shipped at `bin/ue_runner.py`. Auto-detects Editor presence; falls back to commandlet when the Editor is closed.
+- **commandlet mode** -- Headless UE process that loads the project and runs the script without opening the Editor UI. Asset loading, registry queries, property R/W, reference graph walks, and saves all work in commandlet mode.
+- **remote mode** -- Sends the script over UDP multicast to a running Editor's upyrc listener.
+- **stubs** -- Searchable API stubs at `stubs/unreal.py` for grep/IDE introspection.
+- **unreal-pip** -- UE-side package manager. Bridges PyPI packages into UE's Python via the bootstrap pattern (sys.path injection + ensure_dependencies()).
+- **upyrc** -- Host-side library used by ue_runner.py to send scripts over UDP multicast to a running Editor.
 
 ## Essential Classes
 
