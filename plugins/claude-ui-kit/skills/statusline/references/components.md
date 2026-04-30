@@ -25,6 +25,8 @@ Then extract via `jq`. Parsing every field in a single jq call (with `@tsv`) is 
 | Cache read tokens | `.context_window.current_usage.cache_read_input_tokens` | |
 | 5-hour rate-limit % used | `.rate_limits.five_hour.used_percentage` | 0-100, may be null. Default statusline shows `100 - x` as remaining capacity. |
 | 7-day rate-limit % used | `.rate_limits.seven_day.used_percentage` | 0-100, may be null. Default statusline shows `100 - x` as remaining capacity. |
+| 5-hour reset time | `.rate_limits.five_hour.resets_at` | Unix epoch seconds when the 5-hour window resets. May be null. |
+| 7-day reset time | `.rate_limits.seven_day.resets_at` | Unix epoch seconds when the 7-day window resets. May be null. |
 
 The default statusline normalizes all three percentages to **capacity remaining** so the user-facing numbers share one mental model: higher = healthier, lower = warning.
 

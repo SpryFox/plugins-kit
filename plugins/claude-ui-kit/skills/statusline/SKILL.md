@@ -37,6 +37,10 @@ When the user requests a change:
   4. Apply the requested edit to the copied script.
 - **If the active script is already user-owned**, edit it directly.
 - **Preserve the script's input contract** (`DATA=$(cat)`, jq parses session JSON from stdin) and the basic output discipline (single line, ANSI escapes, `echo -e`).
+- **Data storage convention**:
+  - **Global configuration** (settings that apply across all projects, e.g. `customized.flag`) lives under `~/.claude/plugins/data/plugins-kit/claude-ui-kit/`.
+  - **Project-specific data** (caches, flags, counters, messages tied to *this* project, e.g. `systemmessage.*.txt`) lives under `<cwd>/.local-data/claude-ui-kit/`.
+  - Do not write to `/tmp` or other ad-hoc paths.
 - After any edit, verify by piping a small fake JSON payload through the script and showing the user the rendered output.
 
 ## Stay grounded

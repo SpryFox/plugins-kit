@@ -4,7 +4,7 @@ set -euo pipefail
 DATA=$(cat)
 
 # Extract fields via single jq call
-IFS=$'\t' read -r MODEL MODEL_ID DIR PCT SESS WEEK < <(
+IFS=$'\t' read -r MODEL MODEL_ID DIR PCT SESS WEEK SESS_RESET WEEK_RESET < <(
     echo "$DATA" | jq -r '[
         (.model.display_name // "Claude"),
         (try (.model.id // "unknown") catch "unknown"),
@@ -20,7 +20,9 @@ IFS=$'\t' read -r MODEL MODEL_ID DIR PCT SESS WEEK < <(
     else 100 end
   ) catch 100),
         ((.rate_limits.five_hour.used_percentage // null) | if . == null then "" else ((100 - .) | floor | tostring) end),
-        ((.rate_limits.seven_day.used_percentage // null) | if . == null then "" else ((100 - .) | floor | tostring) end)
+        ((.rate_limits.seven_day.used_percentage // null) | if . == null then "" else ((100 - .) | floor | tostring) end),
+        ((.rate_limits.five_hour.resets_at // null) | if . == null then "" else (. | floor | tostring) end),
+        ((.rate_limits.seven_day.resets_at // null) | if . == null then "" else (. | floor | tostring) end)
     ] | @tsv' | tr -d '\r'
 )
 
@@ -49,11 +51,14 @@ fi
 # trigger when the value drops AT OR BELOW the threshold.
 # Override defaults via env vars in settings.json:
 #   STATUSLINE_CTX_ORANGE_AT, STATUSLINE_CTX_RED_AT,
-#   STATUSLINE_SESS_ORANGE_AT, STATUSLINE_SESS_RED_AT
+#   STATUSLINE_SESS_ORANGE_AT, STATUSLINE_SESS_RED_AT,
+#   STATUSLINE_WEEK_ORANGE_AT, STATUSLINE_WEEK_RED_AT
 CTX_ORANGE_AT="${STATUSLINE_CTX_ORANGE_AT:-70}"
 CTX_RED_AT="${STATUSLINE_CTX_RED_AT:-30}"
 SESS_ORANGE_AT="${STATUSLINE_SESS_ORANGE_AT:-30}"
 SESS_RED_AT="${STATUSLINE_SESS_RED_AT:-10}"
+WEEK_ORANGE_AT="${STATUSLINE_WEEK_ORANGE_AT:-30}"
+WEEK_RED_AT="${STATUSLINE_WEEK_RED_AT:-10}"
 
 if   [ "$PCT" -le "$CTX_RED_AT" ];    then CTX_CLR="\033[38;5;196m"
 elif [ "$PCT" -le "$CTX_ORANGE_AT" ]; then CTX_CLR="\033[38;5;208m"
@@ -67,12 +72,49 @@ if [ -n "$SESS" ] && [ "$SESS" -eq "$SESS" ] 2>/dev/null; then
     fi
 fi
 
+WEEK_CLR="\033[38;5;250m"
+if [ -n "$WEEK" ] && [ "$WEEK" -eq "$WEEK" ] 2>/dev/null; then
+    if   [ "$WEEK" -le "$WEEK_RED_AT" ];    then WEEK_CLR="\033[38;5;196m"
+    elif [ "$WEEK" -le "$WEEK_ORANGE_AT" ]; then WEEK_CLR="\033[38;5;208m"
+    fi
+fi
+
+# Format seconds-until-reset as: #d (>=1 day), XhXXm (>=1 hour), or XXm.
+# Returns empty for missing/past timestamps.
+fmt_reset() {
+    local epoch="$1" now secs days hours mins
+    [ -z "$epoch" ] && return
+    now=$(date +%s)
+    secs=$((epoch - now))
+    [ "$secs" -le 0 ] && { printf "0m"; return; }
+    days=$((secs / 86400))
+    hours=$(((secs % 86400) / 3600))
+    mins=$(((secs % 3600) / 60))
+    if   [ "$days" -ge 1 ];  then printf "%dd" "$days"
+    elif [ "$hours" -ge 1 ]; then printf "%dh%02dm" "$hours" "$mins"
+    else                          printf "%dm" "$mins"
+    fi
+}
+
+SESS_RESET_STR=""
+if [ -n "$SESS" ] && [ "$SESS" -eq "$SESS" ] 2>/dev/null && [ "$SESS" -le "$SESS_ORANGE_AT" ]; then
+    SESS_RESET_STR=$(fmt_reset "$SESS_RESET")
+fi
+WEEK_RESET_STR=""
+if [ -n "$WEEK" ] && [ "$WEEK" -eq "$WEEK" ] 2>/dev/null && [ "$WEEK" -le "$WEEK_ORANGE_AT" ]; then
+    WEEK_RESET_STR=$(fmt_reset "$WEEK_RESET")
+fi
+
 OUT="\033[38;5;250m📁 $DIR\033[0m\033[2m\033[38;5;238m │ \033[0m${CTX_CLR}🧠 $PCT%\033[0m"
 if [ -n "$SESS" ]; then
-    OUT="$OUT\033[2m\033[38;5;238m │ \033[0m${SESS_CLR}🔋 $SESS%\033[0m"
+    OUT="$OUT\033[2m\033[38;5;238m │ \033[0m${SESS_CLR}🔋 $SESS%"
+    [ -n "$SESS_RESET_STR" ] && OUT="$OUT ($SESS_RESET_STR)"
+    OUT="$OUT\033[0m"
 fi
 if [ -n "$WEEK" ]; then
-    OUT="$OUT\033[2m\033[38;5;238m │ \033[0m\033[38;5;250m📅 $WEEK%\033[0m"
+    OUT="$OUT\033[2m\033[38;5;238m │ \033[0m${WEEK_CLR}📅 $WEEK%"
+    [ -n "$WEEK_RESET_STR" ] && OUT="$OUT ($WEEK_RESET_STR)"
+    OUT="$OUT\033[0m"
 fi
 if [ -n "$SYSMSG" ]; then
     OUT="$OUT\033[2m\033[38;5;238m │ \033[0m\033[38;5;250m💬 $SYSMSG\033[0m"
