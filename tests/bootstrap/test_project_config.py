@@ -1,6 +1,7 @@
 """Tests for the project_config engine primitive."""
 
 import os
+import stat
 
 import pytest
 
@@ -644,6 +645,93 @@ class TestLegacyFileMigration:
         assert not legacy_path.exists(), "legacy should be moved (not left as a duplicate)"
         assert load_yaml_config(str(new_path))["foo"] == "from-legacy"
         assert any("migrated" in e and "overwrote stale new path" in e for e in action_entries)
+
+    def test_readonly_legacy_is_removed_when_stale(self, tmp_path, monkeypatch):
+        """Stale legacy with read-only bit (P4-tracked file on Windows) still gets removed.
+
+        os.remove raises PermissionError on a read-only file on Windows; the
+        engine clears the read-only bit and retries.
+        """
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        monkeypatch.chdir(project_dir)
+
+        legacy_dir = project_dir / ".claude"
+        legacy_dir.mkdir()
+        legacy_path = legacy_dir / "myplugin.yaml"
+        save_yaml_config(str(legacy_path), {"foo": "from-legacy"})
+
+        new_path = project_dir / ".local-data" / "myplugin" / "config.yaml"
+        new_path.parent.mkdir(parents=True)
+        save_yaml_config(str(new_path), {"foo": "from-new"})
+
+        # Legacy older than new, AND read-only.
+        legacy_stat = os.stat(legacy_path)
+        os.utime(legacy_path, (legacy_stat.st_atime, legacy_stat.st_mtime - 60))
+        os.chmod(legacy_path, stat.S_IREAD)
+        try:
+            plugin_root = str(tmp_path / "plugin")
+            os.makedirs(plugin_root)
+            plugin_data_dir = str(tmp_path / "data")
+            os.makedirs(plugin_data_dir)
+
+            action_entries = []
+            _process_project_config(
+                self._common_section(), plugin_data_dir, plugin_root,
+                action_entries, ok_entries=[], plugin_name="myplugin",
+            )
+
+            assert not legacy_path.exists(), "read-only legacy should still be removed"
+            assert load_yaml_config(str(new_path))["foo"] == "from-new"
+            assert any("removed stale legacy" in e for e in action_entries)
+            assert not any("WARNING" in e for e in action_entries)
+        finally:
+            # If the test failed before remove, restore writable bit so cleanup works.
+            if legacy_path.exists():
+                os.chmod(legacy_path, stat.S_IWRITE)
+
+    def test_warns_instead_of_crashing_on_unrecoverable_error(self, tmp_path, monkeypatch):
+        """If reconciliation hits an OSError it can't recover from, log a warning
+        and let bootstrap continue rather than dying mid-run.
+        """
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        monkeypatch.chdir(project_dir)
+
+        legacy_dir = project_dir / ".claude"
+        legacy_dir.mkdir()
+        legacy_path = legacy_dir / "myplugin.yaml"
+        save_yaml_config(str(legacy_path), {"foo": "from-legacy"})
+
+        new_path = project_dir / ".local-data" / "myplugin" / "config.yaml"
+        new_path.parent.mkdir(parents=True)
+        save_yaml_config(str(new_path), {"foo": "from-new"})
+
+        # Make legacy older so the engine wants to remove it.
+        legacy_stat = os.stat(legacy_path)
+        os.utime(legacy_path, (legacy_stat.st_atime, legacy_stat.st_mtime - 60))
+
+        # Force os.remove inside the engine to fail with a non-PermissionError.
+        import bootstrap_lib.engine as engine_mod
+        original = engine_mod.os.remove
+        def explode(path):
+            raise OSError("simulated unrecoverable failure")
+        monkeypatch.setattr(engine_mod.os, "remove", explode)
+
+        plugin_root = str(tmp_path / "plugin")
+        os.makedirs(plugin_root)
+        plugin_data_dir = str(tmp_path / "data")
+        os.makedirs(plugin_data_dir)
+
+        action_entries = []
+        # Must not raise — the warning path should swallow the error.
+        _process_project_config(
+            self._common_section(), plugin_data_dir, plugin_root,
+            action_entries, ok_entries=[], plugin_name="myplugin",
+        )
+        assert any("WARNING failed to reconcile" in e for e in action_entries)
+        # Restore so the new-path-exists branch in downstream logic can proceed normally.
+        monkeypatch.setattr(engine_mod.os, "remove", original)
 
     def test_no_op_when_legacy_file_field_omitted(self, tmp_path, monkeypatch):
         """Plugins without legacy_file declared: nothing migrates, normal flow runs."""
