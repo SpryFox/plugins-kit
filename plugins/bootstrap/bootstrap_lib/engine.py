@@ -16,6 +16,7 @@ Exit behavior:
 import argparse
 import json
 import os
+import stat
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -911,6 +912,35 @@ def _normalize_project_required_fields(required_fields):
     return {name: {} for name in required_fields}
 
 
+def _legacy_remove(path):
+    """Delete a file, clearing the read-only bit if the OS rejects the first try.
+
+    Windows surfaces P4-tracked files as read-only on disk, so a plain os.remove
+    raises PermissionError. Cleanup is intentional in the migration flow, so
+    relax the mode and retry once. Any second failure propagates.
+    """
+    try:
+        os.remove(path)
+    except PermissionError:
+        os.chmod(path, stat.S_IWRITE)
+        os.remove(path)
+
+
+def _legacy_replace(src, dst):
+    """Move src to dst, clearing read-only on either side if Windows balks.
+
+    os.replace fails if the destination is read-only (Windows) or if the source
+    can't be unlinked. Make both writable on PermissionError, then retry once.
+    """
+    try:
+        os.replace(src, dst)
+    except PermissionError:
+        for p in (src, dst):
+            if os.path.isfile(p):
+                os.chmod(p, stat.S_IWRITE)
+        os.replace(src, dst)
+
+
 def _process_project_config(project_config_section, plugin_data_dir, plugin_root, action_entries, ok_entries=None, plugin_name="", failures=None):
     """Process the project_config section of a plugin manifest.
 
@@ -948,27 +978,39 @@ def _process_project_config(project_config_section, plugin_data_dir, plugin_root
     # Cases 2/3 cover sessions that ran before legacy_file was honored: the
     # engine had already created a new file from defaults/autodetect, leaving
     # the legacy file orphaned alongside it. mtime decides which copy wins.
+    # Wrapped in try/except so a hostile filesystem state (file locked, ACL
+    # blocked, etc.) downgrades to a warning instead of killing the whole
+    # bootstrap run.
     if legacy_file:
         legacy_path = os.path.join(os.getcwd(), legacy_file)
-        legacy_exists = os.path.isfile(legacy_path)
-        new_exists = os.path.isfile(project_config_path)
-        if legacy_exists and not new_exists:
-            os.makedirs(os.path.dirname(project_config_path), exist_ok=True)
-            os.replace(legacy_path, project_config_path)
+        try:
+            legacy_exists = os.path.isfile(legacy_path)
+            new_exists = os.path.isfile(project_config_path)
+            if legacy_exists and not new_exists:
+                os.makedirs(os.path.dirname(project_config_path), exist_ok=True)
+                _legacy_replace(legacy_path, project_config_path)
+                action_entries.append(
+                    f"project config: migrated {legacy_path} -> {project_config_path}"
+                )
+            elif legacy_exists and new_exists:
+                if os.path.getmtime(legacy_path) <= os.path.getmtime(project_config_path):
+                    _legacy_remove(legacy_path)
+                    action_entries.append(
+                        f"project config: removed stale legacy {legacy_path} (new path {project_config_path} is fresher)"
+                    )
+                else:
+                    _legacy_replace(legacy_path, project_config_path)
+                    action_entries.append(
+                        f"project config: migrated {legacy_path} -> {project_config_path} (overwrote stale new path)"
+                    )
+        except OSError as e:
+            # Most common cause on Windows: the legacy file is read-only because
+            # source control (e.g. Perforce) hasn't checked it out for delete.
+            # Surface as a warning and let the user resolve manually rather than
+            # dying mid-bootstrap.
             action_entries.append(
-                f"project config: migrated {legacy_path} -> {project_config_path}"
+                f"project config: WARNING failed to reconcile {legacy_path} -> {project_config_path}: {e}"
             )
-        elif legacy_exists and new_exists:
-            if os.path.getmtime(legacy_path) <= os.path.getmtime(project_config_path):
-                os.remove(legacy_path)
-                action_entries.append(
-                    f"project config: removed stale legacy {legacy_path} (new path {project_config_path} is fresher)"
-                )
-            else:
-                os.replace(legacy_path, project_config_path)
-                action_entries.append(
-                    f"project config: migrated {legacy_path} -> {project_config_path} (overwrote stale new path)"
-                )
 
     file_changed = False  # Track whether project_data was modified from disk state
 
