@@ -26,8 +26,13 @@ INPUT=$(< /dev/stdin)
 MARKER="${HOME}/.claude/plugins/data/plugins-kit/unreal-kit/editor-stale.flag"
 
 if [[ -f "$MARKER" ]]; then
+    # PreToolUse hook output shape:
+    #   permissionDecision="allow" -- explicitly allow the call to proceed.
+    #     Required for the harness to process the rest of hookSpecificOutput.
+    #   permissionDecisionReason -- shown to the user in the CLI (NOT shown to Claude).
+    #   additionalContext -- injected into Claude's context for the call (NOT shown to user).
     cat <<'HOOKEOF'
-{"systemMessage":"Unreal editor build is stale -- rebuild before saving assets","hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"Editor requires rebuild before assets can be safely saved. UnrealEditor-BuildSettings.dll mtime is older than Engine/Build/Build.version, which means the running editor was launched without rebuilding after the latest sync. Asset saves through MCP will stamp Summary.SavedByEngineVersion with Changelist=0 and be rejected by the cooker as 'empty engine version'. Run a build before any save tool call."}}
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"Unreal editor build is stale -- rebuild the editor before saving any asset. UnrealEditor-BuildSettings.dll is older than Engine/Build/Build.version, so saves will be stamped with Changelist=0 and rejected by the cooker as 'empty engine version'.","additionalContext":"Editor requires rebuild before assets can be safely saved. UnrealEditor-BuildSettings.dll mtime is older than Engine/Build/Build.version, which means the running editor was launched without rebuilding after the latest sync. Asset saves through MCP will stamp Summary.SavedByEngineVersion with Changelist=0 and be rejected by the cooker as 'empty engine version'. Run a build before any save tool call."}}
 HOOKEOF
 fi
 

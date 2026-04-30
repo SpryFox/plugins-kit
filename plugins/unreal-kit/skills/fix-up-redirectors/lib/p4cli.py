@@ -142,6 +142,28 @@ def edit_files(cl_num, files, batch_size=200):
                       what=f'p4 edit batch {i // batch_size}')
 
 
+def delete_files(cl_num, files, batch_size=200):
+    """Open files for delete in the given CL, batching to avoid command-line length limits.
+    `p4 delete` opens each file for delete and removes it from the workspace."""
+    for i in range(0, len(files), batch_size):
+        batch = files[i:i + batch_size]
+        run_p4_or_die(['-x', '-', 'delete', '-c', cl_num], stdin='\n'.join(batch),
+                      what=f'p4 delete batch {i // batch_size}')
+
+
+def get_p4_user():
+    """Return the current P4 user. Prefers $P4USER env var; falls back to
+    `p4 -F %userName% info` so callers don't need to set the env var.
+    Returns the empty string only if both probes fail."""
+    env_user = os.environ.get('P4USER', '').strip()
+    if env_user:
+        return env_user
+    rc, out, _err = run_p4(['-F', '%userName%', 'info'])
+    if rc == 0:
+        return out.strip().splitlines()[0].strip() if out.strip() else ''
+    return ''
+
+
 def get_opened_in_cl(cl_num):
     """Return a set of lowercase depot paths currently opened in the given CL."""
     out = run_p4_or_die(['opened', '-c', cl_num], what=f'p4 opened -c {cl_num}')
