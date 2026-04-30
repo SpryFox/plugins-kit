@@ -4,7 +4,10 @@
 Reads the PreToolUse hook JSON from stdin (for cwd), reads
 ${cwd}/.claude/unreal-kit.yaml for engine_dir, compares
 UnrealEditor-BuildSettings.dll mtime vs Engine/Build/Build.version mtime, and
-writes or removes the marker file accordingly.
+writes or removes the per-project marker plus the claude-ui-kit system message.
+
+Marker path:  <cwd>/.local-data/unreal-kit/editor-stale.flag
+System msg:   <cwd>/.local-data/claude-ui-kit/systemmessage.unreal-kit.txt
 
 Latency is not foreground-critical: this runs detached after the PreToolUse
 hook has already returned. The marker it writes is consumed by subsequent
@@ -16,6 +19,8 @@ no-op (preserves prior marker state). The hook is advisory, not safety-critical.
 import json
 import os
 import sys
+
+SYSMSG_TEXT = "Editor needs rebuild"
 
 
 def read_engine_dir(config_path: str) -> str | None:
@@ -32,11 +37,26 @@ def read_engine_dir(config_path: str) -> str | None:
     return None
 
 
-def main() -> int:
-    if len(sys.argv) < 2:
-        return 0
-    marker = sys.argv[1]
+def _touch(path: str, content: str | None = None) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    if content is None:
+        with open(path, "a"):
+            pass
+        os.utime(path, None)
+    else:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
 
+
+def _remove(path: str) -> None:
+    if os.path.isfile(path):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+def main() -> int:
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
@@ -45,6 +65,9 @@ def main() -> int:
     cwd = payload.get("cwd")
     if not cwd:
         return 0
+
+    marker = os.path.join(cwd, ".local-data", "unreal-kit", "editor-stale.flag")
+    sysmsg = os.path.join(cwd, ".local-data", "claude-ui-kit", "systemmessage.unreal-kit.txt")
 
     engine_dir = read_engine_dir(os.path.join(cwd, ".claude", "unreal-kit.yaml"))
     if not engine_dir:
@@ -57,16 +80,12 @@ def main() -> int:
 
     is_stale = os.path.getmtime(dll) < os.path.getmtime(version_file)
 
-    os.makedirs(os.path.dirname(marker), exist_ok=True)
     if is_stale:
-        with open(marker, "a"):
-            pass
-        os.utime(marker, None)
-    elif os.path.isfile(marker):
-        try:
-            os.remove(marker)
-        except OSError:
-            pass
+        _touch(marker)
+        _touch(sysmsg, SYSMSG_TEXT)
+    else:
+        _remove(marker)
+        _remove(sysmsg)
 
     return 0
 

@@ -23,7 +23,14 @@ INPUT=$(< /dev/stdin)
 # compact ("tool_name":"...") and pretty-printed ("tool_name": "...").
 [[ "$INPUT" =~ \"tool_name\"[[:space:]]*:[[:space:]]*\"mcp__unreal-engine__ ]] || exit 0
 
-MARKER="${HOME}/.claude/plugins/data/plugins-kit/unreal-kit/editor-stale.flag"
+# Extract cwd via the same regex shape; unescape JSON \\ -> \ for Windows paths.
+CWD=""
+if [[ "$INPUT" =~ \"cwd\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
+    CWD="${BASH_REMATCH[1]//\\\\/\\}"
+fi
+[[ -n "$CWD" ]] || exit 0
+
+MARKER="$CWD/.local-data/unreal-kit/editor-stale.flag"
 
 if [[ -f "$MARKER" ]]; then
     # PreToolUse hook output shape:
@@ -44,7 +51,7 @@ DETECTOR="$SCRIPT_DIR/detect-editor-stale.py"
 if [[ -f "$DETECTOR" ]]; then
     (
         printf '%s' "$INPUT" \
-        | uv run --no-project python "$DETECTOR" "$MARKER" \
+        | uv run --no-project python "$DETECTOR" \
             >/dev/null 2>&1 &
     ) &
 fi
