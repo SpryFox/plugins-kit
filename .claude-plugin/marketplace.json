@@ -9,7 +9,7 @@
     {
       "name": "unreal-kit",
       "description": "Unreal Engine automation: Python API for asset inspection and data extraction; MCP server for live Editor authoring (actors, Blueprints, materials, PIE)",
-      "version": "0.8.1",
+      "version": "0.8.2",
       "author": {
         "name": "Christina"
       },
@@ -70,7 +70,7 @@
     {
       "name": "claude-ui-kit",
       "description": "Opinionated defaults and customization skills for Claude Code's UI — currently ships the statusline (threshold colors + /statusline skill); future home for other UI surfaces",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "author": {
         "name": "Christina"
       },

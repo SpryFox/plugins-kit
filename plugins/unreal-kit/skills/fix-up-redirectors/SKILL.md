@@ -1,7 +1,7 @@
 ---
 name: fix-up-redirectors
 skill-type: technique-skill
-description: Use to clean up Unreal `ObjectRedirector` assets in a Perforce-backed UE project. Reports which redirectors can be fixed without stomping on teammates' open files, then performs the fixup in a fresh CL.
+description: Use when cleaning up Unreal ObjectRedirector assets in a P4-backed UE project. Fixes safe redirectors in a fresh CL. Do NOT use for non-P4 projects.
 disable-model-invocation: false
 argument-hint: "[scope path, e.g. /Game/Art - omit for whole project]"
 ---
@@ -26,6 +26,10 @@ Unreal's editor command `Fix Up Redirectors in Folder` stalls on the first file 
 
 - No arg: scan all of `/Game`
 - One arg: scan a sub-path (e.g. `/Game/Art`, `/Game/UI/Widgets`)
+
+## Step tracking
+
+This skill has six phases. Track progress in a TodoWrite list with one entry per phase so nothing is skipped between Discover, Classify, Report, Code-ref filter, Apply, and Final report.
 
 ## Phase 1 - Discover redirectors (UE Python)
 
