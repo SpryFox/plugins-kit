@@ -87,6 +87,31 @@ def has_tickbox_list(body_text: str) -> bool:
     return bool(re.search(r"^\s*-\s*\[\s?\]", body_text, re.MULTILINE))
 
 
+def has_step_tracker_invocation(body_text: str) -> bool:
+    """Detect an explicit step-tracker invocation in the procedure body.
+
+    Per Dec-8: the workflow-checklist conditional row is satisfied by EITHER a
+    paste-able `- [ ]` checklist OR an explicit step-tracker invocation. The
+    underlying goal is the discipline of explicit step-tracking; the markdown
+    syntax is one path, not the only one.
+
+    Recognized markers:
+    - TaskCreate / TaskWrite / TodoWrite tool invocations (the harness's own
+      step-tracker tools)
+    - explicit prose like "track steps in", "scratch file for steps",
+      "step tracker", "track progress in"
+    """
+    if re.search(r"\b(TaskCreate|TaskWrite|TodoWrite)\b", body_text):
+        return True
+    if re.search(
+        r"\b(track\s+(?:the\s+)?steps?\s+(?:in|with)|step\s+tracker|track\s+progress\s+in|scratch\s+file\s+for\s+steps?)\b",
+        body_text,
+        re.IGNORECASE,
+    ):
+        return True
+    return False
+
+
 def has_excuse_reality_table(body_text: str) -> bool:
     if re.search(r"\|\s*excuse\s*\|.*\|\s*reality\s*\|", body_text, re.IGNORECASE):
         return True

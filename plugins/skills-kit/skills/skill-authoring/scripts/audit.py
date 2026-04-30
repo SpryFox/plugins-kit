@@ -35,6 +35,7 @@ from _shared import (
     has_recognition_marker,
     has_red_flags_list,
     has_red_green_refactor,
+    has_step_tracker_invocation,
     has_tickbox_list,
     has_yaml_block,
     is_user_only,
@@ -302,14 +303,27 @@ def check_technique_skill(body: Body, skill_dir: Path, fm: Frontmatter | None) -
         f"{step_count} ordered-step entries detected",
     ))
     if step_count > 3:
+        # Dec-8: explicit step-tracking required when technique has >3 steps,
+        # satisfied by EITHER a paste-able `- [ ]` checklist OR an explicit
+        # step-tracker invocation (TaskCreate, scratch file, etc.). The goal
+        # is the discipline of explicit step-tracking, not the markdown syntax.
+        has_checklist = has_tickbox_list(body.text)
+        has_tracker = has_step_tracker_invocation(body.text)
+        signal_present = has_checklist or has_tracker
+        if signal_present:
+            via = "tickbox checklist" if has_checklist else "step-tracker invocation"
+            note = f"{step_count} steps; satisfied via {via}"
+        else:
+            note = (f"{step_count} steps; neither tickbox checklist nor "
+                    f"step-tracker invocation present")
         out.append(CheckResult(
-            "workflow checklist (conditional, IF >3 steps)",
-            PASS if has_tickbox_list(body.text) else FAIL,
-            f"{step_count} steps; tickbox checklist {'present' if has_tickbox_list(body.text) else 'missing'}",
+            "explicit step-tracking (conditional, IF >3 steps): checklist OR tracker invocation",
+            PASS if signal_present else FAIL,
+            note,
         ))
     else:
         out.append(CheckResult(
-            "workflow checklist (conditional, IF >3 steps)",
+            "explicit step-tracking (conditional, IF >3 steps): checklist OR tracker invocation",
             NA,
             f"only {step_count} steps",
         ))

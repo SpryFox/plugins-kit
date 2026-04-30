@@ -79,8 +79,9 @@ framework:
     examples:
       - rule: progressive disclosure required when SKILL.md body exceeds 500 lines or 3000 tokens
         criterion: line/token count of the SKILL.md body
-      - rule: workflow checklist required when a technique has more than three steps
-        criterion: count `step` blocks in the technique definition
+      - rule: explicit step-tracking required when a technique has more than three steps -- satisfied by EITHER a paste-able `- [ ]` checklist OR an explicit step-tracker invocation (TaskCreate, scratch file, or equivalent) at the start of the procedure
+        criterion: count `step` blocks in the technique definition; presence of either a tickbox checklist OR a step-tracker-invocation marker satisfies the row
+        note: the goal is the discipline of explicit step-tracking; the markdown syntax is one path, not the only one. If the procedure already invokes a step tracker (e.g. TaskCreate), a parallel `- [ ]` checklist adds no information and is not required.
       - rule: sub-agent binding rule required when a paired sub-agent exists
         criterion: check for a matching <skill-name>-a agent definition
       - rule: vocabulary block required when reference files use canonical terms not defined in SKILL.md
@@ -242,6 +243,18 @@ The framework's progressive-disclosure pattern names L1/L2/L3 load levels but is
 
 For capability-skill, this allocation is required (the schema's `layering:` field declares the manifest). For other skill types, it is the default authoring guide; the schema does not enforce it.
 
+### Visibility criterion for examples and anti-patterns
+
+The L1/L2/L3 split above governs major content allocation. The same visibility decision recurs at the example/anti-pattern grain -- a single gotcha, a single anti-pattern record, a single escaping example. The criterion at that grain:
+
+- **L1 (CLAUDE.md): if they are COMMON.** Example/anti-pattern fires in most sessions touching the area; the agent will need it ambient. Frequency dominates.
+- **L2 (SKILL.md): if they are DIRECTLY RELATED to why the agent invokes the skill.** Even if also common, content that is literally the reason the skill exists belongs in SKILL.md. The skill's trigger surface is the right home for trigger-relevant content. Trigger-relevance dominates frequency when both fire.
+- **L3 (references/): if they are ESOTERIC.** One-in-a-hundred edge cases, third-party-tool-specific quirks, environment-specific footguns most invocations never hit. Specificity dominates -- ambient cost is not justified, but the content must be reachable when the rare situation fires.
+
+Worked example: PowerShell escaping gotchas. A `-Command "..."` dollar-sign escape rule is BOTH common (most PowerShell invocations) AND trigger-relevant (a PowerShell skill exists precisely to handle escaping). Trigger-relevance wins -- it stays in the PowerShell SKILL.md (L2). A rare PowerShell quirk specific to one obscure cmdlet is L3. A bash-vs-PowerShell quoting collision the agent hits constantly across many tasks is L1.
+
+Counter-worked-example: a powershell layering audit (April 2026) found 5 of 7 SKILL.md gotchas were also common across most non-PowerShell sessions and should have been in CLAUDE.md (L1) -- frequency criterion fired and trigger-relevance did not. The audit surfaced that the framework named the levels but did not articulate the visibility-decision criterion at the example/anti-pattern grain; this section closes that gap.
+
 ## Type contracts
 
 A skill claiming a type must satisfy the **required** rows and the
@@ -279,7 +292,7 @@ Examples: `flatten-with-flags`, `test-invariants`, `reducing-complexity` (from t
 |---|---|
 | **Required blocks** | SKILL.md file with frontmatter and trigger; >=1 technique with ordered-step body (`steps:` list, min 1 step); >=1 gotcha. `output_template:` is an optional companion to `steps:` carrying the output-shape contract for the agent's reply -- not a substitute for steps. Even user-only slash-command skills reduce to a 1-step procedure ("invoke command; render output") and write that step explicitly. |
 | **Required patterns** | activation metadata, exclusion clause, technique, known gotchas |
-| **Conditionally required patterns** | workflow checklist -- IF the technique has more than 3 steps (criterion: count `step` blocks); utility bundle -- IF the procedure has deterministic steps that would otherwise be regenerated each call (criterion: any step where output depends only on input); self-correcting loop -- IF the procedure produces output that can be programmatically validated (criterion: a validator script or rubric exists); plan-validate-execute -- IF the procedure has batch operations or irreversible side effects (criterion: any step that modifies external state at scale or is hard to undo) |
+| **Conditionally required patterns** | explicit step-tracking -- IF the technique has more than 3 steps (criterion: count `step` blocks; satisfied by EITHER a paste-able `- [ ]` checklist OR an explicit step-tracker invocation like `TaskCreate` or a scratch file at the start of the procedure -- the goal is the discipline of explicit step-tracking, not the markdown syntax); utility bundle -- IF the procedure has deterministic steps that would otherwise be regenerated each call (criterion: any step where output depends only on input); self-correcting loop -- IF the procedure produces output that can be programmatically validated (criterion: a validator script or rubric exists); plan-validate-execute -- IF the procedure has batch operations or irreversible side effects (criterion: any step that modifies external state at scale or is hard to undo) |
 | **Prohibited patterns** | adversarial pressure testing |
 | **Audit** | Can the agent apply the method to a novel scenario? Try variation and missing-information tests. |
 
