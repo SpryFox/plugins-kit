@@ -1,519 +1,470 @@
 # Skill Glossary
 
-Canonical terms for skill authoring in this project. Use these terms verbatim
-in skill documentation, framework references, and conversation about skill
-design. When a contributor uses different language, re-phrase in these terms
-to keep usage consistent.
-
-This glossary defines vocabulary only. The contracts that bind these terms
-into rules — what a given skill type must contain, recommend, or prohibit —
-live in `skill-types-framework.md`.
-
-Sections are grouped by what they describe:
-
-- **Material** — what a skill is physically made of (Files, Conventions, External binding).
-- **Method** — the design vocabulary applied to material (Principles, Patterns).
-- **Skill types** — contracts that compose material and method into auditable categories.
-- **Orthogonal attributes** — independent flags that apply across types.
-
-The first two are wrapped sections containing related sub-sections; the
-last two are flat top-level sections. Within and across groupings,
-sections follow bottom-up composition (see Principles): each section
-depends only on terms defined above.
-
----
-
-## Material
-
-What a skill is physically made of, both on disk and in runtime wiring.
-
-### Files
-
-The on-disk artifacts inside a skill directory.
-
-**SKILL.md file**
-The required main file of every skill. Holds the YAML frontmatter and the
-markdown body. The L2 layer of progressive disclosure: loaded only when a
-skill's trigger matches.
-
-**Reference file**
-Supplementary markdown in the skill directory, linked from SKILL.md and
-loaded on demand when its link is followed. The L3 layer of progressive
-disclosure. Reference files should be one hop deep from SKILL.md, not
-nested — Claude tends to read partial content from deeply-nested references.
-
-**Script**
-An executable file (Python, shell, etc.) shipped inside a skill. The agent
-runs the script via bash but never loads its contents into the conversation;
-only the script's stdout/stderr enters context. Do not confuse the *script*
-file block with the `trigger: user-only` attribute — a script is a file you
-ship; user-only is how a skill is invoked.
-
-**Template / asset**
-A non-executable resource: a `template.docx`, a `config.json`, a lookup
-table CSV. Loaded only when SKILL.md instructs the agent to read it.
-
----
-
-### Conventions
-
-The named sections and patterns that appear inside a SKILL.md file or a
-reference file.
-
-**Frontmatter**
-The YAML header at the top of a SKILL.md file. Holds `name` (≤64 chars,
-lowercase letters/numbers/hyphens, no reserved words "anthropic" or
-"claude"), `description` (≤160 chars; see Trigger entry for content rules),
-and optionally `allowed-tools` and `metadata`.
-
-**Trigger**
-The directive clause inside the `description` field. The single signal
-Claude uses to decide whether to load the skill, and the only purpose
-the description serves. A trigger must:
-
-- Be **directive**: "Use when..." or "Invoke when...". Capability
-  summaries ("Enables...", "Provides...", "Manages...") cause Claude to
-  follow the description instead of reading the body.
-- Name a **clear, unambiguous condition** for invocation. If the
-  condition isn't crisp, the skill's design probably has a deeper flaw
-  -- the skill is doing too much or doesn't have a real role.
-- Be **cost-justified, not over-aggressive**. Every skill load is tokens
-  and a tool-call boundary; the trigger condition must justify that
-  cost. A description that fires on topical adjacency ("...for any
-  Python work...", "...whenever you read code...") violates the user's
-  trust by burning tool calls without bringing value.
-- Stay within the **length budget** (≤160 chars). A description that
-  doesn't fit in 160 chars is summarizing capability, not naming a
-  trigger.
-
-**Exclusion**
-A "Do NOT use for..." clause appended to `description`. Prevents
-overtriggering on adjacent topics. Cited in the literature as the single
-most important sentence in many skill descriptions because positive triggers
-alone do not bound the activation surface.
-
-**Rule**
-A single MUST/MUST NOT statement in the body of a discipline-skill. A rule
-without a counter is incomplete.
-
-**Counter**
-The rationalization rebuttal that closes a loophole on a rule. Lives next to
-the rule it protects, typically in an `excuse → reality` table. A
-discipline-skill needs a counter for every rationalization observed in
-baseline testing.
-
-**Step**
-One ordered instruction in a procedure. Steps live in technique-skills and
-in the procedural sections of script-bundled domain-skills.
-
-**Checklist**
-A copyable, tickable list the agent pastes into its response and ticks off
-as it progresses. Used for procedures with more than three steps. Each
-turn's unchecked items are what raise the bar against premature completion
-claims.
-
-**Example**
-An input/output pair embedded in the skill body. Shows tone, format, and
-detail level more clearly than prose can. Strong enough that style bias in
-examples reproduces across all invocations — the example set should span
-the variation the skill needs to support.
-
-**Gotcha**
-A documented failure mode observed in real runs. Often the most valuable
-content in a mature reference-skill or technique-skill — happy paths Claude
-can usually figure out; gotchas it cannot.
-
-**Index**
-A list of member skills with their triggers, used by container skills to
-declare what they aggregate. The only convention specific to domain-skills.
-
----
-
-### External binding
-
-The runtime connection between a skill and an agent defined outside the
-skill directory. The third and last category at the material level.
-
-**Sub-agent binding**
-A paired agent definition that auto-loads its companion skill on session
-start. The convention is typically to name the agent after the skill it
-wraps (e.g. an `unreal-kit-a` agent for a `/ue-python-api` domain-skill). The mechanism
-by which a domain-skill becomes ambient context for a specialized agent.
-Carried as the `agent-bundled` attribute on the skill.
-
----
-
-## Method
-
-The design vocabulary applied to material. Principles are the rules of
-thumb that guide design choices; patterns are the named moves principles
-justify. Both are referenced by name from skill-type contracts.
-
-### Principles
-
-Design rules of thumb that inform which patterns to apply when. The first
-three are Robert C. Martin's package-cohesion principles applied to skill
-documentation; the rest are framework principles, the last adapted from
-Anthropic's best-practices doc. Patterns derive from principles; type
-contracts compose patterns.
-
-**Audience-Claude (skills are written for Claude, not users).**
-Skills are runtime context for Claude, not documentation for humans.
-Claude is the translator: when a user asks a question, Claude loads the
-skill, picks the relevant data, and presents it to the user in the
-user's natural language. This shapes authoring choices -- structured
-data (YAML, tables, code-fenced blocks) is appropriate because Claude
-consumes it; user-friendly prose is unnecessary because Claude
-generates it on demand. The user is the audience of Claude's reply,
-not of the skill itself.
-
-*Form choice (bias toward structured data):* the default for LLM-facing
-content is structured YAML. Use prose only when (a) the content is
-naturally narrative -- an identity sentence, an orientation paragraph,
-a single-paragraph explanation that does not decompose into discrete
-records; or (b) structure carries no meaning over prose. **When in
-doubt, bias toward structured data.** Structure carries assertions
-prose cannot: an `anti_patterns:` list with each entry as a record
-asserts implicitly that every item is genuinely an anti-pattern; a
-markdown bullet list carries no such assertion. Records are routable,
-keyword-able, and validatable; prose is none of those. The test is
-"does this structure aid Claude's comprehension better than prose
-would?" -- the default answer for LLM-facing content is yes.
-
-Schemas are floors, not ceilings. The per-type schema names the
-required minimum; authors may add load-bearing structured keys beyond
-the schema (an `exceptions:` list inside an anti-pattern entry, a
-`narration:` sub-block inside a technique). Forbidding extras would
-push authors toward unstructured prose when they want to add legitimate
-structure, which contradicts the bias-toward-structured-data default.
-
-*Audit consequence: structural choices (YAML data blocks, dense tables,
-condensed lists) are evaluated for whether they aid Claude's
-comprehension, not for whether they read smoothly as prose.*
-*Realized by: chat-term relevance hints (structured data carries the
-user-language that should trigger it).*
-
-**CRP — Common Reuse Principle (read-together).**
-If a reader loads one section of a SKILL.md or reference file, they should
-plausibly need the rest. When sections serve different reading tasks, split
-them into separate files.
-*Forcing readers through irrelevant content burns tokens and dilutes signal.*
-*Realized by: progressive disclosure, domain-specific organization, conditional details.*
-
-**CCP — Common Closure Principle (write-together).**
-Content that changes for the same reason belongs in the same file. When a
-system updates, only one file should need updating.
-*A single conceptual change should be a single edit, not a hunt across files.*
-
-**ADP — Acyclic Dependencies Principle (link-forward-only).**
-References between files form a directed acyclic graph. No cycles.
-*Cycles cause partial reads and ambiguous resolution order; a DAG guarantees the reader can always tell what comes first.*
-*Realized by: progressive disclosure (one-hop-deep rule).*
-
-**SSOT — Single Source of Truth.**
-Every fact, term, or definition has exactly one canonical location. Other
-places reference it by name; they do not redefine or duplicate.
-*Drift between duplicates is the most common decay mode in skill documentation; one source means no drift.*
-*Orientation-level summaries are not duplicates.* A short summary that
-primes a reader to load the canonical reference is allowed when (a) the
-summary names the reference and (b) the canonical wins on divergence. A
-summary that has accumulated detail or examples beyond priming level has
-decayed into duplication; collapse it to a pointer.
-
-**Bottom-up composition.**
-Atomic primitives are introduced before composed concepts that depend on
-them. Within a document, sections appear in dependency order; within the
-type system, atomic skill types (reference, pattern) come before composed
-ones (technique, discipline, domain).
-*The reader understands each section using only what they've already seen — this is also what makes ADP visible.*
-
-**Context efficiency.**
-Skills minimize their footprint in the context window. Two faces, both
-required:
-- *Structure* — defer optional material to reference files; keep scripts
-  as executables (their code never enters context); pull content into the
-  always-loaded SKILL.md body only when the agent needs it every time.
-- *Writing* — every loaded paragraph justifies its tokens; assume Claude
-  is capable; remove explanatory prose Claude doesn't need.
-
-*Content the agent doesn't need wastes shared context that the user's task could use.*
-*Realized by: progressive disclosure, domain-specific organization, conditional details, utility bundle (structure face); context budget (writing face).*
-
-**Tool-call efficiency.**
-Bundle repeated multi-call sequences into single script invocations.
-Every tool call carries latency, context cost, and a turn boundary;
-collapsing N calls into one is faster and cheaper.
-*Audit by observing actual tool-call sequences in transcripts and identifying repeated multi-call patterns that could become a single script invocation.*
-*Realized by: utility bundle.*
-
-**Inference efficiency.**
-Replace inference with deterministic scripts for operations the agent
-performs repeatedly. Inference is expensive and non-deterministic;
-scripts are cheap and predictable.
-*Audit by reviewing inference-cost retrospectives and identifying operations that could move to scripts.*
-*Realized by: utility bundle, template scaffold, self-correcting loop, plan-validate-execute.*
-
----
-
-### Patterns
-
-Named recurring moves authors apply to material. Patterns are the concrete
-realization of principles — when a principle says "split for read-together
-cohesion," patterns name specific ways to do that. Each pattern has a
-defined name; contracts in the framework reference patterns by these names.
-Patterns are grouped by purpose. Most are sourced from the Anthropic
-best-practices doc; a few are named in the third-party 14-pattern synthesis
-(Generative Programmer); the discipline group comes from obra/superpowers.
-
-#### Discovery and selection
-
-**Activation metadata**
-The trigger and key terms packed into the `description` field. Third
-person, "use when...", specific. The single signal Claude uses to select
-which skill to load. *(Anthropic best-practices doc.)*
-
-**Exclusion clause**
-A "Do NOT use for..." appended to `description`. Bounds the activation
-surface that activation metadata alone leaves open. *(Generative Programmer
-14-pattern synthesis; cites Ruben Hassid.)*
-
-**Chat-term relevance hints**
-Keywords or short summaries embedded inside a skill's structured data
-(YAML blocks, table rows, capability entries) that match user-language
-phrasing, so Claude can route the user's words to the right data piece
-without needing to read full reference text. The conditional-loading
-block is the domain-skill version; in-record `keywords:` lists are the
-same pattern applied per-entry. Without these hints, Claude has to
-read body content top-to-bottom hunting for relevance; with them,
-Claude jumps to the right slot directly.
-*Fulfills: Audience-Claude, Tool-call efficiency, Inference efficiency.*
-
-#### Context economy
-
-**Context budget**
-The discipline of making every paragraph in a SKILL.md justify its tokens.
-Assume Claude is capable; remove explanatory prose Claude doesn't need.
-*Fulfills: Concise is key. (Generative Programmer 14-pattern synthesis.)*
-
-**Progressive disclosure**
-Splitting content across the three load levels — L1 metadata always loaded,
-L2 SKILL.md body loaded on trigger, L3 reference files loaded on demand.
-SKILL.md should stay under 500 lines, and references should be one hop
-deep, not nested. *Fulfills: CRP, ADP, Context efficiency. (Anthropic best-practices doc.)*
-
-**Domain-specific organization**
-Splitting reference content by sub-domain (e.g. `finance.md`, `sales.md`)
-when sub-domains are mutually exclusive, so Claude reads only what's
-relevant to the current task. *Fulfills: CRP, Context efficiency. (Anthropic best-practices doc.)*
-
-**Conditional details**
-Keeping basic content inline in SKILL.md and linking to advanced material
-in reference files. *Fulfills: CRP, Context efficiency. (Anthropic best-practices doc.)*
-
-#### Instruction calibration
-
-**Control tuning**
-Matching instruction freedom to task fragility. High freedom for open-field
-work where multiple approaches are valid; low freedom for fragile sequences
-where consistency is critical. Authors reliably over-constrain because
-rigid feels safer. *(Anthropic best-practices doc.)*
-
-**Explain-the-why**
-Replacing imperatives ("MUST do X") with reasoning ("do X because Y") so
-Claude can generalize the rule to unanticipated cases. *(Generative
-Programmer 14-pattern synthesis.)*
-
-**Template scaffold**
-Embedding an output skeleton with placeholders that Claude fills. Strict
-("ALWAYS use this template") for machine-parsed output; flexible ("sensible
-default; adapt as needed") for human-reviewed work. *Fulfills: Inference efficiency. (Anthropic best-practices doc.)*
-
-**In-skill examples**
-Two or three input/output pairs that convey tone, format, and detail level.
-Templates show the skeleton; examples show populated instances with style.
-*(Anthropic best-practices doc.)*
-
-**Known gotchas**
-Concrete failure modes from real runs, documented alongside the happy path.
-Often the most valuable content in a mature skill. *(Generative Programmer
-14-pattern synthesis.)*
-
-#### Workflow control
-
-**Workflow checklist**
-A copyable, tickable list provided for procedures with more than three
-steps. The agent pastes the checklist into its response and ticks off items
-as it works. *(Anthropic best-practices doc.)*
-
-**Self-correcting loop**
-The output → validate → fix → revalidate cycle, repeated until the
-validator passes. The validator can be a script or a documented checklist.
-*Fulfills: Inference efficiency. (Anthropic best-practices doc.)*
-
-**Plan-validate-execute**
-A three-step pattern for batch and destructive operations: produce a plan
-as a structured artifact, validate the plan, then execute against it.
-Catches errors before side effects rather than after. *Fulfills: Inference efficiency. (Anthropic best-practices doc.)*
-
-#### Procedural composition
-
-**Technique**
-A self-contained how-to: an ordered sequence of steps for accomplishing a
-defined goal, optionally with a bundled script and known gotchas. A
-technique is the unit of action-oriented content in a skill. A skill may
-contain one or more techniques — the technique-skill type does not imply
-1-to-1.
-
-**Capability**
-A technique extended with structural metadata: a user-objective
-description, an operation/tool reference, optional sub-cases, scope axes,
-and a pointer to a reference section that owns full mechanics. Capabilities
-surface action units as discrete, auditable entries with consistent
-vocabulary and scope. Most commonly used inside domain-skills (where
-multiple capabilities aggregate under one container), but applicable in any
-skill that benefits from structured procedural surfaces — e.g. a
-technique-skill exposing several variants of an action with shared scope
-semantics. Capabilities are techniques+.
-
-#### Executable code
-
-**Utility bundle**
-Purpose-built scripts shipped in a `scripts/` subdirectory of the skill,
-used for deterministic operations rather than asking Claude to regenerate
-the same helper each time. *Fulfills: Tool-call efficiency, Inference efficiency, Context efficiency. (Anthropic best-practices doc.)*
-
-**Autonomy calibration**
-Declaring `allowed-tools` in the SKILL.md frontmatter so the skill is
-pre-approved to use only the tools it needs. Pre-approval is not the same
-as a hard restriction; over-broad lists silently grant unintended autonomy.
-*(Generative Programmer 14-pattern synthesis.)*
-
-#### Discipline
-
-**Adversarial pressure testing**
-The RED → GREEN → REFACTOR cycle for discipline-skills. RED is the
-baseline failure: a subagent without the skill violates the rule. GREEN is
-the skill written so the same subagent now complies. REFACTOR closes
-loopholes the agent finds under combined pressures (time + sunk cost +
-fatigue). *(obra/superpowers.)*
-
-**Rationalization counter table**
-An explicit `excuse → reality` table that names every rationalization the
-baseline agent produced and refutes it directly. *(obra/superpowers.)*
-
-**Red flags list**
-A short list of STOP signals the agent uses for self-checking — phrases
-like "code before test", "just this once", "tests after achieve the same
-purpose." *(obra/superpowers.)*
-
----
-
-## Skill types
-
-Contracts that compose material and method into auditable categories. Every
-skill is one of these. The type names what kind of work a skill does; the
-contract (in `skill-types-framework.md`) names which blocks and patterns it
-must, may, and must not contain. The first four types are canonical from
-`obra/superpowers/.../SKILL.md`; the fifth is a project addition.
-
-The type name doesn't imply a 1-to-1 mapping between the skill and its
-primary element. A pattern-skill may teach several related mental models;
-a technique-skill may bundle several techniques; a discipline-skill may
-enforce several rules. Reference-skills are already plural by name;
-domain-skills are inherently plural as containers.
-
-**Reference-skill**
-A skill whose content is pure facts and lookup — API specs, syntax guides,
-project conventions, vocabulary glossaries, error and symptom tables. No
-procedure, no rule, no workflow. Atomic; composes from nothing. Canonical
-from obra line 69.
-
-**Pattern-skill**
-A skill that teaches a mental model — a way of thinking about a class of
-problem. Teaches recognition, not procedure. Atomic; peer of reference-skill.
-Canonical from obra line 66.
-
-**Technique-skill**
-A skill whose primary content is one or more *techniques* (the procedural
-pattern). Composes pattern + reference into procedure(s), and may bundle
-scripts as canonical executable forms. Canonical from obra line 63. A
-technique-skill invoked only by user slash command (rather than by LLM
-auto-discovery) carries the `trigger: user-only` attribute; this replaces
-what the project previously called `script-skill`.
-
-**Discipline-skill**
-A skill that enforces a rule under pressure. Wraps a target technique-skill
-or pattern-skill with rules + counters and demands compliance even when
-faster alternatives exist. Canonical from obra line 399 ("Discipline-Enforcing
-Skills").
-
-**Domain-skill**
-A container skill that gathers leaf skills (references, patterns,
-techniques, disciplines, scripts) for a knowledge area. Loading a
-domain-skill primes the LLM with awareness of the whole set; specific members
-load via their own triggers when relevant. Often paired with a sub-agent
-that auto-loads the domain-skill on session start. Project term; no upstream
-canonical reference. The only type the obra framework lacks.
-
----
-
-## Orthogonal attributes
-
-Properties a skill may carry independent of its type. A single skill can
-carry several. None are canonical from upstream sources; all are project
-labels.
-
-**Trigger-model**
-Whether a skill is invoked automatically by the LLM (`trigger: auto`, the
-default and obra-canonical model) or only by the user via slash command
-(`trigger: user-only`). The user-only attribute is the project's renaming
-of what was previously a separate `script-skill` type — a slash-command
-workflow is structurally a technique-skill with a different invocation
-contract.
-
-**Agent-bundled**
-The attribute on a skill that is auto-loaded by a paired sub-agent on
-session start. Most commonly seen on domain-skills paired with a domain-
-specific agent that wraps the skill's vocabulary and member set. Example:
-`/ue-python-api` (unreal-kit domain-skill).
-
-**Harness-targeted**
-The attribute on a skill that operates on the Claude Code harness or agent
-itself rather than on project work. Harness-targeted skills change their
-audit criterion: success is verified by checking that the harness reflects
-the change, not by running a project task. Typical examples: `/bootstrap`
-(interpreting SessionStart bootstrap messages); `/cache-report` (displaying
-session cache metrics); skills that audit permission rules in settings.
-
-**Integration**
-The attribute on a skill that talks to a third-party system. Typical
-examples: `/local-code-review` (submits to Perforce and returns review comments);
-`/bootstrap` (manages plugin marketplaces and remote dependencies); skills
-syncing files to a remote git host.
-
-**Bootstrap**
-The attribute on a skill that performs one-time setup. Typical examples:
-`/bootstrap` (initializes plugin dependencies and configuration on session start);
-a skill that scans recent transcripts to seed an allowlist.
-
-**Scheduled / autonomous**
-The attribute on a skill designed to run via `/loop` or `/schedule` rather
-than through interactive use.
-
-**Script-bundling**
-The attribute on a skill that ships executable resources (Python, shell)
-alongside its markdown. Common for technique-skills, the procedural
-portions of domain-skills, and any skill applying the utility-bundle
-pattern.
-
----
-
-## Sources
-
-External works cited inline. Italic citations elsewhere in this glossary
-refer to entries in this list.
-
-- **Anthropic best-practices doc** — [Skill authoring best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices), Anthropic Claude Docs.
-- **Generative Programmer 14-pattern synthesis** — [Skill Authoring Patterns from Anthropic's Best Practices](https://generativeprogrammer.com/p/skill-authoring-patterns-from-anthropics). Cites Ruben Hassid for the exclusion-clause pattern.
-- **obra/superpowers** — [skills/writing-skills/SKILL.md](https://github.com/obra/superpowers/blob/main/skills/writing-skills/SKILL.md), Jesse Vincent. Source of the four canonical skill type names (reference, pattern, technique, discipline-enforcing) and the discipline patterns (adversarial pressure testing, rationalization counter table, red flags list).
-- **Robert C. Martin** — package-cohesion principles (CRP, CCP, ADP) from *Agile Software Development: Principles, Patterns, and Practices* (2002), applied here to skill documentation.
+Canonical terms for skill authoring in this project. Use these terms verbatim in skill documentation, framework references, and conversation about skill design. When a contributor uses different language, re-phrase in these terms to keep usage consistent.
+
+This glossary defines vocabulary only. The contracts that bind these terms into rules -- what a given skill type must contain, recommend, or prohibit -- live in `skill-types-framework.md`. Schemas are floors, not ceilings: authors may add load-bearing keys beyond the schema names below.
+
+Sections are organized by what they describe: Material (physical artifacts), Method (design vocabulary), Skill types (auditable contracts), and Orthogonal attributes (independent flags). The first two sections preserve their internal sub-groupings (Files/Conventions/External binding, then Principles/Patterns). All records carry `keywords:` for routing and structured routing.
+
+```yaml
+glossary:
+  _schema_version: "1"
+  scope:
+    covers:
+      - Material foundations (files, conventions, external binding)
+      - Design method (principles and patterns)
+      - Skill type contracts
+      - Orthogonal attributes across types
+    excludes:
+      - Type contracts and audit rules (see skill-types-framework.md)
+      - Validators and codegen (see scripts/)
+      - Integration specifics and platform features
+
+  files:
+    - term: SKILL.md file
+      keywords: [skill.md, frontmatter, body, l2 layer, progressive disclosure, required main file]
+      definition: |
+        The required main file of every skill. Holds the YAML frontmatter and the markdown body. The L2 layer of progressive disclosure: loaded only when a skill's trigger matches.
+
+    - term: Reference file
+      keywords: [reference file, supplementary markdown, l3 layer, one-hop-deep, on demand]
+      definition: |
+        Supplementary markdown in the skill directory, linked from SKILL.md and loaded on demand when its link is followed. The L3 layer of progressive disclosure. Reference files should be one hop deep from SKILL.md, not nested -- Claude tends to read partial content from deeply-nested references.
+
+    - term: Script
+      keywords: [script, executable, python, shell, stdout, bundled, user-only distinction]
+      definition: |
+        An executable file (Python, shell, etc.) shipped inside a skill. The agent runs the script via bash but never loads its contents into the conversation; only the script's stdout/stderr enters context. Do not confuse the *script* file block with the `trigger: user-only` attribute -- a script is a file you ship; user-only is how a skill is invoked.
+
+    - term: Template / asset
+      keywords: [template, asset, template.docx, config.json, lookup table, csv, non-executable resource]
+      definition: |
+        A non-executable resource: a `template.docx`, a `config.json`, a lookup table CSV. Loaded only when SKILL.md instructs the agent to read it.
+
+  conventions:
+    - term: Frontmatter
+      keywords: [frontmatter, yaml header, skill.md top, name, description, allowed-tools, metadata]
+      definition: |
+        The YAML header at the top of a SKILL.md file. Holds `name` (<=64 chars, lowercase letters/numbers/hyphens, no reserved words "anthropic" or "claude"), `description` (<=160 chars; see Trigger entry for content rules), and optionally `allowed-tools` and `metadata`.
+
+    - term: Trigger
+      keywords: [trigger, directive clause, description field, use when, invoke when, cost-justified]
+      definition: |
+        The directive clause inside the `description` field. The single signal Claude uses to decide whether to load the skill, and the only purpose the description serves. A trigger must:
+
+        - Be **directive**: "Use when..." or "Invoke when...". Capability summaries ("Enables...", "Provides...", "Manages...") cause Claude to follow the description instead of reading the body.
+        - Name a **clear, unambiguous condition** for invocation. If the condition isn't crisp, the skill's design probably has a deeper flaw -- the skill is doing too much or doesn't have a real role.
+        - Be **cost-justified, not over-aggressive**. Every skill load is tokens and a tool-call boundary; the trigger condition must justify that cost. A description that fires on topical adjacency ("...for any Python work...", "...whenever you read code...") violates the user's trust by burning tool calls without bringing value.
+        - Stay within the **length budget** (<=160 chars). A description that doesn't fit in 160 chars is summarizing capability, not naming a trigger.
+
+    - term: Exclusion
+      keywords: [exclusion, do not use for, clause, overtriggering, adjacent topics]
+      definition: |
+        A "Do NOT use for..." clause appended to `description`. Prevents overtriggering on adjacent topics. Cited in the literature as the single most important sentence in many skill descriptions because positive triggers alone do not bound the activation surface.
+
+    - term: Rule
+      keywords: [rule, must, must not, discipline-skill, statement]
+      definition: |
+        A single MUST/MUST NOT statement in the body of a discipline-skill. A rule without a counter is incomplete.
+
+    - term: Counter
+      keywords: [counter, rationalization, rebuttal, loophole, excuse, reality, table]
+      definition: |
+        The rationalization rebuttal that closes a loophole on a rule. Lives next to the rule it protects, typically in an `excuse -> reality` table. A discipline-skill needs a counter for every rationalization observed in baseline testing.
+
+    - term: Step
+      keywords: [step, ordered instruction, procedure, technique-skill, ordered]
+      definition: |
+        One ordered instruction in a procedure. Steps live in technique-skills and in the procedural sections of script-bundled domain-skills.
+
+    - term: Checklist
+      keywords: [checklist, copyable, tickable, list, tick-off, procedure]
+      definition: |
+        A copyable, tickable list the agent pastes into its response and ticks off as it progresses. Used for procedures with more than three steps. Each turn's unchecked items are what raise the bar against premature completion claims.
+
+    - term: Example
+      keywords: [example, input output pair, tone, format, detail level, embedded]
+      definition: |
+        An input/output pair embedded in the skill body. Shows tone, format, and detail level more clearly than prose can. Strong enough that style bias in examples reproduces across all invocations -- the example set should span the variation the skill needs to support.
+
+    - term: Gotcha
+      keywords: [gotcha, failure mode, documented, real runs, happy path]
+      definition: |
+        A documented failure mode observed in real runs. Often the most valuable content in a mature reference-skill or technique-skill -- happy paths Claude can usually figure out; gotchas it cannot.
+
+    - term: Index
+      keywords: [index, member skills, triggers, container skills, domain-skills]
+      definition: |
+        A list of member skills with their triggers, used by container skills to declare what they aggregate. The only convention specific to domain-skills.
+
+  external_binding:
+    - term: Sub-agent binding
+      keywords: [sub-agent binding, paired agent, auto-load, agent-bundled, session start]
+      definition: |
+        A paired agent definition that auto-loads its companion skill on session start. The convention is typically to name the agent after the skill it wraps (e.g. an `unreal-kit-a` agent for a `/ue-python-api` domain-skill). The mechanism by which a domain-skill becomes ambient context for a specialized agent. Carried as the `agent-bundled` attribute on the skill.
+
+  principles:
+    - id: audience_claude
+      term: Audience-Claude (skills are written for Claude, not users)
+      keywords: [audience-claude, llm-facing, structured data, form choice, bias toward structured, prose exception, schemas as floors]
+      definition: |
+        Skills are runtime context for Claude, not documentation for humans. Claude is the translator: when a user asks a question, Claude loads the skill, picks the relevant data, and presents it to the user in the user's natural language. This shapes authoring choices -- structured data (YAML, tables, code-fenced blocks) is appropriate because Claude consumes it; user-friendly prose is unnecessary because Claude generates it on demand. The user is the audience of Claude's reply, not of the skill itself.
+
+        Form choice (bias toward structured data): the default for LLM-facing content is structured YAML. Use prose only when (a) the content is naturally narrative -- an identity sentence, an orientation paragraph, a single-paragraph explanation that does not decompose into discrete records; or (b) structure carries no meaning over prose. **When in doubt, bias toward structured data.** Structure carries assertions prose cannot: an `anti_patterns:` list with each entry as a record asserts implicitly that every item is genuinely an anti-pattern; a markdown bullet list carries no such assertion. Records are routable, keyword-able, and validatable; prose is none of those. The test is "does this structure aid Claude's comprehension better than prose would?" -- the default answer for LLM-facing content is yes.
+
+        Schemas are floors, not ceilings. The per-type schema names the required minimum; authors may add load-bearing structured keys beyond the schema (an `exceptions:` list inside an anti-pattern entry, a `narration:` sub-block inside a technique). Forbidding extras would push authors toward unstructured prose when they want to add legitimate structure, which contradicts the bias-toward-structured-data default.
+      audit_consequence: Structural choices (YAML data blocks, dense tables, condensed lists) are evaluated for whether they aid Claude's comprehension, not for whether they read smoothly as prose.
+      realized_by: [chat-term relevance hints]
+
+    - id: crp
+      term: CRP -- Common Reuse Principle (read-together)
+      keywords: [crp, common reuse principle, read-together, cohesion, split for reading, package cohesion]
+      definition: |
+        If a reader loads one section of a SKILL.md or reference file, they should plausibly need the rest. When sections serve different reading tasks, split them into separate files.
+      why: Forcing readers through irrelevant content burns tokens and dilutes signal.
+      realized_by: [progressive disclosure, domain-specific organization, conditional details]
+
+    - id: ccp
+      term: CCP -- Common Closure Principle (write-together)
+      keywords: [ccp, common closure principle, write-together, content changes, same reason]
+      definition: |
+        Content that changes for the same reason belongs in the same file. When a system updates, only one file should need updating.
+      why: A single conceptual change should be a single edit, not a hunt across files.
+      realized_by: []
+
+    - id: adp
+      term: ADP -- Acyclic Dependencies Principle (link-forward-only)
+      keywords: [adp, acyclic dependencies principle, link-forward-only, dag, cycles]
+      definition: |
+        References between files form a directed acyclic graph. No cycles.
+      why: Cycles cause partial reads and ambiguous resolution order; a DAG guarantees the reader can always tell what comes first.
+      realized_by: [progressive disclosure]
+
+    - id: ssot
+      term: SSOT -- Single Source of Truth
+      keywords: [ssot, single source of truth, canonical, duplicates, drift]
+      definition: |
+        Every fact, term, or definition has exactly one canonical location. Other places reference it by name; they do not redefine or duplicate.
+
+        Drift between duplicates is the most common decay mode in skill documentation; one source means no drift. Orientation-level summaries are not duplicates. A short summary that primes a reader to load the canonical reference is allowed when (a) the summary names the reference and (b) the canonical wins on divergence. A summary that has accumulated detail or examples beyond priming level has decayed into duplication; collapse it to a pointer.
+      why: Drift between duplicates is the most common decay mode in skill documentation.
+      realized_by: []
+
+    - id: bottom_up
+      term: Bottom-up composition
+      keywords: [bottom-up composition, atomic primitives, dependency order, composed concepts]
+      definition: |
+        Atomic primitives are introduced before composed concepts that depend on them. Within a document, sections appear in dependency order; within the type system, atomic skill types (reference, pattern) come before composed ones (technique, discipline, domain).
+      why: The reader understands each section using only what they've already seen -- this is also what makes ADP visible.
+      realized_by: []
+
+    - id: context_efficiency
+      term: Context efficiency
+      keywords: [context efficiency, footprint, context window, structure, writing, progressive disclosure]
+      definition: |
+        Skills minimize their footprint in the context window. Two faces, both required:
+
+        Structure -- defer optional material to reference files; keep scripts as executables (their code never enters context); pull content into the always-loaded SKILL.md body only when the agent needs it every time.
+
+        Writing -- every loaded paragraph justifies its tokens; assume Claude is capable; remove explanatory prose Claude doesn't need.
+
+        Content the agent doesn't need wastes shared context that the user's task could use.
+      why: Content the agent doesn't need wastes shared context that the user's task could use.
+      realized_by: [progressive disclosure, domain-specific organization, conditional details, utility bundle, context budget]
+
+    - id: tool_call_efficiency
+      term: Tool-call efficiency
+      keywords: [tool-call efficiency, latency, context cost, bundle, single script invocation]
+      definition: |
+        Bundle repeated multi-call sequences into single script invocations. Every tool call carries latency, context cost, and a turn boundary; collapsing N calls into one is faster and cheaper.
+      why: Every tool call carries latency, context cost, and a turn boundary.
+      realized_by: [utility bundle]
+      audit_consequence: Audit by observing actual tool-call sequences in transcripts and identifying repeated multi-call patterns that could become a single script invocation.
+
+    - id: inference_efficiency
+      term: Inference efficiency
+      keywords: [inference efficiency, deterministic scripts, expensive, non-deterministic, cheap, predictable]
+      definition: |
+        Replace inference with deterministic scripts for operations the agent performs repeatedly. Inference is expensive and non-deterministic; scripts are cheap and predictable.
+      why: Inference is expensive and non-deterministic; scripts are cheap and predictable.
+      realized_by: [utility bundle, template scaffold, self-correcting loop, plan-validate-execute]
+      audit_consequence: Audit by reviewing inference-cost retrospectives and identifying operations that could move to scripts.
+
+  patterns:
+    - id: activation_metadata
+      term: Activation metadata
+      sub_grouping: Discovery and selection
+      keywords: [activation metadata, trigger, key terms, description field, third person, use when, specific]
+      definition: |
+        The trigger and key terms packed into the `description` field. Third person, "use when...", specific. The single signal Claude uses to select which skill to load.
+      citation: Anthropic best-practices doc
+
+    - id: exclusion_clause
+      term: Exclusion clause
+      sub_grouping: Discovery and selection
+      keywords: [exclusion clause, do not use for, activation surface, bounds]
+      definition: |
+        A "Do NOT use for..." appended to `description`. Bounds the activation surface that activation metadata alone leaves open.
+      citation: Generative Programmer 14-pattern synthesis (cites Ruben Hassid)
+
+    - id: chat_term_relevance_hints
+      term: Chat-term relevance hints
+      sub_grouping: Discovery and selection
+      keywords: [chat-term relevance hints, keywords, summaries, structured data, yaml blocks, table rows, conditional loading]
+      definition: |
+        Keywords or short summaries embedded inside a skill's structured data (YAML blocks, table rows, capability entries) that match user-language phrasing, so Claude can route the user's words to the right data piece without needing to read full reference text. The conditional-loading block is the domain-skill version; in-record `keywords:` lists are the same pattern applied per-entry. Without these hints, Claude has to read body content top-to-bottom hunting for relevance; with them, Claude jumps to the right slot directly.
+      fulfills: [Audience-Claude, Tool-call efficiency, Inference efficiency]
+
+    - id: context_budget
+      term: Context budget
+      sub_grouping: Context economy
+      keywords: [context budget, paragraph justify, tokens, capable, explanatory prose]
+      definition: |
+        The discipline of making every paragraph in a SKILL.md justify its tokens. Assume Claude is capable; remove explanatory prose Claude doesn't need.
+      citation: Generative Programmer 14-pattern synthesis (Concise is key)
+
+    - id: progressive_disclosure
+      term: Progressive disclosure
+      sub_grouping: Context economy
+      keywords: [progressive disclosure, load levels, l1, l2, l3, metadata, body, reference files, 500 lines, one-hop-deep]
+      definition: |
+        Splitting content across the three load levels -- L1 metadata always loaded, L2 SKILL.md body loaded on trigger, L3 reference files loaded on demand. SKILL.md should stay under 500 lines, and references should be one hop deep, not nested.
+      fulfills: [CRP, ADP, Context efficiency]
+      citation: Anthropic best-practices doc
+
+    - id: domain_specific_organization
+      term: Domain-specific organization
+      sub_grouping: Context economy
+      keywords: [domain-specific organization, reference content, sub-domain, mutually exclusive, relevant, task]
+      definition: |
+        Splitting reference content by sub-domain (e.g. `finance.md`, `sales.md`) when sub-domains are mutually exclusive, so Claude reads only what's relevant to the current task.
+      fulfills: [CRP, Context efficiency]
+      citation: Anthropic best-practices doc
+
+    - id: conditional_details
+      term: Conditional details
+      sub_grouping: Context economy
+      keywords: [conditional details, basic content, inline, advanced material, reference files, linking]
+      definition: |
+        Keeping basic content inline in SKILL.md and linking to advanced material in reference files.
+      fulfills: [CRP, Context efficiency]
+      citation: Anthropic best-practices doc
+
+    - id: control_tuning
+      term: Control tuning
+      sub_grouping: Instruction calibration
+      keywords: [control tuning, instruction freedom, fragility, consistency, over-constrain, rigid]
+      definition: |
+        Matching instruction freedom to task fragility. High freedom for open-field work where multiple approaches are valid; low freedom for fragile sequences where consistency is critical. Authors reliably over-constrain because rigid feels safer.
+      citation: Anthropic best-practices doc
+
+    - id: explain_the_why
+      term: Explain-the-why
+      sub_grouping: Instruction calibration
+      keywords: [explain-the-why, imperatives, reasoning, generalize, unanticipated cases]
+      definition: |
+        Replacing imperatives ("MUST do X") with reasoning ("do X because Y") so Claude can generalize the rule to unanticipated cases.
+      citation: Generative Programmer 14-pattern synthesis
+
+    - id: template_scaffold
+      term: Template scaffold
+      sub_grouping: Instruction calibration
+      keywords: [template scaffold, output skeleton, placeholders, machine-parsed, human-reviewed]
+      definition: |
+        Embedding an output skeleton with placeholders that Claude fills. Strict ("ALWAYS use this template") for machine-parsed output; flexible ("sensible default; adapt as needed") for human-reviewed work.
+      fulfills: [Inference efficiency]
+      citation: Anthropic best-practices doc
+
+    - id: in_skill_examples
+      term: In-skill examples
+      sub_grouping: Instruction calibration
+      keywords: [in-skill examples, input output pairs, convey, tone, format, detail level, style]
+      definition: |
+        Two or three input/output pairs that convey tone, format, and detail level. Templates show the skeleton; examples show populated instances with style.
+      citation: Anthropic best-practices doc
+
+    - id: known_gotchas
+      term: Known gotchas
+      sub_grouping: Instruction calibration
+      keywords: [known gotchas, concrete failure modes, real runs, documented, happy path, valuable]
+      definition: |
+        Concrete failure modes from real runs, documented alongside the happy path. Often the most valuable content in a mature skill.
+      citation: Generative Programmer 14-pattern synthesis
+
+    - id: workflow_checklist
+      term: Workflow checklist
+      sub_grouping: Workflow control
+      keywords: [workflow checklist, copyable, tickable, list, pastes, ticks, procedures, steps]
+      definition: |
+        A copyable, tickable list provided for procedures with more than three steps. The agent pastes the checklist into its response and ticks off items as it works.
+      citation: Anthropic best-practices doc
+
+    - id: self_correcting_loop
+      term: Self-correcting loop
+      sub_grouping: Workflow control
+      keywords: [self-correcting loop, output, validate, fix, revalidate, cycle, repeated, validator]
+      definition: |
+        The output -> validate -> fix -> revalidate cycle, repeated until the validator passes. The validator can be a script or a documented checklist.
+      fulfills: [Inference efficiency]
+      citation: Anthropic best-practices doc
+
+    - id: plan_validate_execute
+      term: Plan-validate-execute
+      sub_grouping: Workflow control
+      keywords: [plan-validate-execute, three-step, batch, destructive operations, structured artifact, plan, validate, execute]
+      definition: |
+        A three-step pattern for batch and destructive operations: produce a plan as a structured artifact, validate the plan, then execute against it. Catches errors before side effects rather than after.
+      fulfills: [Inference efficiency]
+      citation: Anthropic best-practices doc
+
+    - id: technique
+      term: Technique
+      sub_grouping: Procedural composition
+      keywords: [technique, self-contained, how-to, ordered sequence, defined goal, bundled script, gotchas]
+      definition: |
+        A self-contained how-to: an ordered sequence of steps for accomplishing a defined goal, optionally with a bundled script and known gotchas. A technique is the unit of action-oriented content in a skill. A skill may contain one or more techniques -- the technique-skill type does not imply 1-to-1.
+
+    - id: capability
+      term: Capability
+      sub_grouping: Procedural composition
+      keywords: [capability, technique, structural metadata, user-objective, operation, tool reference, sub-cases, scope axes]
+      definition: |
+        A technique extended with structural metadata: a user-objective description, an operation/tool reference, optional sub-cases, scope axes, and a pointer to a reference section that owns full mechanics. Capabilities surface action units as discrete, auditable entries with consistent vocabulary and scope. Most commonly used inside domain-skills (where multiple capabilities aggregate under one container), but applicable in any skill that benefits from structured procedural surfaces -- e.g. a technique-skill exposing several variants of an action with shared scope semantics. Capabilities are techniques+.
+
+    - id: utility_bundle
+      term: Utility bundle
+      sub_grouping: Executable code
+      keywords: [utility bundle, purpose-built scripts, scripts directory, deterministic operations, helper]
+      definition: |
+        Purpose-built scripts shipped in a `scripts/` subdirectory of the skill, used for deterministic operations rather than asking Claude to regenerate the same helper each time.
+      fulfills: [Tool-call efficiency, Inference efficiency, Context efficiency]
+      citation: Anthropic best-practices doc
+
+    - id: autonomy_calibration
+      term: Autonomy calibration
+      sub_grouping: Executable code
+      keywords: [autonomy calibration, allowed-tools, frontmatter, pre-approved, hard restriction, over-broad]
+      definition: |
+        Declaring `allowed-tools` in the SKILL.md frontmatter so the skill is pre-approved to use only the tools it needs. Pre-approval is not the same as a hard restriction; over-broad lists silently grant unintended autonomy.
+      citation: Generative Programmer 14-pattern synthesis
+
+    - id: adversarial_pressure_testing
+      term: Adversarial pressure testing
+      sub_grouping: Discipline
+      keywords: [adversarial pressure testing, red, green, refactor, baseline failure, subagent, complies, loopholes]
+      definition: |
+        The RED -> GREEN -> REFACTOR cycle for discipline-skills. RED is the baseline failure: a subagent without the skill violates the rule. GREEN is the skill written so the same subagent now complies. REFACTOR closes loopholes the agent finds under combined pressures (time + sunk cost + fatigue).
+      citation: obra/superpowers
+
+    - id: rationalization_counter_table
+      term: Rationalization counter table
+      sub_grouping: Discipline
+      keywords: [rationalization counter table, excuse, reality table, rationalization, baseline agent, refutes]
+      definition: |
+        An explicit `excuse -> reality` table that names every rationalization the baseline agent produced and refutes it directly.
+      citation: obra/superpowers
+
+    - id: red_flags_list
+      term: Red flags list
+      sub_grouping: Discipline
+      keywords: [red flags list, stop signals, self-checking, phrases, code before test, just this once]
+      definition: |
+        A short list of STOP signals the agent uses for self-checking -- phrases like "code before test", "just this once", "tests after achieve the same purpose."
+      citation: obra/superpowers
+
+  skill_types:
+    - id: reference_skill
+      term: Reference-skill
+      keywords: [reference-skill, facts, lookup, api specs, syntax guides, vocabulary, glossaries, atomic, no procedure]
+      definition: |
+        A skill whose content is pure facts and lookup -- API specs, syntax guides, project conventions, vocabulary glossaries, error and symptom tables. No procedure, no rule, no workflow. Atomic; composes from nothing.
+      source: obra/superpowers (line 69)
+
+    - id: pattern_skill
+      term: Pattern-skill
+      keywords: [pattern-skill, mental model, way of thinking, problem class, teaches recognition, atomic, peer]
+      definition: |
+        A skill that teaches a mental model -- a way of thinking about a class of problem. Teaches recognition, not procedure. Atomic; peer of reference-skill.
+      source: obra/superpowers (line 66)
+
+    - id: technique_skill
+      term: Technique-skill
+      keywords: [technique-skill, procedure, ordered steps, techniques, user-only attribute, script-skill]
+      definition: |
+        A skill whose primary content is one or more *techniques* (the procedural pattern). Composes pattern + reference into procedure(s), and may bundle scripts as canonical executable forms. A technique-skill invoked only by user slash command (rather than by LLM auto-discovery) carries the `trigger: user-only` attribute; this replaces what the project previously called `script-skill`.
+      source: obra/superpowers (line 63)
+
+    - id: discipline_skill
+      term: Discipline-skill
+      keywords: [discipline-skill, enforces rule, pressure, wraps, target, rules, counters, compliance]
+      definition: |
+        A skill that enforces a rule under pressure. Wraps a target technique-skill or pattern-skill with rules + counters and demands compliance even when faster alternatives exist.
+      source: obra/superpowers (line 399, Discipline-Enforcing Skills)
+
+    - id: domain_skill
+      term: Domain-skill
+      keywords: [domain-skill, container, leaf skills, references, patterns, techniques, disciplines, knowledge area, ambient context]
+      definition: |
+        A container skill that gathers leaf skills (references, patterns, techniques, disciplines, scripts) for a knowledge area. Loading a domain-skill primes the LLM with awareness of the whole set; specific members load via their own triggers when relevant. Often paired with a sub-agent that auto-loads the domain-skill on session start.
+      source: project addition (no upstream canonical reference)
+
+  attributes:
+    - term: Trigger-model
+      keywords: [trigger-model, auto, user-only, auto-invoked, slash command, invocation contract]
+      definition: |
+        Whether a skill is invoked automatically by the LLM (`trigger: auto`, the default and obra-canonical model) or only by the user via slash command (`trigger: user-only`). The user-only attribute is the project's renaming of what was previously a separate `script-skill` type -- a slash-command workflow is structurally a technique-skill with a different invocation contract.
+
+    - term: Agent-bundled
+      keywords: [agent-bundled, paired agent, auto-load, session start, domain-skill, domain-specific agent]
+      definition: |
+        The attribute on a skill that is auto-loaded by a paired sub-agent on session start. Most commonly seen on domain-skills paired with a domain-specific agent that wraps the skill's vocabulary and member set. Example: `/ue-python-api` (unreal-kit domain-skill).
+
+    - term: Harness-targeted
+      keywords: [harness-targeted, claude code harness, agent, audit criterion, project work, harness reflects]
+      definition: |
+        The attribute on a skill that operates on the Claude Code harness or agent itself rather than on project work. Harness-targeted skills change their audit criterion: success is verified by checking that the harness reflects the change, not by running a project task. Typical examples: `/bootstrap` (interpreting SessionStart bootstrap messages); `/cache-report` (displaying session cache metrics); skills that audit permission rules in settings.
+
+    - term: Integration
+      keywords: [integration, third-party system, talks to, submits, returns, perforce, plugin, remote git]
+      definition: |
+        The attribute on a skill that talks to a third-party system. Typical examples: `/local-code-review` (submits to Perforce and returns review comments); `/bootstrap` (manages plugin marketplaces and remote dependencies); skills syncing files to a remote git host.
+
+    - term: Bootstrap
+      keywords: [bootstrap, one-time setup, initializes, dependencies, configuration, session start, allowlist]
+      definition: |
+        The attribute on a skill that performs one-time setup. Typical examples: `/bootstrap` (initializes plugin dependencies and configuration on session start); a skill that scans recent transcripts to seed an allowlist.
+
+    - term: Scheduled / autonomous
+      keywords: [scheduled, autonomous, loop, schedule, interactive use, recurring interval]
+      definition: |
+        The attribute on a skill designed to run via `/loop` or `/schedule` rather than through interactive use.
+
+    - term: Script-bundling
+      keywords: [script-bundling, ships executable resources, python, shell, markdown, procedural, technique-skills, utility-bundle]
+      definition: |
+        The attribute on a skill that ships executable resources (Python, shell) alongside its markdown. Common for technique-skills, the procedural portions of domain-skills, and any skill applying the utility-bundle pattern.
+
+  sources:
+    - id: anthropic_best_practices
+      name: Anthropic best-practices doc
+      url: https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices
+      notes: |
+        Skill authoring best practices from Anthropic Claude Docs. Source of principles CRP/CCP/ADP applied to skill documentation, tool-call efficiency, and pattern citations for progressive disclosure, domain-specific organization, conditional details, control tuning, template scaffold, in-skill examples, workflow checklist, self-correcting loop, plan-validate-execute, and utility bundle.
+
+    - id: generative_programmer_14_patterns
+      name: Generative Programmer 14-pattern synthesis
+      url: https://generativeprogrammer.com/p/skill-authoring-patterns-from-anthropics
+      notes: |
+        Skill Authoring Patterns from Anthropic's Best Practices. Cites Ruben Hassid for the exclusion-clause pattern. Source of pattern citations for context budget (Concise is key), explain-the-why, known gotchas, and autonomy calibration.
+
+    - id: obra_superpowers
+      name: obra/superpowers
+      url: https://github.com/obra/superpowers/blob/main/skills/writing-skills/SKILL.md
+      notes: |
+        skills/writing-skills/SKILL.md by Jesse Vincent. Source of the four canonical skill type names (reference, pattern, technique, discipline-enforcing) and the discipline patterns (adversarial pressure testing, rationalization counter table, red flags list).
+
+    - id: martin_package_cohesion
+      name: Robert C. Martin package-cohesion principles (CRP, CCP, ADP)
+      notes: |
+        Package-cohesion principles from Agile Software Development: Principles, Patterns, and Practices (2002), applied here to skill documentation.
+```
