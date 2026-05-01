@@ -77,8 +77,9 @@ framework:
       
       **IF** *condition* (testable by *criterion*) **THEN** *pattern or block is required*
     examples:
-      - rule: progressive disclosure required when SKILL.md body exceeds 500 lines or 3000 tokens
-        criterion: line/token count of the SKILL.md body
+      - rule: progressive disclosure CONSIDERED when SKILL.md body exceeds 500 lines or 3000 tokens; the split is REQUIRED only if it passes CRP (sections serve different reading tasks). The size threshold is a signal that the split deserves evaluation, not a verdict that splitting is correct.
+        criterion: line/token count of the SKILL.md body triggers the evaluation; per-section CRP is the test that decides whether to split. If no CRP-passing decomposition exists, the larger SKILL.md is the right answer -- a stub-with-always-co-loaded-reference is a tool-call doubling, not a context-efficiency win.
+        anti_pattern: SKILL.md trimmed to a thin pointer that links to a single reference always loaded next. The reader pays two file loads for one reading task; CRP fails because the "sections" do not serve different reading tasks. Revert by inlining the reference back into SKILL.md and accepting the over-threshold size, or by finding a genuine sub-trigger decomposition.
       - rule: explicit step-tracking required when a technique has more than three steps -- satisfied by EITHER a paste-able `- [ ]` checklist OR an explicit step-tracker invocation (TaskCreate, scratch file, or equivalent) at the start of the procedure
         criterion: count `step` blocks in the technique definition; presence of either a tickbox checklist OR a step-tracker-invocation marker satisfies the row
         note: the goal is the discipline of explicit step-tracking; the markdown syntax is one path, not the only one. If the procedure already invokes a step tracker (e.g. TaskCreate), a parallel `- [ ]` checklist adds no information and is not required.
@@ -244,6 +245,27 @@ The framework's progressive-disclosure pattern names L1/L2/L3 load levels but is
 
 For capability-skill, this allocation is required (the schema's `layering:` field declares the manifest). For other skill types, it is the default authoring guide; the schema does not enforce it.
 
+### CRP is the test for L2 -> L3 splits
+
+L2 (SKILL.md) and L3 (references/*.md) are different load events: loading a reference is a second tool call after the skill loads. A split that creates a stub-with-always-co-loaded-reference is a tool-call doubling, not a context-efficiency win. The decision rule:
+
+**Three principles in tension:**
+1. Loading context the agent does not need is bad (context efficiency).
+2. Two tool calls where one would suffice is bad (tool-call efficiency).
+3. There is a size threshold beyond which a SKILL.md is too large to keep monolithic (the 500-line / 3000-token signal).
+
+**The test that resolves the tension is CRP (Common Reuse Principle):** if a reader loads one section, they should plausibly need the rest. Sections serve different reading tasks -> split is legitimate. Sections always read together -> split is illegitimate (it manufactures a second tool call for content that always co-loads).
+
+**Operational rule:**
+- The size threshold (>500 lines / >3000 tokens) signals that the skill DESERVES evaluation for a split.
+- CRP is the test: enumerate the proposed sections, identify whether each fires on the same trigger or on independent sub-triggers.
+- Split only when at least one section can be omitted on a typical invocation. The remaining SKILL.md must be a viable standalone for the case when the omitted reference does not load.
+- If no decomposition passes CRP, keep the larger SKILL.md. An over-threshold SKILL.md that costs one tool call is better than a stub-plus-always-co-loaded reference that costs two.
+
+**Anti-pattern (CRP-fail split):** SKILL.md trimmed to a thin pointer that always points at one (or N) references that always load next. Symptoms: SKILL.md is short (~30-100 lines) and contains primarily Conditional Loading entries; every reference is "loaded every time the skill fires" with no sub-trigger that selects between them. Revert by inlining the reference back into SKILL.md and accepting the over-threshold size.
+
+**CRP-pass split (worked example):** a domain-skill whose body declares N member sub-domains, with a Conditional Loading entry per sub-domain. Each sub-domain reference fires on a different sub-task within the domain (e.g. "first-pass animation" vs "dialog testing" vs "actions pattern"). A typical invocation loads SKILL.md plus one sub-domain reference, not all of them. Average load shrinks; the second tool call is paid only when actually navigating into the sub-domain.
+
 ### Visibility criterion for examples and anti-patterns
 
 The L1/L2/L3 split above governs major content allocation. The same visibility decision recurs at the example/anti-pattern grain -- a single gotcha, a single anti-pattern record, a single escaping example. The criterion at that grain:
@@ -270,7 +292,7 @@ Tables are kept for human review; the canonical machine-readable contract is in 
 |---|---|
 | **Required blocks** | SKILL.md file with frontmatter and trigger; >=1 example; >=1 gotcha |
 | **Required patterns** | activation metadata, exclusion clause, in-skill examples, known gotchas, context efficiency |
-| **Conditionally required patterns** | progressive disclosure -- IF SKILL.md body exceeds 500 lines or 3000 tokens (criterion: line/token count); domain-specific organization -- IF reference content covers more than one mutually-exclusive sub-domain (criterion: are sub-domains independently loadable without cross-references) |
+| **Conditionally required patterns** | progressive disclosure -- CONSIDERED if SKILL.md body exceeds 500 lines or 3000 tokens (criterion: line/token count); REQUIRED only if a CRP-passing decomposition exists (sections serve different reading tasks). If no decomposition passes CRP, keep the larger SKILL.md rather than create a stub-plus-always-co-loaded reference; domain-specific organization -- IF reference content covers more than one mutually-exclusive sub-domain (criterion: are sub-domains independently loadable without cross-references) |
 | **Prohibited patterns** | adversarial pressure testing, rule + counter pairs, workflow checklists |
 | **Audit** | Drop a fresh agent into a topic the skill covers. Does it retrieve and apply the right fact? Are gotchas current? |
 
@@ -307,7 +329,7 @@ Conceptually IS-A technique-skill: capabilities are techniques+ per the glossary
 |---|---|
 | **Required blocks** | SKILL.md file with frontmatter and trigger; identity sentence; scope; external_capability declaration (kind: tool / mcp_server / api / service / ide / framework / harness + name + description); layering manifest (claude_md + skill_md + references lists declaring L1/L2/L3 content allocation); >=1 capability record (id + keywords + user_objective + operation + optional sub_cases / scope_axes / reference_section / inline steps / gotchas); >=1 capability-skill-level gotcha |
 | **Required patterns** | activation metadata, exclusion clause, capability (each capability is a structured operation), known gotchas |
-| **Conditionally required patterns** | members + Conditional Loading reference index -- IF capabilities grow into separate member skills (criterion: presence of `members:` block); aggregated capability surface listing each member's contribution -- IF members exist; companion declaration -- IF a wrapper sibling skill exists; progressive disclosure -- IF SKILL.md body exceeds 500 lines or 3000 tokens (criterion: line/token count) |
+| **Conditionally required patterns** | members + Conditional Loading reference index -- IF capabilities grow into separate member skills (criterion: presence of `members:` block); aggregated capability surface listing each member's contribution -- IF members exist; companion declaration -- IF a wrapper sibling skill exists; progressive disclosure -- CONSIDERED if SKILL.md body exceeds 500 lines or 3000 tokens (criterion: line/token count); REQUIRED only if a CRP-passing decomposition exists (sections serve different reading tasks). If no decomposition passes CRP, keep the larger SKILL.md rather than create a stub-plus-always-co-loaded reference |
 | **Prohibited patterns** | adversarial pressure testing (inherited from technique-skill); rule + counter pairs (capability-skills do not enforce rules under pressure); `techniques:` at root (capabilities: subsumes it); `index:` at root (members + Conditional Loading is the canonical shape) |
 | **Audit** | Does the capability surface accurately enumerate the operations a user might invoke? Does the layering manifest match the actual content allocation across CLAUDE.md / SKILL.md / references/? Are capability records structured (user_objective + operation + optional metadata), not freeform prose? |
 
