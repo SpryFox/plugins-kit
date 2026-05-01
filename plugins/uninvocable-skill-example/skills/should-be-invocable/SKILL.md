@@ -1,7 +1,11 @@
 ---
+_schema_version: 1
 name: should-be-invocable
+skill-type: technique-skill
 description: Diagnostic skill that should be invocable via /should-be-invocable per the Claude Code skills docs. Use to verify slash-menu registration of plugin-scope skills with disable-model-invocation set.
 disable-model-invocation: true
+user-invocable: true
+argument-hint: "[file path, number(s) from list, or 'list']"
 ---
 
 # Should Be Invocable
