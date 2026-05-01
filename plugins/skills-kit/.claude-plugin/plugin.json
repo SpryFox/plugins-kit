@@ -1,6 +1,6 @@
 {
   "name": "skills-kit",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "description": "Skill authoring framework: vocabulary, type contracts, and audit tooling for designing robust, auditable Claude Code skills",
   "author": {
     "name": "Christina"
