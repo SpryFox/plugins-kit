@@ -331,6 +331,14 @@ glossary:
       definition: |
         A technique extended with structural metadata: a user-objective description, an operation/tool reference, optional sub-cases, scope axes, and a pointer to a reference section that owns full mechanics. Capabilities surface action units as discrete, auditable entries with consistent vocabulary and scope. Most commonly used inside domain-skills (where multiple capabilities aggregate under one container), but applicable in any skill that benefits from structured procedural surfaces -- e.g. a technique-skill exposing several variants of an action with shared scope semantics. Capabilities are techniques+.
 
+    - id: actions
+      term: Actions pattern
+      sub_grouping: Procedural composition
+      keywords: [actions, multi-step, recipe, deterministic, capture, tell_user, facade script, narration, ordered sequence]
+      definition: |
+        A YAML step sequence attached to a sub-domain or capability that encodes a deterministic multi-step recipe. Each step is either a `tool` invocation or a `tell_user` message; the agent runs every step in order rather than improvising. Steps may declare `capture` to extract output fields used as `<field>` placeholders in later steps. When a recipe has 3+ tool calls that always co-occur, pair the action with a facade script (a single subcommand wrapping the sequence and emitting YAML) to avoid tool-call doubling. Single tool calls in or out of an action carry a one-line narration before the call.
+      realized_by: [patterns-actions.md]
+
     - id: utility_bundle
       term: Utility bundle
       sub_grouping: Executable code

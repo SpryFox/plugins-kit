@@ -59,6 +59,10 @@ domain_skill:
         path: references/scripts.md
         keywords: [audit.py, classify.py, tag.py, schemas.py, scripts, deterministic checks, heuristic detectors, type inference, frontmatter tagging, mixed-type detection, judgment-required, idempotent, calibration, smoke-test, friction]
         summary: Audit, classify, tag script reference -- usage, output verdicts, gotchas, calibration history.
+      - id: patterns_actions
+        path: references/patterns-actions.md
+        keywords: [actions pattern, multi-step recipe, YAML steps, capture, tell_user, facade script, narration, deterministic execution, ordered sequence, sub-domain action, capability action]
+        summary: Actions pattern -- YAML step sequences for deterministic multi-step recipes, paired with facade scripts when batching 3+ tool calls.
   capabilities:
     - id: audit
       keywords: [audit, contract check, validate skill, run audit, schema validation]
