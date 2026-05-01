@@ -225,7 +225,12 @@ def check_universal(fm: Frontmatter | None, body: Body, skill_dir: Path) -> list
         else:
             out.append(CheckResult("references one-hop-deep (ADP)", PASS))
 
-    cited = set(re.findall(r"references/([a-zA-Z0-9_\-]+\.md)", body.text))
+    # Match local references/X.md citations only. A negative lookbehind on
+    # `/` and `:` excludes plugin-qualified cross-references like
+    # `<plugin-name>:<skill-name>/references/X.md` and any other path that
+    # places `references/` as a non-leading path segment. Cross-plugin refs
+    # point at files in other plugins and are not auditable here.
+    cited = set(re.findall(r"(?<![/:])references/([a-zA-Z0-9_\-]+\.md)", body.text))
     if not cited:
         out.append(CheckResult("references cited in body all exist", NA, "no references cited in body"))
     else:
