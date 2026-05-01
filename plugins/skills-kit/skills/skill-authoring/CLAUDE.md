@@ -493,6 +493,85 @@ claude_md:
         Follow-up: schema kind note extended; framework.md kind list +
         Examples row extended; this Dec-10 insight added.
       added: "2026-04-30"
+    - id: dec_11_size_threshold_is_signal_crp_is_the_test
+      keywords:
+        - size threshold signal not verdict
+        - crp is the test
+        - 500 lines 3000 tokens prompt
+        - splits require decomposition
+        - tool-call doubling anti-pattern
+        - stub plus always co-loaded reference
+        - common reuse principle gates split
+        - decomposition test
+      summary: "The 500-line / 3000-token threshold is a SIGNAL that a SKILL.md deserves evaluation for splitting; it is NOT a verdict that splitting is correct. CRP is the test that decides whether the split is legitimate. A split that creates a stub-plus-always-co-loaded-reference is a tool-call doubling, not a context-efficiency win, and should be reverted."
+      detail: |
+        Three principles operate in tension on the L2/L3 boundary:
+        1. Loading context the agent does not need is bad (context efficiency).
+        2. Two tool calls where one would suffice is bad (tool-call efficiency).
+        3. There is a size threshold beyond which a SKILL.md is too large to
+           keep monolithic.
+
+        The size threshold (>500 lines / >3000 tokens) prompts the question
+        "should this split?" but does not answer it. The answer comes from
+        CRP (Common Reuse Principle): if a reader loads one section, they
+        should plausibly need the rest. Sections that serve different reading
+        tasks are split-legitimate. Sections that always co-load are
+        split-illegitimate -- the split manufactures a second tool call for
+        content that already had a single reading task.
+
+        Operationally:
+        - Threshold breach triggers evaluation, not auto-split.
+        - Enumerate the proposed sections and check whether each fires on
+          the same trigger or independent sub-triggers.
+        - Split only when at least one section can be omitted on a typical
+          invocation, and the remaining SKILL.md is a viable standalone in
+          that case.
+        - When no decomposition passes CRP, keep the larger SKILL.md. An
+          over-threshold SKILL.md that costs one tool call is preferable
+          to a stub-plus-always-co-loaded reference that costs two.
+
+        The CRP-fail anti-pattern shape:
+        - SKILL.md trimmed to ~30-100 lines, primarily Conditional Loading
+          entries.
+        - Every reference is loaded on every invocation; no sub-trigger
+          selects between them.
+        - Reading task is unitary; the split was driven by the size signal
+          alone.
+        - Revert by inlining the reference back into SKILL.md and
+          accepting the over-threshold size.
+
+        The CRP-pass shape (worked example: a domain-skill with N member
+        sub-domains):
+        - Each sub-domain reference fires on a different sub-task within
+          the domain.
+        - Typical invocation loads SKILL.md plus one sub-domain reference.
+        - Average load shrinks; the second tool call is paid only when
+          actually navigating into the sub-domain.
+
+        Codified in: framework.md conditional_requirements row (rule restated
+        as CONSIDERED-when-over-threshold + REQUIRED-only-if-CRP-passes, with
+        the anti-pattern named); framework.md "CRP is the test for L2 -> L3
+        splits" sub-section under the L1/L2/L3 content allocation block;
+        per-type table rows updated to "progressive disclosure CONSIDERED if
+        ..., REQUIRED only if a CRP-passing decomposition exists".
+      origin: |
+        Surface: April 2026 SC progressive-disclosure split execution
+        (CL 145544 / 145546 / 145575). Background agents triggered splits
+        on every SKILL.md exceeding the size threshold. User pushback:
+        "right so you feel all these splits won't just turn into double
+        tool calls". Inspection of the split shapes confirmed several
+        were CRP-fails -- e.g. cl-audit went from 423 lines to a 37-line
+        stub pointing at one always-co-loaded reference. Tool-call
+        doubling without context-efficiency win.
+        Finding: the framework's progressive-disclosure conditional
+        requirement was over-eager. The size threshold was being treated
+        as a verdict rather than a signal; CRP was already in the glossary
+        but not wired into the conditional-requirement gate.
+        Follow-up: framework.md conditional_requirements row restated
+        with CRP gate; new "CRP is the test for L2 -> L3 splits"
+        sub-section codifying the three-principle tension and the
+        operational rule; this Dec-11 insight added.
+      added: "2026-05-01"
     - id: ssot_canonical_split
       keywords:
         - SSOT
