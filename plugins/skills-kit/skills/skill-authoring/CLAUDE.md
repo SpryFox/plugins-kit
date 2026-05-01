@@ -217,8 +217,7 @@ claude_md:
 
         What goes: Y7.1-Y7.5 hook implementation steps; the UserPromptSubmit hook
         wiring; the 50-prompt validation corpus (drafted but never run). The test
-        plan at tmp/writing-skills-research/y7-validation-test-plan.md is parked
-        as a reference artifact, not a live workstream.
+        plan is parked as a reference artifact, not a live workstream.
 
         Codified in: yaml-refactor-design-spec.md Y7 section marked superseded;
         project-plan.md P7 row marked killed and Phase 4.6 closed; new "Phase 6
@@ -235,13 +234,13 @@ claude_md:
         - frequency of need test
       summary: "Capability-skill added as the 6th skill type. A capability-skill wraps an external capability provider (tool / MCP server / API / service / IDE / framework) with the project's setup and conventions. Conceptually inherits technique-skill (capabilities are techniques+); schema requires capabilities: at root, external_capability declaration, layering manifest (L1/L2/L3 content allocation), and capability-skill-level gotchas. Member skills + Conditional Loading fire conditionally when capabilities grow."
       detail: |
-        Surface: Phase 4.3 SC audit Bucket C (reference-shape audit) flagged
-        ue-mcp-server, hooks, ue-coding for re-bucket as F-4-3-C-4/5/6 --
-        mixed-type drift, "reference-skill that's actually mixed." The
-        deeper finding: tool-shape and wrapper-shape skills don't fit
-        reference-skill or technique-skill or domain-skill cleanly. Their
-        content shape is "structured capabilities wrapping an external
-        thing" -- which is its own coherent shape.
+        Surface: a corpus reference-shape audit (Bucket C) flagged three
+        tool-wrapper skills for re-bucket -- mixed-type drift,
+        "reference-skill that's actually mixed." The deeper finding:
+        tool-shape and wrapper-shape skills don't fit reference-skill or
+        technique-skill or domain-skill cleanly. Their content shape is
+        "structured capabilities wrapping an external thing" -- which is
+        its own coherent shape.
 
         Three options were considered:
         - Use subset (force reference-skill): bad, loses domain structure
@@ -266,11 +265,11 @@ claude_md:
         layering manifest enforces it for capability-skills; for other
         types it is authoring guidance.
       origin: |
-        Phase 4.3 SC audit (F-4-3-8 mixed-type drift on tool-shape skills)
-        + the git/ domain-skill build that demonstrated the layering
-        principle in practice (worked example for the principle). User
-        framing question pushed past "tool" to the broader "wrapper around
-        external capability provider" framing, which generalizes cleanly.
+        Corpus mixed-type-drift audit on tool-shape skills + a domain-skill
+        build that demonstrated the layering principle in practice (worked
+        example for the principle). User framing question pushed past
+        "tool" to the broader "wrapper around external capability provider"
+        framing, which generalizes cleanly.
       added: "2026-04-30"
     - id: dec_7_visibility_rubric_for_examples_and_anti_patterns
       keywords:
@@ -280,7 +279,7 @@ claude_md:
         - example-grain content allocation
         - anti-pattern grain
         - frequency vs trigger-relevance
-        - powershell layering audit
+        - tool-wrapper layering audit
         - example/anti-pattern visibility criterion
       summary: "L1/L2/L3 visibility criterion at the example/anti-pattern grain: L1 if COMMON, L2 if DIRECTLY RELATED to why the agent invokes the skill (trigger-relevance dominates frequency when both fire), L3 if ESOTERIC. Codifies the decision rule the framework had been silent on at the example/anti-pattern grain."
       detail: |
@@ -311,8 +310,7 @@ claude_md:
         anti-patterns" sub-section, under the existing L1/L2/L3 content
         allocation block.
       origin: |
-        Surface: powershell layering audit (D:/Dev/p4/spiritcrossing/main/
-        tmp/writing-skills-research/powershell-layering-audit.md) found 5
+        Surface: a tool-wrapper skill layering audit (April 2026) found 5
         of 7 SKILL.md gotchas should have been in CLAUDE.md (frequency
         criterion fired). The user clarified the rubric mid-audit; the
         rubric works at the example/anti-pattern grain, not just the
@@ -327,13 +325,13 @@ claude_md:
         - workflow checklist OR
         - TaskCreate invocation
         - tickbox checklist alternative
-        - F-4-3-2 refinement
+        - workflow-checklist refinement
         - explicit step-tracking discipline
         - markdown syntax incidental
         - step tracker scratch file
       summary: "Workflow-checklist conditional row restated as OR-form: paste-able `- [ ]` checklist OR explicit step-tracker invocation (TaskCreate, scratch file, etc.) at procedure start. The underlying goal is the discipline of explicit step-tracking, not the specific markdown syntax."
       detail: |
-        F-4-3-2 originally treated workflow-checklist `- [ ]` lists as
+        The original workflow-checklist requirement treated `- [ ]` lists as
         required when a technique-skill has >3 steps. User question
         (2026-04-30) sharpened the rule: the goal is explicit step-
         tracking, not the specific markdown syntax. If the skill already
@@ -366,10 +364,10 @@ claude_md:
           a TaskCreate invocation in step body but no `- [ ]` markdown
           still passes the conditional row.
       origin: |
-        Surface: user question on workflow-checklist purpose during the
-        powershell-bundle session (2026-04-30).
+        Surface: user question on workflow-checklist purpose during a
+        tool-wrapper bundle session (2026-04-30).
         Finding: the markdown syntax is incidental to the underlying step-
-        tracking discipline; F-4-3-2's "checklist required" rule is over-
+        tracking discipline; the original "checklist required" rule is over-
         strict because it conflates the syntax with the goal.
         Follow-up: framework.md condition restated as OR; audit.py and
         _shared.py updated correspondingly; pytest case added.
@@ -407,17 +405,18 @@ claude_md:
           explicit-step-tracking discipline for skills not yet on the
           contract.
         - Mixed shapes: promote to YAML and drop the markdown rather
-          than maintaining both. Avoid blanket-converting SC's markdown
-          checklists to YAML pre-emptively -- the conversion happens as
-          the skill is brought onto the YAML contract.
+          than maintaining both. Avoid blanket-converting a corpus's
+          existing markdown checklists to YAML pre-emptively -- the
+          conversion happens as the skill is brought onto the YAML
+          contract.
 
         Codified in: framework.md conditional_requirements row note
         (canonical_form_when_on_yaml_contract sub-clause), framework.md
         technique-skill table row parenthetical, this insight.
       origin: |
-        Surface: user question 2026-04-30 after CL 145525 landed (the
-        F-4-3-2 SC application that added 26 markdown `## Workflow
-        Checklist` sections to SC technique-skills). The question
+        Surface: user question 2026-04-30 after a corpus-wide application
+        of the workflow-checklist requirement that added 26 markdown
+        `## Workflow Checklist` sections to technique-skills. The question
         surfaced the unresolved hierarchy: which form is canonical when
         a skill is on the YAML contract?
         Finding: a YAML `steps:` block already satisfies Dec-8 step-
@@ -469,7 +468,7 @@ claude_md:
            Harness-targeted skills whose content is rules / lookup tables
            / techniques (not capabilities-wrapping-an-external-thing)
            stay in their respective non-capability types -- e.g. a
-           settings-tool-permissions reference-skill stays
+           reference-skill that documents harness permission rules stays
            reference-skill, even though it's harness-targeted.
 
         Codified in: schemas.py CAPABILITY_SKILL_SCHEMA module docstring
@@ -479,10 +478,9 @@ claude_md:
         (adds harness wrapper as a worked example with the discrimination
         criterion).
       origin: |
-        Surface: Phase 4.3 SC audit BORDERLINE finding (project-plan.md
-        Tier 2). After CL 145493 shipped the `harness-targeted: true`
-        frontmatter flag for SC's my-tool-permissions-audit and
-        tool-permissions-audit, the question remained whether
+        Surface: a corpus audit BORDERLINE finding. After a change shipped
+        the `harness-targeted: true` frontmatter flag for two
+        permissions-audit skills, the question remained whether
         harness-targeted skills with capability-wrapping content shape
         qualify as capability-skills.
         Finding: yes -- the harness IS just another external-capability
@@ -555,14 +553,14 @@ claude_md:
         per-type table rows updated to "progressive disclosure CONSIDERED if
         ..., REQUIRED only if a CRP-passing decomposition exists".
       origin: |
-        Surface: April 2026 SC progressive-disclosure split execution
-        (CL 145544 / 145546 / 145575). Background agents triggered splits
-        on every SKILL.md exceeding the size threshold. User pushback:
-        "right so you feel all these splits won't just turn into double
-        tool calls". Inspection of the split shapes confirmed several
-        were CRP-fails -- e.g. cl-audit went from 423 lines to a 37-line
-        stub pointing at one always-co-loaded reference. Tool-call
-        doubling without context-efficiency win.
+        Surface: April 2026 progressive-disclosure split execution across
+        a corpus of skills. Background agents triggered splits on every
+        SKILL.md exceeding the size threshold. User pushback: "right so
+        you feel all these splits won't just turn into double tool calls".
+        Inspection of the split shapes confirmed several were CRP-fails --
+        e.g. a discipline-skill went from 423 lines to a 37-line stub
+        pointing at one always-co-loaded reference. Tool-call doubling
+        without context-efficiency win.
         Finding: the framework's progressive-disclosure conditional
         requirement was over-eager. The size threshold was being treated
         as a verdict rather than a signal; CRP was already in the glossary
@@ -611,10 +609,10 @@ claude_md:
       detail: |
         The user methodology is "by actually performing audits we can make it more
         crisp." The framework refines through audit cycles rather than abstract
-        polishing. Each audit captures friction in the lessons-learned log
-        (project-plan.md in the SC working dir, plus this CLAUDE.md for the
-        plugins-kit-resident decisions); each subsequent contract change cites the
-        finding that triggered it.
+        polishing. Each audit captures friction in a lessons-learned log
+        (project-side notes plus this CLAUDE.md for the plugins-kit-resident
+        decisions); each subsequent contract change cites the finding that
+        triggered it.
 
         Operating consequence: when the framework feels under-specified or
         over-specified, do not iterate the framework in isolation. Run an audit on

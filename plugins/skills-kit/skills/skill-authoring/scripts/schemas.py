@@ -367,7 +367,7 @@ CAPABILITY_SKILL_SCHEMA = {
             "kind": {"type": "string", "required": True,
                      "note": "tool | mcp_server | api | service | ide | framework | harness"},
             "name": {"type": "string", "required": True,
-                     "note": "the external thing's name (e.g. git, Unreal MCP Server, Favro API)"},
+                     "note": "the external thing's name (e.g. git, Unreal MCP Server, an external service API)"},
             "description": {"type": "string", "required": True,
                             "note": "what the external thing provides at high level"},
         }},
