@@ -190,6 +190,15 @@ glossary:
       realized_by: [utility bundle, template scaffold, self-correcting loop, plan-validate-execute]
       audit_consequence: Audit by reviewing inference-cost retrospectives and identifying operations that could move to scripts.
 
+    - id: investigate_before_answering
+      term: Investigate before answering
+      keywords: [investigate before answering, no speculation, multi-source data, ground truth, runtime vs source, data location, do not assume, grep before assume]
+      definition: |
+        When a domain spans multiple data sources (config files, code, database, CSVs, external services), never speculate about which source holds a particular fact. Investigate (grep, read, query) before answering. Multiple sources create ambiguity; speculation manufactures bugs downstream when the agent edits the wrong file, misses a value cached elsewhere, or applies an update that runtime overwrites. The discipline is: list candidate sources from memory, query each, report the actual location, note any conflicts. When the question is "what's the current value", query runtime state; when the question is "how do I change it permanently", find the authoritative source rather than the runtime cache.
+      why: Speculation about data location feels fast but produces wrong answers when the data is multi-source; the cost of grep is small relative to the cost of editing the wrong file.
+      realized_by: [behavioral guardrail in domain-skill orientation]
+      audit_consequence: A domain-skill with 2+ data sources cited in its scope or references should declare an investigate-before-answering guardrail in its `behavioral_guardrails:` block.
+
   patterns:
     - id: activation_metadata
       term: Activation metadata
@@ -379,6 +388,14 @@ glossary:
       definition: |
         Declaring `allowed-tools` in the SKILL.md frontmatter so the skill is pre-approved to use only the tools it needs. Pre-approval is not the same as a hard restriction; over-broad lists silently grant unintended autonomy.
       citation: Generative Programmer 14-pattern synthesis
+
+    - id: query_tool_facade
+      term: Query-tool facade
+      sub_grouping: Executable code
+      keywords: [query tool, facade, gazetteer, lookup, did-you-mean, YAML output, spelling discovery, catalog index, exact match, substring filter, structured catalog]
+      definition: |
+        A single facade script with multiple modes wrapping a structured catalog (gazetteer, inventory, directory, configuration tree). Modes provide exact-match lookups by ID/name and substring enumeration; misses return a `did_you_mean:` list of close suggestions rather than silently resolving. Output is YAML on every path. The agent's discipline: when uncertain about canonical spelling, run `list --substring <fragment>` first or accept did-you-mean suggestions before grepping the codebase. Replaces ad-hoc greps and spelling-from-memory with a deterministic, fast lookup surface.
+      realized_by: [query-tool-pattern.md]
 
     - id: adversarial_pressure_testing
       term: Adversarial pressure testing
