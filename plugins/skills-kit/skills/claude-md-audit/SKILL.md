@@ -9,6 +9,12 @@ argument-hint: "[file path, number(s) from list, or 'list']"
 
 # CLAUDE.md Audit
 
+## Plugin version (always echo first)
+
+!`uv run python "${CLAUDE_PLUGIN_ROOT}/scripts/print_version.py"`
+
+The first line of your response MUST be the `Running ...` line printed above. This gives the user immediate confirmation of which plugin version actually executed (the slash registry can lag the on-disk cache; this is the only reliable signal).
+
 Audit a CLAUDE.md (root, subsystem, directory, or `.local`) against the cohesion-principles content-allocation framework. Findings are grouped by principle: CCP (write-together / change cadence), CRP (read-together / smallest correct scope), ADP (link-forward-only / DAG), plus universal hygiene rules.
 
 The audit is idempotent: same input produces the same findings; addressing all FAIL findings produces a COMPLIANT verdict on the next run.
