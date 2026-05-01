@@ -62,7 +62,7 @@ claude_md:
       keywords: [pyyaml, dependency, stdlib, plugin venv, bootstrap, optional]
       summary: pyyaml is a runtime dependency declared in plugins/skills-kit/pyproject.toml; the audit runs without it via the contract-staged state.
       detail: |
-        plugins/skills-kit/pyproject.toml declares pyyaml under dependencies. The bootstrap engine sets up a plugin venv at ~/.claude/plugins/data/plugins-kit/skills-kit/.venv/ where the audit script can be invoked with pyyaml available. Outside that venv (e.g. running with bare system Python), audit.py degrades gracefully: HAVE_YAML False, contract-staged state, JUDGMENT row noting parser unavailable. Do not add stdlib-only YAML parsing -- the dialog-domain pattern uses real YAML (lists, nested mappings) that a hand-rolled subset parser cannot cover.
+        plugins/skills-kit/pyproject.toml declares pyyaml under dependencies. The bootstrap engine sets up a plugin venv at ~/.claude/plugins/data/plugins-kit/skills-kit/.venv/ where the audit script can be invoked with pyyaml available. Outside that venv (e.g. running with bare system Python), audit.py degrades gracefully: HAVE_YAML False, contract-staged state, JUDGMENT row noting parser unavailable. Do not add stdlib-only YAML parsing -- the multi-step YAML sequence pattern uses real YAML (lists, nested mappings) that a hand-rolled subset parser cannot cover.
       origin: Phase Y1.1 dependency decision; proposal section E.6.
       added: "2026-04-28"
     - id: extra_keys_allowed

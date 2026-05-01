@@ -183,7 +183,7 @@ framework:
       
       1. Assume the glossary.
       2. Lead with this framework's contracts.
-      3. Scope the existing TDD/pressure-testing content to the discipline-skill contract.
+      3. Scope the existing red/green/refactor pressure-testing content to the discipline-skill contract.
       4. Provide per-type contract checklists and audit criteria.
 
   open_questions:
@@ -264,7 +264,7 @@ L2 (SKILL.md) and L3 (references/*.md) are different load events: loading a refe
 
 **Anti-pattern (CRP-fail split):** SKILL.md trimmed to a thin pointer that always points at one (or N) references that always load next. Symptoms: SKILL.md is short (~30-100 lines) and contains primarily Conditional Loading entries; every reference is "loaded every time the skill fires" with no sub-trigger that selects between them. Revert by inlining the reference back into SKILL.md and accepting the over-threshold size.
 
-**CRP-pass split (worked example):** a domain-skill whose body declares N member sub-domains, with a Conditional Loading entry per sub-domain. Each sub-domain reference fires on a different sub-task within the domain (e.g. "first-pass animation" vs "dialog testing" vs "actions pattern"). A typical invocation loads SKILL.md plus one sub-domain reference, not all of them. Average load shrinks; the second tool call is paid only when actually navigating into the sub-domain.
+**CRP-pass split (worked example):** a domain-skill whose body declares N member sub-domains, with a Conditional Loading entry per sub-domain. Each sub-domain reference fires on a different sub-task within the domain (e.g. "task-category-A" vs "task-category-B" vs "task-category-C"). A typical invocation loads SKILL.md plus one sub-domain reference, not all of them. Average load shrinks; the second tool call is paid only when actually navigating into the sub-domain.
 
 ### Visibility criterion for examples and anti-patterns
 
@@ -274,9 +274,9 @@ The L1/L2/L3 split above governs major content allocation. The same visibility d
 - **L2 (SKILL.md): if they are DIRECTLY RELATED to why the agent invokes the skill.** Even if also common, content that is literally the reason the skill exists belongs in SKILL.md. The skill's trigger surface is the right home for trigger-relevant content. Trigger-relevance dominates frequency when both fire.
 - **L3 (references/): if they are ESOTERIC.** One-in-a-hundred edge cases, third-party-tool-specific quirks, environment-specific footguns most invocations never hit. Specificity dominates -- ambient cost is not justified, but the content must be reachable when the rare situation fires.
 
-Worked example: PowerShell escaping gotchas. A `-Command "..."` dollar-sign escape rule is BOTH common (most PowerShell invocations) AND trigger-relevant (a PowerShell skill exists precisely to handle escaping). Trigger-relevance wins -- it stays in the PowerShell SKILL.md (L2). A rare PowerShell quirk specific to one obscure cmdlet is L3. A bash-vs-PowerShell quoting collision the agent hits constantly across many tasks is L1.
+Worked example: a tool-wrapper skill for a shell language with quoting gotchas. An escape rule on the most common invocation form is BOTH common (most invocations of that shell) AND trigger-relevant (the wrapper skill exists precisely to handle escaping). Trigger-relevance wins -- it stays in the wrapper SKILL.md (L2). A rare quirk specific to one obscure cmdlet of that shell is L3. A cross-shell quoting collision the agent hits constantly across many tasks (regardless of which shell is the day's target) is L1.
 
-Counter-worked-example: a powershell layering audit (April 2026) found 5 of 7 SKILL.md gotchas were also common across most non-PowerShell sessions and should have been in CLAUDE.md (L1) -- frequency criterion fired and trigger-relevance did not. The audit surfaced that the framework named the levels but did not articulate the visibility-decision criterion at the example/anti-pattern grain; this section closes that gap.
+Counter-worked-example: a tool-wrapper skill layering audit (April 2026) found 5 of 7 SKILL.md gotchas were also common across most sessions outside that tool's domain and should have been in CLAUDE.md (L1) -- frequency criterion fired and trigger-relevance did not. The audit surfaced that the framework named the levels but did not articulate the visibility-decision criterion at the example/anti-pattern grain; this section closes that gap.
 
 ## Type contracts
 
@@ -345,7 +345,7 @@ Examples: a skill wrapping a CLI tool (e.g. version-control mirror operations); 
 | **Prohibited patterns** | high-freedom phrasing in rule statements; softening hedges that weaken a rule's core. Note: an exception clause that names a specific known legitimate case (e.g. "delete the user copy unless it intentionally diverges from the project version") is permitted -- the rule's core stays sharp and the exception is bounded. |
 | **Audit** | Does the rule hold under combined pressures (time + sunk cost + fatigue)? Run an adversarial subagent. |
 
-Examples: TDD discipline (write test first; rationalization counters for "too simple to test", "tests after achieve the same purpose", etc.) is the canonical reference shape for this type. The plugins-kit ecosystem currently has no discipline-skill.
+Examples: red/green/refactor discipline (write test first; rationalization counters for "too simple to test", "tests after achieve the same purpose", etc.) is the canonical reference shape for this type. The plugins-kit ecosystem currently has no discipline-skill.
 
 ### domain-skill (container)
 

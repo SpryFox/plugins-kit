@@ -22,7 +22,7 @@ baseline tests, close loopholes, write description as triggers not
 workflow, etc.). Discipline-skill is the closest match for the *intent*,
 but the skill's content also includes substantial reference material
 (SKILL.md structure, frontmatter rules, locations) and pattern material
-(the TDD-for-skills mental model). It's a mixed-type skill in practice.
+(the red/green/refactor mental model for skill authoring). It's a mixed-type skill in practice.
 
 ---
 
@@ -74,7 +74,7 @@ The audit also flags this as a **mixed-type skill** under the audit's
 mixed-type-check preamble. The skill mixes:
 - *Reference-skill content* -- SKILL.md structure, frontmatter rules, file
   organization, skill locations
-- *Pattern-skill content* -- the TDD-for-skills mental model
+- *Pattern-skill content* -- the red/green/refactor mental model for skill authoring
 - *Discipline-skill content* -- the actual rules (description format,
   inline content, shadow detection)
 
