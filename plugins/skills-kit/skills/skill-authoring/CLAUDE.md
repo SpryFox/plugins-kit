@@ -570,6 +570,63 @@ claude_md:
         sub-section codifying the three-principle tension and the
         operational rule; this Dec-11 insight added.
       added: "2026-05-01"
+    - id: dec_12_subdomain_config_schema_extension
+      keywords:
+        - subdomain config
+        - capability-skill schema extension
+        - state terms
+        - operations
+        - scope axes
+        - canonical phrasing
+        - dependency order
+        - sub-area vocabulary contract
+      summary: "CAPABILITY_SKILL_SCHEMA gains an optional list field `subdomain_config` carrying per-sub-area structural records (name + optional state_terms / operations / scope_axes / canonical_phrasing / llm_dependent_content / dependency_order). The schema gives audit tooling a mechanical floor for verifying a sub-area's vocabulary contract."
+      detail: |
+        Capability-skills that decompose into sub-areas frequently carry
+        repeated structural metadata per sub-area: a canonical state
+        vocabulary the agent must use verbatim, a verb list the sub-area
+        supports, scope axes that decompose the capability space, a
+        readback rule for restating user requests, fields populated by an
+        LLM rather than retrieved deterministically, and capability
+        ordering constraints. Without a schema, this metadata floats as
+        ad-hoc YAML in reference docs, unauditable for consistency.
+        
+        The extension is conservative:
+        - The field is optional. Single-sub-area capability-skills omit
+          it; multi-sub-area capability-skills declare one record per
+          sub-area.
+        - Within a record, only `name` is required. The other six fields
+          are independent options; each sub-area declares only the fields
+          it actually uses.
+        - The schema validates field shapes (state_terms is a list,
+          canonical_phrasing is a string) without enforcing semantic
+          content (the schema does not check that state_terms are
+          uppercase or that operations are imperative verbs).
+        
+        Audit hooks documented in subdomain-schema.md cover the next-level
+        invariants (no duplicate state terms, dependency_order references
+        existing capabilities). Those checks are downstream of the schema
+        and live in subdomain-schema.md as auditable conditions rather
+        than schema rules.
+        
+        Codified in: schemas.py CAPABILITY_SKILL_SCHEMA `subdomain_config`
+        block; framework.md capability-skill required-blocks row
+        (subdomain_config: noted as optional with cross-reference);
+        glossary.md new `subdomain_config` record under Patterns >
+        Procedural composition; references/subdomain-schema.md (new) with
+        per-field definitions, two worked examples, and audit hooks.
+      origin: |
+        Surface: dialog-domain extraction audit (2026-05-01) flagged the
+        sub-area config schema as a generalizable pattern. The audit
+        identified a per-sub-area structural shape that recurs whenever a
+        capability-skill decomposes into multiple sub-areas with distinct
+        state vocabularies and operation surfaces.
+        Finding: capability_skill schema lacked the floor for sub-area
+        config; the structural fields existed in practice as ad-hoc YAML.
+        Follow-up: schema extended with the optional list field; new
+        reference doc; new pytest cases (6 covering omitted, minimal,
+        full, multi-sub-area, missing-name, wrong-type validations).
+      added: "2026-05-01"
     - id: ssot_canonical_split
       keywords:
         - SSOT
