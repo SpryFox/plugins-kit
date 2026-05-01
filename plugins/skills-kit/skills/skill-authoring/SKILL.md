@@ -67,6 +67,10 @@ domain_skill:
         path: references/domain-layering.md
         keywords: [sub-domain layering, greeting menu, argument dispatch, overview request detection, sub-domain registration, sub-agent dispatch, agent-bundled, bare invocation, capability menu, multi-area domain]
         summary: Domain layering -- bare-invocation greeting, argument dispatch, overview-vs-action detection, sub-domain registration, and sub-agent dispatch convention for domain-skills with 2+ sub-areas.
+      - id: subdomain_schema
+        path: references/subdomain-schema.md
+        keywords: [subdomain config schema, state terms, operations, scope axes, canonical phrasing, llm-dependent content, dependency order, sub-area record, capability-skill subdomain config, vocabulary contract]
+        summary: Sub-domain config schema -- per-sub-area structural fields (state_terms / operations / scope_axes / canonical_phrasing / llm_dependent_content / dependency_order) for capability-skills with 2+ sub-areas.
   capabilities:
     - id: audit
       keywords: [audit, contract check, validate skill, run audit, schema validation]

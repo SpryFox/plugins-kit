@@ -334,3 +334,88 @@ class TestCapabilitySkillMixedType:
         roots = detect_mixed_type_yaml(merged)
         assert set(roots) == {"capability_skill", "technique_skill"}
         assert len(roots) > 1
+
+
+# ---------------------------------------------------------------------------
+# Sub-domain config (Dec-12, optional list field on capability-skill)
+# ---------------------------------------------------------------------------
+
+
+class TestCapabilitySkillSubdomainConfig:
+    def test_subdomain_config_omitted_validates(self, minimal_capability_skill):
+        """Field is optional; omitting it does not fail."""
+        fails, _ = validate(minimal_capability_skill, CAPABILITY_SKILL_SCHEMA)
+        assert fails == [], f"unexpected fails: {fails}"
+
+    def test_subdomain_config_minimal_entry_validates(self, minimal_capability_skill, make_invalid):
+        """A subdomain_config entry with only the required `name` field validates."""
+        good = make_invalid(
+            minimal_capability_skill,
+            lambda d: d["capability_skill"].update({
+                "subdomain_config": [{"name": "subdomain-A"}],
+            }),
+        )
+        fails, _ = validate(good, CAPABILITY_SKILL_SCHEMA)
+        assert fails == [], f"minimal subdomain_config entry should pass; got {fails}"
+
+    def test_subdomain_config_full_entry_validates(self, minimal_capability_skill, make_invalid):
+        """A subdomain_config entry with every optional field populated validates."""
+        good = make_invalid(
+            minimal_capability_skill,
+            lambda d: d["capability_skill"].update({
+                "subdomain_config": [{
+                    "name": "subdomain-A",
+                    "state_terms": ["enabled", "disabled", "pending"],
+                    "operations": ["toggle", "validate", "reset"],
+                    "scope_axes": [
+                        {"name": "target", "values": ["single", "batch", "all"]},
+                    ],
+                    "canonical_phrasing": "I'll <operation> <target>. Confirm?",
+                    "llm_dependent_content": ["validation_explanation"],
+                    "dependency_order": ["validate before toggle"],
+                }],
+            }),
+        )
+        fails, _ = validate(good, CAPABILITY_SKILL_SCHEMA)
+        assert fails == [], f"full subdomain_config entry should pass; got {fails}"
+
+    def test_subdomain_config_multiple_subareas_validates(self, minimal_capability_skill, make_invalid):
+        """A subdomain_config list with multiple sub-areas validates."""
+        good = make_invalid(
+            minimal_capability_skill,
+            lambda d: d["capability_skill"].update({
+                "subdomain_config": [
+                    {"name": "subdomain-A", "state_terms": ["a", "b"]},
+                    {"name": "subdomain-B", "operations": ["x", "y"]},
+                    {"name": "subdomain-C"},
+                ],
+            }),
+        )
+        fails, _ = validate(good, CAPABILITY_SKILL_SCHEMA)
+        assert fails == [], f"multi-sub-area config should pass; got {fails}"
+
+    def test_subdomain_config_missing_name_fails(self, minimal_capability_skill, make_invalid):
+        """A subdomain_config entry without `name` fails validation."""
+        bad = make_invalid(
+            minimal_capability_skill,
+            lambda d: d["capability_skill"].update({
+                "subdomain_config": [{"state_terms": ["enabled"]}],
+            }),
+        )
+        fails, _ = validate(bad, CAPABILITY_SKILL_SCHEMA)
+        assert _has_fail_at(fails, "subdomain_config[0].name")
+        assert _has_fail_with_msg(fails, "required key missing")
+
+    def test_subdomain_config_state_terms_wrong_type_fails(self, minimal_capability_skill, make_invalid):
+        """state_terms as a string (instead of list) fails validation."""
+        bad = make_invalid(
+            minimal_capability_skill,
+            lambda d: d["capability_skill"].update({
+                "subdomain_config": [{
+                    "name": "subdomain-A",
+                    "state_terms": "enabled disabled pending",
+                }],
+            }),
+        )
+        fails, _ = validate(bad, CAPABILITY_SKILL_SCHEMA)
+        assert _has_fail_at(fails, "subdomain_config")
