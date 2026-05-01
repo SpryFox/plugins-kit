@@ -135,16 +135,22 @@ claude --plugin-dir ~/Dev/plugins-kit/plugins/my-plugin
 
 **Publishing changes** — the plugin cache syncs from the remote repository's default branch, not the local working copy. Develop on the `dev` branch; merge to `master` only when releasing a version bump. This prevents silent divergence (fresh installs between releases getting HEAD code cached under the old version string).
 
-Publishing (merging to `master` and pushing) is reversible-but-visible: nothing is destroyed, but it goes out to other machines. The bar is "user has expressed publish intent for this work," not "user has reconfirmed each git command." Treat unambiguous go-signals — `go`, `ship it`, `publish`, `do it`, `close the loop`, `push` — as authorizing the **entire** publish flow including downstream dependents (e.g. update06). Don't re-prompt for sub-steps once intent is clear; that's procedural friction, not safety. Confirm only when intent is genuinely ambiguous (partial work, no version bump in sight, unrelated WIP staged, or the user is mid-thought).
+**Definition.** "Publish" in this repo means **all three** of:
 
-To publish:
-
-1. Bump the plugin version in both files — they must match:
+1. Bump the plugin version in both manifest files (they must match):
    - `plugins/<name>/.claude-plugin/plugin.json` (the plugin's own manifest)
    - `.claude-plugin/marketplace.json` (the marketplace-level listing)
-2. Merge `dev` to `master` and push (intent established per above)
-3. Users with `autoUpdate: true` receive the update on next session start
-4. Users without auto-update run `/plugin marketplace update` then `/plugin update`
+2. Push the version-bumped commit to `origin/dev`.
+3. Merge `dev` to `master` (via PR or fast-forward) and push to `origin/master`.
+
+A version bump without a master merge is **not** a publish — users still see the old version. A push to `dev` without a master merge is **not** a publish — `master` is the cache source. A master merge without a version bump is **not** a publish — the cache key doesn't change, so consumers don't refetch. All three steps are required; an unambiguous publish go-signal authorizes all three.
+
+Publishing is reversible-but-visible: nothing is destroyed, but it goes out to other machines. The bar is "user has expressed publish intent for this work," not "user has reconfirmed each git command." Treat unambiguous go-signals — `go`, `ship it`, `publish`, `do it`, `close the loop`, `push` — as authorizing the **entire** three-step publish flow above (plus downstream dependents like update06). Don't re-prompt for sub-steps once intent is clear; that's procedural friction, not safety. Confirm only when intent is genuinely ambiguous (partial work, no version bump in sight, unrelated WIP staged, or the user is mid-thought).
+
+After publish:
+
+- Users with `autoUpdate: true` receive the update on next session start.
+- Users without auto-update run `/plugin marketplace update` then `/plugin update`.
 
 **Why both files**: Claude Code uses the `marketplace.json` version to decide whether to fetch a new cache entry. If you only bump `plugin.json` but not `marketplace.json`, consumers won't see the update. A pre-commit hook (`scripts/pre-commit-version-check.sh`) blocks commits when these versions diverge.
 
