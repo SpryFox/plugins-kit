@@ -2,8 +2,7 @@
 _schema_version: 1
 name: local-code-review
 skill-type: technique-skill
-description: Use when the user requests a code review of a pending Perforce changelist. Do NOT use for git diffs or non-Perforce review workflows.
-disable-model-invocation: true
+description: Use when the user requests a code review of a pending Perforce changelist, OR when the agent is about to ask the user to review/submit a CL it just opened. Do NOT use for git diffs or non-Perforce review workflows.
 ---
 
 # Local Code Review
@@ -13,7 +12,7 @@ Run a multi-agent code review of a Perforce changelist directly in conversation.
 ```yaml
 technique_skill:
   _schema_version: "1"
-  trigger_model: user-only
+  trigger_model: auto
   identity: Run a multi-agent code review of a Perforce changelist using parallel Claude subagents.
   scope:
     covers:
