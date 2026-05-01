@@ -80,7 +80,7 @@
     {
       "name": "uninvocable-skill-example",
       "description": "Reproduction case: a plugin shipping a single skill with only Anthropic-standard frontmatter that should be /-invocable per the docs but isn't",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "author": {
         "name": "Christina"
       },
