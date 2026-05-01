@@ -60,7 +60,7 @@
     {
       "name": "skills-kit",
       "description": "Skill authoring framework: vocabulary, type contracts, and audit tooling for designing robust, auditable Claude Code skills",
-      "version": "0.5.1",
+      "version": "0.5.2",
       "author": {
         "name": "Christina"
       },
