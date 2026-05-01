@@ -71,6 +71,10 @@ domain_skill:
         path: references/subdomain-schema.md
         keywords: [subdomain config schema, state terms, operations, scope axes, canonical phrasing, llm-dependent content, dependency order, sub-area record, capability-skill subdomain config, vocabulary contract]
         summary: Sub-domain config schema -- per-sub-area structural fields (state_terms / operations / scope_axes / canonical_phrasing / llm_dependent_content / dependency_order) for capability-skills with 2+ sub-areas.
+      - id: query_tool_pattern
+        path: references/query-tool-pattern.md
+        keywords: [query tool facade, lookup tool, gazetteer, did-you-mean, YAML output, spelling discovery, exact match modes, substring enumeration, canonical spelling]
+        summary: Query-tool facade pattern -- single CLI with multiple lookup modes, did-you-mean on miss, YAML output, spelling-discovery discipline; replaces ad-hoc greps and spelling-from-memory.
   capabilities:
     - id: audit
       keywords: [audit, contract check, validate skill, run audit, schema validation]
