@@ -63,6 +63,10 @@ domain_skill:
         path: references/patterns-actions.md
         keywords: [actions pattern, multi-step recipe, YAML steps, capture, tell_user, facade script, narration, deterministic execution, ordered sequence, sub-domain action, capability action]
         summary: Actions pattern -- YAML step sequences for deterministic multi-step recipes, paired with facade scripts when batching 3+ tool calls.
+      - id: domain_layering
+        path: references/domain-layering.md
+        keywords: [sub-domain layering, greeting menu, argument dispatch, overview request detection, sub-domain registration, sub-agent dispatch, agent-bundled, bare invocation, capability menu, multi-area domain]
+        summary: Domain layering -- bare-invocation greeting, argument dispatch, overview-vs-action detection, sub-domain registration, and sub-agent dispatch convention for domain-skills with 2+ sub-areas.
   capabilities:
     - id: audit
       keywords: [audit, contract check, validate skill, run audit, schema validation]

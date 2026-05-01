@@ -215,6 +215,22 @@ glossary:
         Keywords or short summaries embedded inside a skill's structured data (YAML blocks, table rows, capability entries) that match user-language phrasing, so Claude can route the user's words to the right data piece without needing to read full reference text. The conditional-loading block is the domain-skill version; in-record `keywords:` lists are the same pattern applied per-entry. Without these hints, Claude has to read body content top-to-bottom hunting for relevance; with them, Claude jumps to the right slot directly.
       fulfills: [Audience-Claude, Tool-call efficiency, Inference efficiency]
 
+    - id: subdomain_layering
+      term: Sub-domain layering
+      sub_grouping: Discovery and selection
+      keywords: [sub-domain, layering, greeting menu, argument dispatch, overview detection, sub-domain registration, capability menu, bare invocation]
+      definition: |
+        The user-facing surface mechanics of a domain-skill that decomposes into 2+ sub-domains: a bare-invocation greeting menu listing every sub-domain, argument dispatch that jumps directly into a named sub-domain, overview-request detection that returns only the matching sub-domain's capability table when the user asks "what can I do here", and a machine-readable sub-domain registration index that drives the menu and dispatch. Use only when a domain has 2+ sub-areas; single-area domains carry the cost without the orientation benefit.
+      realized_by: [domain-layering.md]
+
+    - id: subagent_dispatch
+      term: Sub-agent dispatch
+      sub_grouping: Discovery and selection
+      keywords: [sub-agent dispatch, agent-bundled, paired agent, parent skill invocation, agent name suffix, dispatch convention]
+      definition: |
+        The convention that a domain-skill paired with a `<skill-name>-a` sub-agent is always invoked via that bundled agent rather than a generic agent that loads the skill manually. The bundled agent invokes its companion skill on session start, so it always has the domain's vocabulary loaded; this preserves the agent-bundled invariant the skill was designed against. The skill declares the convention explicitly when a paired agent exists, so any future caller composing with sub-agents knows the parent-spawns-bundled rule.
+      realized_by: [domain-layering.md]
+
     - id: context_budget
       term: Context budget
       sub_grouping: Context economy
