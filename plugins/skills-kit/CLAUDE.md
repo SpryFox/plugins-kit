@@ -120,28 +120,22 @@ claude_md:
     - id: dependency_posture
       keywords:
         - pyyaml dependency
-        - bootstrap.json
-        - pyproject.toml
-        - plugin venv
-        - no manual pip
-        - uv sync
+        - skills-kit venv path
+        - audit graceful degradation
+        - HAVE_YAML
       origin: User directive 2026-04-28 codified in plugins-kit/CLAUDE.md; surfaced at plugin level during P5 (2026-04-30).
       added: "2026-04-30"
-      summary: pyyaml is the only Python dependency. Declared in pyproject.toml and exercised by bootstrap.json check_imports. The plugin venv at ~/.claude/plugins/data/plugins-kit/skills-kit/.venv is created by the bootstrap engine via uv. Never run pip / python -m venv manually.
+      summary: skills-kit's only Python dependency is pyyaml; the plugin venv lives at ~/.claude/plugins/data/plugins-kit/skills-kit/.venv. audit.py degrades gracefully when pyyaml is unavailable (contract-staged state). For the cross-plugin dep-management rule, see plugins-kit/CLAUDE.md.
       detail: |
-        bootstrap.json declares venv.check_imports = ["yaml"]; pyproject.toml declares
-        pyyaml in [project] dependencies. The bootstrap engine creates the plugin venv
-        at ~/.claude/plugins/data/plugins-kit/skills-kit/.venv and runs uv sync against
-        pyproject.toml; bootstrap_lib then verifies the check_imports succeed.
+        skills-kit-specific facts (the cross-plugin rule lives in plugins-kit/CLAUDE.md):
 
-        The audit script degrades gracefully when pyyaml is unavailable (HAVE_YAML
-        False): the universal rows still pass, the YAML contract row reports
-        judgment-required ("install pyyaml to validate"), and legacy markdown
-        heuristics are skipped (the contract is staged but unvalidated).
-
-        Adding a new dependency: update pyproject.toml AND bootstrap.json
-        check_imports together. Skipping check_imports leads to silent install
-        failures.
+        - bootstrap.json declares venv.check_imports = ["yaml"]; pyproject.toml
+          declares pyyaml in [project] dependencies.
+        - The plugin venv path is ~/.claude/plugins/data/plugins-kit/skills-kit/.venv.
+        - audit.py degrades gracefully when pyyaml is unavailable (HAVE_YAML False):
+          universal rows still pass, the YAML contract row reports judgment-required
+          ("install pyyaml to validate"), and legacy markdown heuristics are skipped
+          (the contract is staged but unvalidated).
     - id: invocation_paths
       keywords:
         - invoke skill-authoring
@@ -185,11 +179,4 @@ claude_md:
         - lessons-learned
         - surface finding follow-up
       why: A contract change without provenance cannot be rewound. A future agent must be able to reconstruct what audit surface revealed the friction; outcomes alone (the new schema) do not carry that signal.
-    - rule: Treat plugins/skills-kit/.venv as bootstrap-managed. Never pip install / python -m venv manually for skills-kit dependencies.
-      keywords:
-        - venv discipline
-        - bootstrap-managed
-        - uv sync
-        - no manual install
-      why: Plugin dependency installs go through the bootstrap engine so they end up in the right per-plugin venv. Manual installs land in the wrong location and confuse the engine's cache.
 ```

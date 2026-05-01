@@ -2,6 +2,8 @@
 
 Per-directory insight repository for the audit / classify / tag / schemas script set. Insights captured during the YAML contract refactor (this project's Phase Y1-Y4). The YAML block below is the load-bearing surface; this file is not narrative.
 
+**Phase / finding identifier legend.** `Phase Y1`-`Y4` = phases of the YAML contract refactor (Y1 = stdlib walker design; Y4 = local-code-review conversion). `Phase 4.2` = corpus audit pass. `F-4-2-N` = numbered findings from Phase 4.2 (e.g. F-4-2-2 / F-4-2-3 = paired user-only technique-skill findings). For the full legend, see ../CLAUDE.md.
+
 ```yaml
 claude_md:
   _schema_version: "1"

@@ -4,6 +4,15 @@ Per-directory insight repository for the skill-authoring domain-skill: the canon
 
 Insights here capture decision provenance -- the audits that reshaped the framework -- not the canonical content itself. The contract surface lives in `references/glossary.md`, `references/framework.md`, and `scripts/schemas.py` (SSOT); this file records *why those contracts look the way they do* so a future agent can rewind the reasoning.
 
+**Phase / finding identifier legend.** Provenance fields below cite project-side history markers. They are decision-log breadcrumbs, not active references:
+
+- `Phase Y1`-`Y7` -- phases of the YAML contract refactor (Y1 = stdlib walker design; Y4 = local-code-review conversion; Y5 = schema v1 lock; Y7 = retired sparse-keyword RAG hook).
+- `Phase 4.x` / `P5` / `P7` -- phases of the audit-prep work units (Phase 4.2 = corpus audit pass; Phase 4.6 P4-P7 = framework-extension cluster).
+- `F-4-2-N` -- numbered findings from the Phase 4.2 audit (e.g. F-4-2-2 / F-4-2-3 = paired user-only technique-skill findings).
+- `Dec-N` -- numbered framework decisions captured here as insights (each `id: dec_N_*` entry IS the decision record).
+- `audit-prep work unit` -- the 2026-04-29 batch session that produced Dec-1 through Dec-3.
+- `yaml-refactor-design-spec.md` / `project-plan.md` -- project-side planning artifacts; cited as historical sources, not as live load dependencies.
+
 ```yaml
 claude_md:
   _schema_version: "1"
@@ -690,18 +699,4 @@ claude_md:
         - SSOT discipline
         - paired update
       why: schemas.py is authoritative on divergence, but a stale framework.md table is the most common drift source and confuses reviewers. Pair the updates so the divergence window is zero.
-    - rule: Every framework decision lands as a lessons-learned entry with surface / finding / follow-up provenance before the contract change ships.
-      keywords:
-        - provenance
-        - lessons-learned
-        - decision log
-        - surface finding follow-up
-      why: A contract change without provenance cannot be rewound. A future agent must be able to reconstruct what audit surface revealed the friction; outcomes alone (the new schema) do not carry that signal.
-    - rule: Re-audit every plugins-kit skill after any schema or framework change. Zero FAILs is the merge gate.
-      keywords:
-        - re-audit gate
-        - merge criterion
-        - validator self-test
-        - dogfood
-      why: "The plugin advocates schema validation as the audit substrate; shipping a contract change that breaks the plugin's own skills would violate the principle. The re-audit also catches second-order effects (e.g. a tightened technique-skill row forcing cache-report to gain a steps block)."
 ```

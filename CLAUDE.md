@@ -1,10 +1,8 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Project Overview
 
-**plugins-kit** is the **development repository** (source of truth) for the plugins-kit Claude Code marketplace. It contains the source code for all plugins in the marketplace. Currently ships: **bootstrap** (dependency management) and **unreal-kit** (Unreal Engine Python API automation).
+**plugins-kit** is the **development repository** (source of truth) for the plugins-kit Claude Code marketplace. It contains the source code for all plugins in the marketplace. Currently ships: **bootstrap** (dependency management), **p4-kit** (Perforce multi-agent code review), **skills-kit** (skill-authoring framework), **test-plugin** (bootstrap exerciser), and **unreal-kit** (Unreal Engine Python API automation).
 
 This repo is a **Claude Code plugin marketplace** — it extends Claude Code with skills, commands, and hooks via the `.claude-plugin/marketplace.json` manifest. Plugins are loaded either via `--plugin-dir` (local development) or `enabledPlugins` in settings (production installs from the remote repo).
 
@@ -71,43 +69,9 @@ plugins-kit/                          # Marketplace root
 - **Config resolution order**: CLI args > per-project config (`<project_root>/.claude/unreal-kit.yaml`) > global config (`~/.claude/plugins/data/plugins-kit/unreal-kit/config.yaml`, legacy fallback) > skill config (`ue_runner_config.yaml`) > hardcoded defaults
 - **Auto-detection execution**: `ue_runner.py` tries remote execution (UDP via upyrc) first, falls back to headless commandlet if editor isn't running
 
-### Core Components
+### Unreal Engine work
 
-| File | Purpose |
-|------|---------|
-| `bin/ue_runner.py` | CLI entry point — runs UE Python scripts via remote exec or commandlet |
-| `bin/ue-runner.cmd` | Windows wrapper — uses `uv run` to ensure deps |
-| `lib/ue_runner_config.py` | Config loading with layered resolution and fallback YAML parser |
-| `lib/ue_discovery.py` | Project discovery — finds `.uproject` and engine directory |
-| `lib/ue_ini.py` | UE `.ini` file read/write utilities |
-| `lib/unreal_pip.py` | Pip operations inside UE's embedded Python (runs in-editor) |
-| `lib/bootstrap.py` | Dependency bootstrapper for UE scripts (runs in-editor) |
-## Commands
-
-```bash
-# Run a UE Python script (auto-detects remote vs commandlet)
-plugins/unreal-kit/skills/ue-python-api/bin/ue-runner.cmd script.py
-
-# Force execution mode
-plugins/unreal-kit/skills/ue-python-api/bin/ue-runner.cmd script.py --mode remote
-plugins/unreal-kit/skills/ue-python-api/bin/ue-runner.cmd script.py --mode commandlet
-
-# Copy output files to local directory
-plugins/unreal-kit/skills/ue-python-api/bin/ue-runner.cmd script.py --copy-output ./results/
-
-# Interactive setup (prompts before changes)
-plugins/unreal-kit/skills/ue-python-api/bin/ue-runner.cmd --setup
-```
-
-## Writing UE Python Scripts
-
-Scripts run inside UE's embedded Python (`import unreal`). Key patterns:
-
-- Output goes to `<Project>/Saved/PythonOutput/` as YAML — the runner auto-detects new files
-- Use `os.path.expanduser('~/.claude/plugins/data/plugins-kit/unreal-kit/lib')` for `sys.path.insert` — these are stable, version-independent paths synced by bootstrap
-- Call `ensure_dependencies()` before importing packages listed in `lib/requirements.yaml`
-- `lib/bootstrap.py` and `unreal_pip.py` (from git_deps) only run inside UE Editor (they `import unreal`)
-- All other `lib/` and `bin/` modules are host-side (system Python, stdlib only)
+For UE Python automation (running scripts, the `ue_runner` host-side runner, in-editor patterns, sys.path conventions, dependency bootstrap), invoke the `ue-python-api` skill at `plugins/unreal-kit/skills/ue-python-api/SKILL.md`.
 
 ## Development Workflow
 
