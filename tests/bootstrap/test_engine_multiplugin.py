@@ -13,14 +13,12 @@ BOOTSTRAP_ROOT = os.path.normpath(
 ENGINE_SCRIPT = os.path.join(BOOTSTRAP_ROOT, "engine", "bootstrap_engine.py")
 
 
-def run_engine(data_dir, plugin_root=BOOTSTRAP_ROOT, env=None):
+def run_engine(data_dir, plugin_root=BOOTSTRAP_ROOT, env=None, project_dir=None):
     """Run the bootstrap engine as a subprocess."""
-    return subprocess.run(
-        [sys.executable, ENGINE_SCRIPT, "--plugin-root", plugin_root, "--data-dir", data_dir],
-        capture_output=True,
-        text=True,
-        env=env,
-    )
+    args = [sys.executable, ENGINE_SCRIPT, "--plugin-root", plugin_root, "--data-dir", data_dir]
+    if project_dir is not None:
+        args.extend(["--project-dir", project_dir])
+    return subprocess.run(args, capture_output=True, text=True, env=env)
 
 
 def _isolated_env(tmp_path):
@@ -843,3 +841,67 @@ class TestDevLayoutFilter:
         # Both user-scoped and project-scoped plugins should be bootstrapped
         assert "user-plugin" in system_msg
         assert "project-plugin" in system_msg
+
+
+class TestScriptContextProjectDir:
+    """Verify ctx.project_dir reaches plugin scripts (Bug 1 in
+    bugreport-statusline-not-installed-per-project.md). Without it, scripts
+    re-derive project root from Path.cwd() and walk up looking for any
+    `.claude/` — which is wrong, since Claude Code itself does not walk up.
+    """
+
+    def _make_setup(self, tmp_path, script_content):
+        """Set up a plugin with a script that records ctx.project_dir to a marker file."""
+        plugins_dir = tmp_path / "plugins"
+        plugins_dir.mkdir()
+
+        fake_root = plugins_dir / "bootstrap"
+        fake_root.mkdir()
+        (fake_root / "bootstrap_lib").symlink_to(os.path.join(BOOTSTRAP_ROOT, "bootstrap_lib"))
+        (fake_root / "engine").symlink_to(os.path.join(BOOTSTRAP_ROOT, "engine"))
+        _write_minimal_defaults(fake_root)
+        (fake_root / "bootstrap.json").write_text(json.dumps({}))
+
+        plugin_dir = plugins_dir / "ctx-plugin"
+        plugin_dir.mkdir()
+        (plugin_dir / "bootstrap.json").write_text(json.dumps({
+            "script": {"path": "my_script.py", "entry_point": "bootstrap"},
+        }))
+        (plugin_dir / "my_script.py").write_text(script_content)
+
+        registry = {"plugins": {"kit:ctx-plugin": [{"installPath": "./ctx-plugin", "version": "1.0.0"}]}}
+        (plugins_dir / "installed_plugins.json").write_text(json.dumps(registry))
+
+        data_dir = str(tmp_path / "data" / "bootstrap")
+        os.makedirs(data_dir)
+        config = {"schema_version": 3, "enabled_plugins": ["kit:ctx-plugin"], "log_level": "info", "log_success_shell": False, "log_success_checks": False}
+        with open(os.path.join(data_dir, "config.json"), "w") as f:
+            json.dump(config, f)
+        return str(fake_root), data_dir
+
+    def test_script_receives_project_dir(self, tmp_path):
+        marker = tmp_path / "marker.txt"
+        # Write the raw project_dir string (no repr()) so comparison is direct.
+        script = (
+            "def bootstrap(ctx):\n"
+            f"    open({repr(str(marker))}, 'w').write(ctx.project_dir or '__NONE__')\n"
+        )
+        fake_root, data_dir = self._make_setup(tmp_path, script)
+        project = tmp_path / "fake_project"
+        project.mkdir()
+        result = run_engine(data_dir, plugin_root=fake_root, env=_isolated_env(tmp_path), project_dir=str(project))
+        assert result.returncode == 0, result.stderr
+        assert marker.exists(), f"script did not run; stdout={result.stdout!r} stderr={result.stderr!r}"
+        assert marker.read_text() == str(project)
+
+    def test_script_project_dir_none_when_unset(self, tmp_path):
+        marker = tmp_path / "marker.txt"
+        script = (
+            "def bootstrap(ctx):\n"
+            f"    open({repr(str(marker))}, 'w').write(ctx.project_dir or '__NONE__')\n"
+        )
+        fake_root, data_dir = self._make_setup(tmp_path, script)
+        result = run_engine(data_dir, plugin_root=fake_root, env=_isolated_env(tmp_path))
+        assert result.returncode == 0, result.stderr
+        assert marker.exists(), f"script did not run; stdout={result.stdout!r} stderr={result.stderr!r}"
+        assert marker.read_text() == "__NONE__"

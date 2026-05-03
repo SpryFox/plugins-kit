@@ -1621,7 +1621,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
     if script_def:
         script_failures = _run_script_phase(
             script_def, plugin_root, data_dir, config, action_entries,
-            prefix=prefix, plugin_name=plugin_name,
+            prefix=prefix, plugin_name=plugin_name, project_dir=project_dir,
         )
         failures.extend(script_failures)
 
@@ -1664,7 +1664,7 @@ def _find_plugins_dir(plugin_root):
 
 
 
-def _run_script_phase(script_def, plugin_root, data_dir, config, log_entries, prefix="", plugin_name=""):
+def _run_script_phase(script_def, plugin_root, data_dir, config, log_entries, prefix="", plugin_name="", project_dir=None):
     """Run a custom bootstrap script. Returns list of failures."""
     import importlib.util
 
@@ -1676,7 +1676,7 @@ def _run_script_phase(script_def, plugin_root, data_dir, config, log_entries, pr
         return []
 
     # Build context object for the script
-    ctx = _ScriptContext(config, data_dir, plugin_root, log_entries, prefix, plugin_name)
+    ctx = _ScriptContext(config, data_dir, plugin_root, log_entries, prefix, plugin_name, project_dir)
 
     try:
         spec = importlib.util.spec_from_file_location("_bootstrap_script", script_path)
@@ -1701,11 +1701,16 @@ def _run_script_phase(script_def, plugin_root, data_dir, config, log_entries, pr
 class _ScriptContext:
     """Context object passed to custom bootstrap scripts."""
 
-    def __init__(self, config, data_dir, plugin_root, log_entries, prefix, plugin_name):
+    def __init__(self, config, data_dir, plugin_root, log_entries, prefix, plugin_name, project_dir=None):
         self.config = dict(config) if config else {}
         self.config_path = os.path.join(data_dir, "config.yaml")
         self.data_dir = data_dir
         self.plugin_root = plugin_root
+        # Canonical project root the engine was invoked against (Claude Code's
+        # launch CWD). May be None for non-project sessions. Scripts should use
+        # this instead of re-deriving from Path.cwd() — never walk up looking
+        # for .claude/ since Claude Code itself does not.
+        self.project_dir = project_dir
         self.failures = []
         self._log_entries = log_entries
         self._prefix = prefix

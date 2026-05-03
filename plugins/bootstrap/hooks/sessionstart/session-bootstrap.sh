@@ -58,9 +58,24 @@ if [ -n "$HOOK_INPUT" ]; then
     _GUARD_SID=$(echo "$HOOK_INPUT" | grep -o '"session_id"[[:space:]]*:[[:space:]]*"[^"]*"' | grep -o '"[^"]*"$' | tr -d '"' || true)
 fi
 _GUARD_FILE="$PLUGIN_DATA/last_session_id"
-_COOLDOWN_FILE="$PLUGIN_DATA/last_run_epoch"
-_COOLDOWN_SECS=300  # 5-minute cooldown between runs
-mkdir -p "$PLUGIN_DATA"
+# Per-project cooldown: key the cooldown file by sha1(project_dir) so launching
+# claude in project B shortly after project A doesn't silently skip B's
+# bootstrap. PWD is Claude Code's launch CWD (matches what session-bootstrap
+# passes to the engine as --project-dir). Falls back to a "_global_" bucket
+# when no usable hash tool is available.
+_COOLDOWN_DIR="$PLUGIN_DATA/cooldowns"
+_PROJECT_KEY=""
+if command -v sha1sum >/dev/null 2>&1; then
+    _PROJECT_KEY=$(printf '%s' "$PWD" | sha1sum | awk '{print $1}')
+elif command -v shasum >/dev/null 2>&1; then
+    _PROJECT_KEY=$(printf '%s' "$PWD" | shasum -a 1 | awk '{print $1}')
+fi
+if [ -z "$_PROJECT_KEY" ]; then
+    _PROJECT_KEY="_global_"
+fi
+_COOLDOWN_FILE="$_COOLDOWN_DIR/last_run_epoch.$_PROJECT_KEY"
+_COOLDOWN_SECS=3600  # 60-minute per-project cooldown; reset via bootstrap-reset-cooldown
+mkdir -p "$PLUGIN_DATA" "$_COOLDOWN_DIR"
 
 # --- Re-prime pending display from persistent alert (runs every session) ---
 # The bootstrap engine writes bootstrap_alert.json when there's an unresolved
@@ -84,15 +99,23 @@ if [ -n "${_GUARD_SID:-}" ]; then
     printf '%s' "$_GUARD_SID" > "$_GUARD_FILE"
 fi
 
-# Layer 2: timestamp cooldown (works regardless of stdin)
+# Layer 2: timestamp cooldown, keyed per-project (works regardless of stdin).
 # Bypass the cooldown when there's an unresolved persistent alert — we want
 # the engine to re-check on every session in that case so it can confirm the
 # fix and clear the alert promptly. Steady-state success still gets the
-# 5-minute throttle.
+# per-project throttle.
 if [ -f "$_COOLDOWN_FILE" ] && [ ! -f "$_ALERT_FILE" ]; then
     _LAST_RUN=$(cat "$_COOLDOWN_FILE" 2>/dev/null || echo "0")
     _NOW=$(date +%s 2>/dev/null || echo "0")
-    if [ $((_NOW - _LAST_RUN)) -lt $_COOLDOWN_SECS ]; then
+    _AGE=$((_NOW - _LAST_RUN))
+    if [ $_AGE -lt $_COOLDOWN_SECS ]; then
+        # Log the skip so users can tell "bootstrap was throttled" apart from
+        # "bootstrap ran and found nothing" when debugging.
+        _SKIP_TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "unknown-time")"
+        {
+            echo "--- Shell $_SKIP_TS ---"
+            echo "cooldown: skipped (last run ${_AGE}s ago for $PWD; reset with 'bootstrap-reset-cooldown')"
+        } >> "$PLUGIN_DATA/bootstrap.log" 2>/dev/null || true
         HOOK_OUTPUT_EMITTED=1
         exit 0
     fi
@@ -165,12 +188,36 @@ case ":${PATH}:" in
     *) export PATH="${STANDALONE_PYTHON_BIN}:${PATH}" ;;
 esac
 
+# Detect OS once — used both by the reset-script install below and by the
+# Python install/install-path logic further down.
+OS="$(uname -s)"
+
+# --- Install bootstrap-reset-cooldown into ~/.local/bin ---
+# A user-facing tool to clear the per-project cooldown when bootstrap needs to
+# re-run sooner than the throttle allows. Re-installed every session so it
+# stays in sync with the cached plugin version.
+_RESET_SRC="$PLUGIN_ROOT/scripts/bootstrap-reset-cooldown.sh"
+_RESET_DST="$LOCAL_BIN/bootstrap-reset-cooldown"
+if [ -f "$_RESET_SRC" ]; then
+    mkdir -p "$LOCAL_BIN"
+    if [[ "$OS" == MINGW* ]] || [[ "$OS" == MSYS* ]]; then
+        # Windows: symlinks need elevation; just copy.
+        if ! cmp -s "$_RESET_SRC" "$_RESET_DST" 2>/dev/null; then
+            cp -f "$_RESET_SRC" "$_RESET_DST" 2>/dev/null && chmod +x "$_RESET_DST" 2>/dev/null
+        fi
+    else
+        # Unix: symlink so updates flow automatically when the plugin cache refreshes.
+        if [ ! -L "$_RESET_DST" ] || [ "$(readlink "$_RESET_DST" 2>/dev/null)" != "$_RESET_SRC" ]; then
+            ln -sf "$_RESET_SRC" "$_RESET_DST"
+        fi
+    fi
+fi
+
 # --- Ensure Python is installed in ~/.local/bin ---
 # We always use our standalone Python in ~/.local/bin. System Python is not used.
 # Check if it's in place and works; install standalone if not.
 
 PYTHON=""
-OS="$(uname -s)"
 STANDALONE_DIR="${HOME}/.local/share/python-standalone"
 
 # Schannel (Windows-native TLS) can fail with CRYPT_E_NO_REVOCATION_CHECK on
