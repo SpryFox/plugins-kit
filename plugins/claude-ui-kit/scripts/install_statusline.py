@@ -44,10 +44,17 @@ def install(ctx) -> None:
 
     expected_command = _posix(installed_script)
 
+    # Use the engine's canonical project_dir (Claude Code's launch CWD).
+    # Never walk up looking for .claude/ — Claude Code itself does not, so any
+    # parent .claude/ we'd find is a directory Claude Code never reads. Older
+    # versions of this script walked up and silently wrote into the wrong file
+    # (and worse, created stray .claude/ dirs that polluted sibling projects).
+    project_dir_str = getattr(ctx, "project_dir", None)
+    project_root = Path(project_dir_str).resolve() if project_dir_str else None
+
     # Search layers from highest to lowest precedence so the user-visible
     # statusLine is the one we compare against.
     candidate_paths = []
-    project_root = _find_project_root()
     if project_root is not None:
         candidate_paths.append(project_root / ".claude" / "settings.local.json")
         candidate_paths.append(project_root / ".claude" / "settings.json")
@@ -105,18 +112,6 @@ def install(ctx) -> None:
 def _resolve_installed_script(data_dir: str) -> Optional[Path]:
     p = Path(data_dir) / INSTALLED_SCRIPT_RELPATH
     return p if p.is_file() else None
-
-
-def _find_project_root() -> Optional[Path]:
-    """Walk up from CWD looking for a .claude/ directory (project marker)."""
-    cur = Path.cwd().resolve()
-    home = Path.home().resolve()
-    for candidate in [cur, *cur.parents]:
-        if candidate == home:
-            return None
-        if (candidate / ".claude").is_dir():
-            return candidate
-    return None
 
 
 def _find_existing_statusline(paths) -> Optional[Tuple[Path, str]]:
