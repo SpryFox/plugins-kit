@@ -37,29 +37,38 @@ technique_skill:
           input: "p4 -ztag changes -s pending -u $(p4 set -q P4USER | cut -d= -f2) -m 20"
           expected: A single integer CL number confirmed by the user.
         - n: 2
-          action: Run prepare_review.py to fetch the diff (with shelved fallback) and map ancestor CLAUDE.md files for each changed file.
+          action: Run prepare_review.py to fetch the diff (with shelved fallback), map ancestor CLAUDE.md files for each changed file, and detect unreconciled files in the directories the CL touches.
           tool: ${CLAUDE_PLUGIN_ROOT}/scripts/prepare_review.py
           input: "<CL>"
-          expected: JSON with cl, description, diff, changed_files, unique_claude_mds.
+          expected: JSON with cl, description, diff, changed_files, unique_claude_mds, unreconciled.
           on_failure: Surface the stderr message to the user and stop. No retry.
         - n: 3
+          action: |
+            If bundle.unreconciled is non-empty, list the files (grouped by action: add / edit / delete) and ask the user whether any should be folded into the CL before review.
+            - If the user picks one or more: run `p4 reconcile -c <CL> <local-paths>` to open them directly into the CL, then re-run prepare_review.py and use the new bundle.
+            - If the user declines all: continue with the current bundle.
+            On the post-reconcile re-run, do NOT prompt again about unreconciled files even if some remain -- the user already decided.
+            Skip this step entirely if bundle.unreconciled is empty.
+          tool: AskUserQuestion + p4 reconcile + prepare_review.py
+        - n: 4
           action: Read every CLAUDE.md path in unique_claude_mds. Subagents do not need to re-read.
           tool: Read
-        - n: 4
+        - n: 5
           action: Launch three reviewer subagents in parallel via a single message with three Agent tool calls.
           tool: Agent
           expected: Three JSON arrays of candidate issues from reviewers A, B, C.
-        - n: 5
+        - n: 6
           action: Launch one validator subagent per candidate issue, all in parallel via a single message.
           tool: Agent
           expected: CONFIRMED or REJECTED per issue.
-        - n: 6
-          action: Drop rejected issues silently (do not report rejected issues to the user).
         - n: 7
+          action: Drop rejected issues silently (do not report rejected issues to the user).
+        - n: 8
           action: Render the markdown review grouped by file.
       checklist:
         - CL number resolved
         - Context bundled via prepare_review.py
+        - Unreconciled files surfaced (and either folded in via `p4 reconcile -c <CL>` with a re-run, or explicitly declined)
         - All CLAUDE.md files read
         - Reviewers launched in parallel (single message, three Agent calls)
         - Validators launched in parallel (single message, N Agent calls)
@@ -71,29 +80,39 @@ technique_skill:
         - Render only -- this skill outputs in chat. There is no Swarm comment, PR comment, or disk write step.
         - If prepare_review.py fails, report the error and stop. No retry.
         - Validators are independent of reviewers. The validator does not see who flagged the issue.
+        - The unreconciled check must happen BEFORE reviewers spawn. Folding in forgotten files after agents have already reviewed the diff wastes their work and produces a stale review.
+        - On the post-reconcile re-run, do NOT prompt again about unreconciled files. The user already chose. Re-prompting on the same list is annoying; re-prompting on a smaller list (because they only added some) implies the rest were forgotten when they were declined.
   narration:
     note: Reviews involve long silent stretches (batched file reads, parallel subagents that take 30s+). Post one short status line per step using these templates verbatim, filling in the bracketed counts. Do not paraphrase, omit, or add extras.
     templates:
       - when: "Before step 1 (only if no CL arg was passed)"
         template: "Listing your pending changelists."
       - when: "Before step 2"
-        template: "Gathering context for CL <CL>: fetching diff and mapping CLAUDE.md scopes."
-      - when: "After step 2, before step 3 (M >= 1)"
+        template: "Gathering context for CL <CL>: fetching diff, mapping CLAUDE.md scopes, scanning for unreconciled files."
+      - when: "Before step 3 (U >= 1)"
+        template: "Found <U> unreconciled file(s) in the directories this CL touches. Asking before reviewing."
+      - when: "After step 3 if user folded files in (U_added >= 1)"
+        template: "Folded <U_added> file(s) into CL <CL> via `p4 reconcile`. Re-running prepare to refresh the diff."
+      - when: "After step 3 if user declined (U_added = 0 and U >= 1)"
+        template: "Continuing with CL <CL> as-is."
+      - when: "After step 3, before step 4 (M >= 1)"
         template: "Got <N> changed file(s) and <M> unique CLAUDE.md scope(s). Reading them now."
-      - when: "After step 2, before step 4 (M = 0)"
+      - when: "After step 3, before step 5 (M = 0)"
         template: "Got <N> changed file(s); no CLAUDE.md scopes apply. Skipping to reviewers."
-      - when: "Before step 4"
+      - when: "Before step 5"
         template: "Launching 3 reviewers in parallel: sonnet CLAUDE.md compliance, opus diff-only bugs, opus introduced-code."
-      - when: "After step 4, before step 5 (X >= 1)"
+      - when: "After step 5, before step 6 (X >= 1)"
         template: "Reviewers returned <X> candidate issue(s) (<B> bug, <C> CLAUDE.md). Launching <X> validator(s) in parallel."
-      - when: "After step 4 (X = 0)"
+      - when: "After step 5 (X = 0)"
         template: "Reviewers found no issues. Skipping validation."
-      - when: "After step 5, before step 7"
+      - when: "After step 6, before step 8"
         template: "Validators confirmed <Y> of <X>. Rendering review."
     variables:
       "<CL>": "the changelist number"
       "<N>": "len(bundle.changed_files)"
       "<M>": "len(bundle.unique_claude_mds)"
+      "<U>": "len(bundle.unreconciled)"
+      "<U_added>": "count of files the user chose to fold into the CL"
       "<X>": "total candidate issues from all three reviewers combined"
       "<B>": "count where reason == 'bug'"
       "<C>": "count where reason == 'claude_md'"

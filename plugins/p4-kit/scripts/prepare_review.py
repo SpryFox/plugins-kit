@@ -12,6 +12,12 @@ reviewers see the full introduced/removed code, this script synthesizes
 new-file / deleted-file hunks for those actions by fetching content via
 `p4 print`. Supports both shelved (`@=<CL>`) and submitted (`#<rev>`) forms.
 
+Also runs `p4 reconcile -n` recursively over the minimal covering set of
+directories containing CL files, and reports any unreconciled files
+(untracked adds, unopened edits, missing deletes) that the user may have
+forgotten to include in the CL. `.p4ignore` is honored by p4 itself; files
+already opened in any pending CL are skipped by reconcile.
+
 Output schema:
     {
       "cl": "<CL>",
@@ -21,7 +27,10 @@ Output schema:
         {"depot": "<depot path>", "local": "<local path>",
          "claude_mds": ["<absolute path>", ...]}
       ],
-      "unique_claude_mds": ["<absolute path>", ...]
+      "unique_claude_mds": ["<absolute path>", ...],
+      "unreconciled": [
+        {"local": "<local path>", "depot": "<depot path>", "action": "add"|"edit"|"delete"}
+      ]
     }
 
 Stderr-only diagnostics. Non-zero exit on hard failure.
@@ -37,6 +46,7 @@ from typing import Optional
 
 _FILE_HEADER = re.compile(r"^==== (//[^#]+)#(\d+) \([^)]*\) ====\s*$")
 _AFFECTED_LINE = re.compile(r"^\.\.\. (//[^#]+)#(\d+) ([\w/]+)\s*$")
+_RECONCILE_ACTIONS = {"add", "edit", "delete"}
 
 _ADD_ACTIONS = {"add", "branch", "move/add", "import"}
 _DELETE_ACTIONS = {"delete", "move/delete", "purge"}
@@ -330,6 +340,87 @@ def resolve_local_paths(depot_paths: list[str]) -> dict[str, Optional[str]]:
     return result
 
 
+def compute_minimal_dirs(local_paths: list[Optional[str]]) -> list[Path]:
+    """Collapse parent directories of `local_paths` to the minimal covering set.
+
+    Given file paths, returns the set of containing directories with descendants
+    removed: e.g. {/a, /a/b, /c} collapses to [/a, /c]. A single recursive
+    `p4 reconcile -n <dir>/...` over each directory then covers everything.
+
+    Non-existent paths and `None` entries are skipped (e.g. files outside the
+    workspace, or whose parent directory was deleted as part of the CL).
+    """
+    dirs: set[Path] = set()
+    for p in local_paths:
+        if not p:
+            continue
+        try:
+            d = Path(p).parent.resolve()
+        except OSError:
+            continue
+        if d.is_dir():
+            dirs.add(d)
+    if not dirs:
+        return []
+
+    # Sort shallowest-first so a kept ancestor is checked before its descendants.
+    sorted_dirs = sorted(dirs, key=lambda d: len(d.parts))
+    minimal: list[Path] = []
+    for d in sorted_dirs:
+        if any(kept == d or kept in d.parents for kept in minimal):
+            continue
+        minimal.append(d)
+    return minimal
+
+
+def find_unreconciled(dirs: list[Path]) -> list[dict]:
+    """Run `p4 -ztag reconcile -n` recursively over `dirs` and return unreconciled files.
+
+    Each entry: {"local": <path>, "depot": <path>, "action": "add"|"edit"|"delete"}.
+    `.p4ignore` is honored by p4. Files already opened in any pending CL are skipped.
+    A single p4 invocation handles all directories at once.
+
+    On failure (p4 error, no workspace, etc.) returns []; the review still proceeds.
+    """
+    if not dirs:
+        return []
+    specs = [f"{d}/..." for d in dirs]
+    rc, out, err = run_p4(["-ztag", "reconcile", "-n", *specs])
+    # rc != 0 with "no file(s) to reconcile" means nothing to report -- not an error.
+    if rc != 0 and "no file(s) to reconcile" not in (err + out):
+        print(
+            f"prepare_review: reconcile check failed (rc={rc}): {err.strip() or out.strip()}",
+            file=sys.stderr,
+        )
+        return []
+
+    items: list[dict] = []
+    current: dict = {}
+
+    def flush() -> None:
+        if current.get("action") in _RECONCILE_ACTIONS and current.get("local"):
+            items.append(
+                {
+                    "local": current["local"],
+                    "depot": current.get("depot", ""),
+                    "action": current["action"],
+                }
+            )
+
+    for line in out.splitlines():
+        if line.startswith("... depotFile "):
+            current["depot"] = line[len("... depotFile "):].strip()
+        elif line.startswith("... clientFile "):
+            current["local"] = line[len("... clientFile "):].strip()
+        elif line.startswith("... action "):
+            current["action"] = line[len("... action "):].strip()
+        elif line.strip() == "":
+            flush()
+            current = {}
+    flush()
+    return items
+
+
 def get_workspace_root() -> Optional[Path]:
     """Get the local workspace root via `p4 -ztag info` → `clientRoot`."""
     rc, out, _ = run_p4(["-ztag", "info"])
@@ -400,12 +491,16 @@ def build_bundle(cl: str) -> dict:
                     seen.add(cm)
         changed_files.append({"depot": depot, "local": local, "claude_mds": claude_mds})
 
+    minimal_dirs = compute_minimal_dirs([f["local"] for f in changed_files])
+    unreconciled = find_unreconciled(minimal_dirs)
+
     return {
         "cl": cl,
         "description": description,
         "diff": diff,
         "changed_files": changed_files,
         "unique_claude_mds": unique,
+        "unreconciled": unreconciled,
     }
 
 

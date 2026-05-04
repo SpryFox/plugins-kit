@@ -635,6 +635,155 @@ class TestCollectClaudeMds:
 
 
 # ---------------------------------------------------------------------------
+# compute_minimal_dirs
+# ---------------------------------------------------------------------------
+
+
+class TestComputeMinimalDirs:
+    def test_collapses_descendants(self, tmp_path):
+        a = tmp_path / "a"
+        ab = a / "b"
+        c = tmp_path / "c"
+        ab.mkdir(parents=True)
+        c.mkdir()
+        files = [str(a / "f1.cpp"), str(ab / "f2.cpp"), str(c / "f3.cpp")]
+        result = pr.compute_minimal_dirs(files)
+        result_set = {p.resolve() for p in result}
+        # /a covers /a/b → only /a and /c remain
+        assert result_set == {a.resolve(), c.resolve()}
+
+    def test_skips_none_and_missing(self, tmp_path):
+        real = tmp_path / "real"
+        real.mkdir()
+        files = [None, str(real / "x.cpp"), str(tmp_path / "ghost" / "y.cpp")]
+        result = pr.compute_minimal_dirs(files)
+        result_set = {p.resolve() for p in result}
+        assert result_set == {real.resolve()}
+
+    def test_empty(self):
+        assert pr.compute_minimal_dirs([]) == []
+
+    def test_unique_dir_kept(self, tmp_path):
+        a = tmp_path / "a"
+        a.mkdir()
+        files = [str(a / "x.cpp"), str(a / "y.cpp"), str(a / "z.cpp")]
+        result = pr.compute_minimal_dirs(files)
+        assert len(result) == 1
+        assert result[0].resolve() == a.resolve()
+
+    def test_sibling_dirs_both_kept(self, tmp_path):
+        a = tmp_path / "a"
+        b = tmp_path / "b"
+        a.mkdir()
+        b.mkdir()
+        files = [str(a / "x.cpp"), str(b / "y.cpp")]
+        result = pr.compute_minimal_dirs(files)
+        result_set = {p.resolve() for p in result}
+        assert result_set == {a.resolve(), b.resolve()}
+
+
+# ---------------------------------------------------------------------------
+# find_unreconciled
+# ---------------------------------------------------------------------------
+
+
+class TestFindUnreconciled:
+    def test_parses_ztag_output(self, tmp_path):
+        d = tmp_path / "src"
+        d.mkdir()
+        out = (
+            "... depotFile //depot/src/new.cpp\n"
+            "... clientFile /ws/src/new.cpp\n"
+            "... rev 1\n"
+            "... action add\n"
+            "... type text\n"
+            "\n"
+            "... depotFile //depot/src/edited.cpp\n"
+            "... clientFile /ws/src/edited.cpp\n"
+            "... rev 3\n"
+            "... action edit\n"
+            "... type text\n"
+            "\n"
+            "... depotFile //depot/src/gone.cpp\n"
+            "... clientFile /ws/src/gone.cpp\n"
+            "... rev 2\n"
+            "... action delete\n"
+            "... type text\n"
+        )
+        with patch.object(pr, "run_p4", return_value=(0, out, "")):
+            result = pr.find_unreconciled([d])
+        assert result == [
+            {"local": "/ws/src/new.cpp", "depot": "//depot/src/new.cpp", "action": "add"},
+            {"local": "/ws/src/edited.cpp", "depot": "//depot/src/edited.cpp", "action": "edit"},
+            {"local": "/ws/src/gone.cpp", "depot": "//depot/src/gone.cpp", "action": "delete"},
+        ]
+
+    def test_uses_recursive_dir_specs(self, tmp_path):
+        a = tmp_path / "a"
+        b = tmp_path / "b"
+        a.mkdir()
+        b.mkdir()
+        captured: list[list[str]] = []
+
+        def fake_run_p4(args):
+            captured.append(args)
+            return (0, "", "")
+
+        with patch.object(pr, "run_p4", side_effect=fake_run_p4):
+            pr.find_unreconciled([a, b])
+
+        assert captured[0][:3] == ["-ztag", "reconcile", "-n"]
+        # Each dir is passed as a recursive `<dir>/...` spec.
+        specs = captured[0][3:]
+        assert any(s.endswith("/...") and str(a) in s for s in specs)
+        assert any(s.endswith("/...") and str(b) in s for s in specs)
+
+    def test_empty_dirs_returns_empty(self):
+        # No p4 call should be made when there's nothing to scan.
+        with patch.object(pr, "run_p4") as mock:
+            assert pr.find_unreconciled([]) == []
+        assert mock.call_count == 0
+
+    def test_no_files_to_reconcile_treated_as_empty(self, tmp_path):
+        d = tmp_path / "x"
+        d.mkdir()
+        with patch.object(
+            pr,
+            "run_p4",
+            return_value=(1, "", "/ws/x - no file(s) to reconcile.\n"),
+        ):
+            assert pr.find_unreconciled([d]) == []
+
+    def test_p4_failure_returns_empty_with_warning(self, tmp_path, capsys):
+        d = tmp_path / "x"
+        d.mkdir()
+        with patch.object(pr, "run_p4", return_value=(1, "", "fatal: bad workspace\n")):
+            assert pr.find_unreconciled([d]) == []
+        err = capsys.readouterr().err
+        assert "reconcile check failed" in err
+
+    def test_skips_entries_missing_required_fields(self, tmp_path):
+        # Defensive: an incomplete record (no action, or no clientFile) is dropped.
+        d = tmp_path / "x"
+        d.mkdir()
+        out = (
+            "... depotFile //depot/orphan.cpp\n"
+            "... rev 1\n"
+            "\n"
+            "... clientFile /ws/no-action.cpp\n"
+            "... depotFile //depot/no-action.cpp\n"
+            "\n"
+            "... depotFile //depot/good.cpp\n"
+            "... clientFile /ws/good.cpp\n"
+            "... action add\n"
+        )
+        with patch.object(pr, "run_p4", return_value=(0, out, "")):
+            result = pr.find_unreconciled([d])
+        assert len(result) == 1
+        assert result[0]["local"] == "/ws/good.cpp"
+
+
+# ---------------------------------------------------------------------------
 # build_bundle — integration
 # ---------------------------------------------------------------------------
 
@@ -677,6 +826,8 @@ class TestBuildBundle:
                 return (0, where_out, "")
             if args[:2] == ["-ztag", "info"]:
                 return (0, info_out, "")
+            if args[:3] == ["-ztag", "reconcile", "-n"]:
+                return (1, "", "no file(s) to reconcile.\n")
             return (1, "", "")
 
         with patch.object(pr, "run_p4", side_effect=fake_run_p4):
@@ -692,6 +843,66 @@ class TestBuildBundle:
         assert len(cf["claude_mds"]) == 1
         assert Path(cf["claude_mds"][0]).read_text() == "workspace rule\n"
         assert len(bundle["unique_claude_mds"]) == 1
+        assert bundle["unreconciled"] == []
+
+    def test_unreconciled_files_surfaced(self, tmp_path):
+        """build_bundle reports files missing from the CL via `p4 reconcile -n`."""
+        ws = tmp_path / "ws"
+        src = ws / "src"
+        src.mkdir(parents=True)
+        local_file = src / "foo.cpp"
+        local_file.write_text("int x = 1;\n")
+        # A sibling file that exists on disk but isn't in the CL.
+        forgotten = src / "forgot.cpp"
+        forgotten.write_text("int y = 2;\n")
+
+        describe_out = (
+            "Change 1000 by user@client on 2026/01/01\n"
+            "\n"
+            "\tEdit foo\n"
+            "\n"
+            "Affected files ...\n"
+            "... //depot/src/foo.cpp#1 edit\n"
+            "\n"
+            "Differences ...\n"
+            "\n"
+            "==== //depot/src/foo.cpp#1 (text) ====\n"
+            "@@ -1 +1 @@\n"
+            "-int x = 0;\n"
+            "+int x = 1;\n"
+        )
+        where_out = (
+            "... depotFile //depot/src/foo.cpp\n"
+            f"... path {local_file}\n"
+        )
+        info_out = f"... clientRoot {ws}\n"
+        reconcile_out = (
+            "... depotFile //depot/src/forgot.cpp\n"
+            f"... clientFile {forgotten}\n"
+            "... rev 1\n"
+            "... action add\n"
+            "... type text\n"
+        )
+
+        def fake_run_p4(args):
+            if args[:2] == ["describe", "-du"]:
+                return (0, describe_out, "")
+            if args[:2] == ["-ztag", "where"]:
+                return (0, where_out, "")
+            if args[:2] == ["-ztag", "info"]:
+                return (0, info_out, "")
+            if args[:3] == ["-ztag", "reconcile", "-n"]:
+                return (0, reconcile_out, "")
+            return (1, "", f"unexpected: {args}")
+
+        with patch.object(pr, "run_p4", side_effect=fake_run_p4):
+            bundle = pr.build_bundle("1000")
+
+        assert len(bundle["unreconciled"]) == 1
+        u = bundle["unreconciled"][0]
+        assert u["action"] == "add"
+        assert u["depot"] == "//depot/src/forgot.cpp"
+        assert Path(u["local"]) == forgotten
 
     def test_mixed_edit_and_add_synthesizes_add_hunk(self, tmp_path):
         """Regression: a CL with edits + pure adds must include synthesized hunks for adds."""
@@ -736,6 +947,8 @@ class TestBuildBundle:
                 return (0, where_out, "")
             if args[:2] == ["-ztag", "info"]:
                 return (0, info_out, "")
+            if args[:3] == ["-ztag", "reconcile", "-n"]:
+                return (1, "", "no file(s) to reconcile.\n")
             if args == ["print", "-q", "//depot/new.py#1"]:
                 return (0, "def brief():\n    pass\n", "")
             return (1, "", f"unexpected: {args}")
@@ -788,6 +1001,8 @@ class TestBuildBundle:
                 return (0, "", "")  # no local mapping needed for this test
             if args[:2] == ["-ztag", "info"]:
                 return (0, f"... clientRoot {ws}\n", "")
+            if args[:3] == ["-ztag", "reconcile", "-n"]:
+                return (1, "", "no file(s) to reconcile.\n")
             if args == ["print", "-q", "//depot/a.py@=1"]:
                 return (0, "content of a\n", "")
             if args == ["print", "-q", "//depot/b.py@=1"]:
@@ -839,6 +1054,8 @@ class TestBuildBundle:
                 return (0, "", "")
             if args[:2] == ["-ztag", "info"]:
                 return (0, f"... clientRoot {ws}\n", "")
+            if args[:3] == ["-ztag", "reconcile", "-n"]:
+                return (1, "", "no file(s) to reconcile.\n")
             if args == ["print", "-q", "//depot/mod_a.cpp@=144098"]:
                 return (0, "mod_a contents\n", "")
             if args == ["print", "-q", "//depot/mod_b.cpp@=144098"]:
