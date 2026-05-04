@@ -45,11 +45,21 @@ Stderr-only diagnostics. Non-zero exit on hard failure.
 """
 
 import json
+import os
 import re
 import subprocess
 import sys
 from pathlib import Path
 from typing import Optional
+
+# Repair PATH before any subprocess fan-out. On Windows, a bloated
+# launching-shell PATH can overrun cmd.exe's variable size limit during
+# venv activation and leave this Python with a stripped PATH that
+# breaks `subprocess.run(["p4", ...])` with FileNotFoundError. Pulling
+# the registry-canonical PATH back in restores p4 visibility.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from path_repair import repair_path  # noqa: E402
+repair_path()
 
 
 _FILE_HEADER = re.compile(r"^==== (//[^#]+)#(\d+) \([^)]*\) ====\s*$")

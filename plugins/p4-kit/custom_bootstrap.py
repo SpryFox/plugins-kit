@@ -8,7 +8,15 @@ Returns dict of discovered values, or None if nothing found.
 import os
 import re
 import subprocess
+import sys
+from pathlib import Path
 from typing import Dict, Optional
+
+# Restore registry-canonical PATH before shelling out to p4 — see
+# lib/path_repair.py for the cmd.exe overflow failure mode this guards.
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from path_repair import repair_path  # noqa: E402
+repair_path()
 
 
 _P4_ANNOTATION = re.compile(r"\s*\([^)]*\)\s*$")
