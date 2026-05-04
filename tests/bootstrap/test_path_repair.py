@@ -1,0 +1,97 @@
+"""Tests for bootstrap_lib/path_repair.py and its vendored copies."""
+
+import filecmp
+import os
+import sys
+from pathlib import Path
+from unittest.mock import patch
+
+from bootstrap_lib.path_repair import PathRepairResult, repair_path
+
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_CANON = _REPO_ROOT / "plugins" / "bootstrap" / "bootstrap_lib" / "path_repair.py"
+_VENDORED = [
+    _REPO_ROOT / "plugins" / "p4-kit" / "lib" / "path_repair.py",
+    _REPO_ROOT / "plugins" / "unreal-kit" / "lib" / "path_repair.py",
+]
+
+
+class TestRepairPath:
+    def test_dedups_inherited_path(self):
+        # Three duplicates of the same entry should collapse to one
+        env = {"PATH": os.pathsep.join(["/a", "/b", "/A", "/b", "/c"])}
+        with patch.dict(os.environ, env, clear=True), \
+             patch("bootstrap_lib.path_repair.sys") as mock_sys:
+            mock_sys.platform = "linux"
+            result = repair_path()
+            entries = [p for p in os.environ["PATH"].split(os.pathsep) if p]
+            assert len(entries) == 3
+        assert result.before_entries == 5
+        assert result.after_entries == 3
+        assert result.deduped == 2
+        assert result.restored == 0
+        assert result.changed is True
+
+    def test_no_change_when_already_clean(self):
+        env = {"PATH": os.pathsep.join(["/a", "/b", "/c"])}
+        with patch.dict(os.environ, env, clear=True), \
+             patch("bootstrap_lib.path_repair.sys") as mock_sys:
+            mock_sys.platform = "linux"
+            result = repair_path()
+
+        assert result.changed is False
+        assert result.deduped == 0
+        assert result.restored == 0
+
+    def test_idempotent(self):
+        env = {"PATH": os.pathsep.join(["/a", "/a", "/b"])}
+        with patch.dict(os.environ, env, clear=True), \
+             patch("bootstrap_lib.path_repair.sys") as mock_sys:
+            mock_sys.platform = "linux"
+            repair_path()
+            second = repair_path()
+        assert second.changed is False
+
+    def test_handles_empty_path(self):
+        env = {"PATH": ""}
+        with patch.dict(os.environ, env, clear=True), \
+             patch("bootstrap_lib.path_repair.sys") as mock_sys:
+            mock_sys.platform = "linux"
+            result = repair_path()
+        assert result.before_entries == 0
+        assert result.after_entries == 0
+
+    def test_skips_registry_on_non_windows(self):
+        # On non-Windows the function must not touch winreg
+        env = {"PATH": "/a"}
+        with patch.dict(os.environ, env, clear=True), \
+             patch("bootstrap_lib.path_repair.sys") as mock_sys:
+            mock_sys.platform = "linux"
+            result = repair_path()
+        assert result.restored == 0
+
+
+class TestVendoredCopiesInSync:
+    """Vendored path_repair.py copies must be byte-identical to canon.
+
+    Each consumer plugin keeps its own copy so it can run without
+    depending on bootstrap being importable. Drift would mean different
+    behavior across plugins for the same symptom.
+    """
+
+    def test_canon_exists(self):
+        assert _CANON.is_file(), f"Canonical path_repair missing: {_CANON}"
+
+    def test_vendored_copies_match_canon(self):
+        diffs = []
+        for vendored in _VENDORED:
+            if not vendored.is_file():
+                diffs.append(f"missing: {vendored}")
+                continue
+            if not filecmp.cmp(_CANON, vendored, shallow=False):
+                diffs.append(f"diverged: {vendored}")
+        assert not diffs, (
+            "Vendored path_repair.py copies must match "
+            f"{_CANON.relative_to(_REPO_ROOT)}: {diffs}"
+        )

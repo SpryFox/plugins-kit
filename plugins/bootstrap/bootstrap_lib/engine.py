@@ -44,12 +44,19 @@ def main():
 
     from .config import load_config
     from .log import write_log_block
+    from .path_repair import repair_path
     from .tool_check import check_tool
     from .path_check import check_path_entry
     from .platform_detect import detect_os
     from .plugin_resolve import list_enabled_plugins
     from .venv_check import check_venv
     from .git_dep_check import check_git_dep
+
+    # Repair PATH before any subprocess fan-out. On Windows, a bloated
+    # launching-shell PATH can trip cmd.exe's variable-size limit during
+    # venv activation and leave this Python with a stripped PATH that
+    # fails tool_check / git_dep_check / etc.
+    path_repair_result = repair_path()
 
     # Step 1: Load/migrate config
     defaults_dir = os.path.join(plugin_root, "defaults")
@@ -63,6 +70,18 @@ def main():
     bootstrap_ok_entries = []
     # Display sections: list of (header, action_entries, ok_entries)
     display_sections = []
+
+    if path_repair_result.changed:
+        details = []
+        if path_repair_result.deduped:
+            details.append(f"deduped {path_repair_result.deduped}")
+        if path_repair_result.restored:
+            details.append(f"restored {path_repair_result.restored} from registry")
+        bootstrap_action_entries.append(
+            f"PATH repaired: {path_repair_result.before_entries} -> "
+            f"{path_repair_result.after_entries} entries "
+            f"({', '.join(details)})"
+        )
 
     # Detect plugins directory (where installed_plugins.json lives)
     # Dev layout: ~/Dev/<marketplace>/plugins/bootstrap → one up
