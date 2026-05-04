@@ -73,13 +73,23 @@ def add_path_to_shell_config(path_entry: str) -> Tuple[bool, str]:
         # Linux and Windows (Git Bash)
         rc_files = [os.path.expanduser("~/.bashrc")]
 
+    # Build a slash-normalized form of the $HOME-relative path we'd write,
+    # so the idempotency check matches regardless of whether a previous run
+    # wrote backslashes (native Windows Python) or forward slashes (MSYS/Cygwin
+    # Python). Without this, every run appends a fresh duplicate line.
+    expanded_fwd = expanded.replace("\\", "/")
+    home_fwd = home.replace("\\", "/")
+    if expanded_fwd.startswith(home_fwd):
+        home_form = "$HOME" + expanded_fwd[len(home_fwd):]
+    else:
+        home_form = expanded_fwd
+
     written = []
     for rc_file in rc_files:
         try:
             if os.path.exists(rc_file):
-                content = open(rc_file).read()
-                # Skip if already declared (check both expanded and unexpanded forms)
-                if expanded in content or path_entry in content:
+                content_fwd = open(rc_file).read().replace("\\", "/")
+                if home_form in content_fwd or expanded_fwd in content_fwd:
                     continue
             with open(rc_file, "a") as f:
                 f.write(f'\n# Added by bootstrap\n{export_line}\n')

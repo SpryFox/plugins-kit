@@ -189,28 +189,50 @@ class TestAddPathToShellConfigWindowsIntegration:
         mock_registry.assert_not_called()
 
 
-class TestAddPathToShellConfigWindowsIntegration:
-    """Test that add_path_to_shell_config calls registry on Windows."""
+class TestAddPathToShellConfigIdempotency:
+    """Repeated calls must not append duplicate export lines."""
 
-    @patch("bootstrap_lib.path_check._add_path_to_windows_registry")
-    def test_calls_registry_on_windows(self, mock_registry, tmp_path):
+    def test_repeated_calls_dont_duplicate_export_line(self, tmp_path):
         from bootstrap_lib.path_check import add_path_to_shell_config
-        mock_registry.return_value = (True, "added to registry")
-        # Use a fake RC file path to prevent writing to real ~/.bashrc
-        fake_bashrc = str(tmp_path / ".bashrc")
-        with patch.dict(os.environ, {"MSYSTEM": "MINGW64"}), \
-             patch("bootstrap_lib.path_check.os.path.expanduser", side_effect=lambda p: str(tmp_path / p.lstrip("~/")) if p.startswith("~") else p):
-            ok, msg = add_path_to_shell_config("/tmp/test_path_xyz_" + str(os.getpid()))
-        mock_registry.assert_called_once()
 
-    @patch("bootstrap_lib.path_check._add_path_to_windows_registry")
-    def test_skips_registry_on_non_windows(self, mock_registry, tmp_path):
-        from bootstrap_lib.path_check import add_path_to_shell_config
-        # Ensure MSYSTEM is not set and sys.platform is not win32
-        env = {k: v for k, v in os.environ.items() if k != "MSYSTEM"}
+        bashrc = tmp_path / ".bashrc"
+        bashrc.write_text("# existing config\n")
+        fake_home = str(tmp_path)
+
+        env = {k: v for k, v in os.environ.items() if k not in ("MSYSTEM",)}
+        env["BOOTSTRAP_SKIP_REGISTRY"] = "1"
         with patch.dict(os.environ, env, clear=True), \
              patch("bootstrap_lib.path_check.sys") as mock_sys, \
-             patch("bootstrap_lib.path_check.os.path.expanduser", side_effect=lambda p: str(tmp_path / p.lstrip("~/")) if p.startswith("~") else p):
+             patch("bootstrap_lib.path_check.os.path.expanduser",
+                   side_effect=lambda p: p.replace("~", fake_home, 1) if p.startswith("~") else p):
             mock_sys.platform = "linux"
-            add_path_to_shell_config("/tmp/test_path_xyz_" + str(os.getpid()))
-        mock_registry.assert_not_called()
+            for _ in range(5):
+                add_path_to_shell_config("~/.local/share/node")
+
+        content = bashrc.read_text()
+        assert content.count("export PATH=") == 1, (
+            f"Expected exactly one export line, got:\n{content}"
+        )
+
+    def test_idempotent_with_forward_slash_form_already_present(self, tmp_path):
+        """Existing $HOME/forward/slash line should suppress further writes
+        even when expanduser returns backslashes (native Windows Python)."""
+        from bootstrap_lib.path_check import add_path_to_shell_config
+
+        bashrc = tmp_path / ".bashrc"
+        bashrc.write_text(
+            '# existing config\n'
+            'export PATH="$HOME/.local/share/node:$PATH"\n'
+        )
+        fake_home = str(tmp_path).replace("/", "\\")
+
+        env = {k: v for k, v in os.environ.items() if k not in ("MSYSTEM",)}
+        env["BOOTSTRAP_SKIP_REGISTRY"] = "1"
+        with patch.dict(os.environ, env, clear=True), \
+             patch("bootstrap_lib.path_check.sys") as mock_sys, \
+             patch("bootstrap_lib.path_check.os.path.expanduser",
+                   side_effect=lambda p: (fake_home + p[1:].replace("/", "\\")) if p.startswith("~") else p):
+            mock_sys.platform = "linux"
+            add_path_to_shell_config("~/.local/share/node")
+
+        assert bashrc.read_text().count("export PATH=") == 1
