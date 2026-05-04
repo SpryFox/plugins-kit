@@ -9,7 +9,7 @@
     {
       "name": "unreal-kit",
       "description": "Unreal Engine automation: Python API for asset inspection and data extraction; MCP server for live Editor authoring (actors, Blueprints, materials, PIE)",
-      "version": "0.8.4",
+      "version": "0.8.5",
       "author": {
         "name": "Christina"
       },
@@ -40,7 +40,7 @@
     {
       "name": "bootstrap",
       "description": "Centralized bootstrap engine for Claude Code plugins",
-      "version": "0.10.3",
+      "version": "0.10.5",
       "author": {
         "name": "Christina"
       },
@@ -50,7 +50,7 @@
     {
       "name": "p4-kit",
       "description": "Multi-agent local code review of Perforce changelists using Claude subagents",
-      "version": "0.8.1",
+      "version": "0.8.2",
       "author": {
         "name": "Christina"
       },
