@@ -10,6 +10,11 @@ import sys
 from collections import Counter, defaultdict
 
 sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(__file__), '..', 'lib')))
+# Plugin-level lib (for path_repair) — bin/ -> skill/ -> skills/ -> unreal-kit/lib
+sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'lib')))
+from path_repair import repair_path
+repair_path()
+
 from p4cli import get_opened_map, get_workspace_mapping, local_to_depot
 from redirector_record import load_discovery, save_safe_set, save_report
 

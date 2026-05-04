@@ -8,6 +8,9 @@ import os, sys
 # unreal-kit bootstrap (UE-side dependency manager).
 sys.path.insert(0, os.path.expanduser('~/.claude/plugins/data/plugins-kit/unreal-kit/lib'))
 sys.path.insert(0, os.path.expanduser('~/.claude/plugins/data/plugins-kit/unreal-kit/github/unreal-pip'))
+# Restore registry-canonical PATH before any subprocess fan-out.
+from path_repair import repair_path
+repair_path()
 from bootstrap import ensure_dependencies
 ensure_dependencies()
 

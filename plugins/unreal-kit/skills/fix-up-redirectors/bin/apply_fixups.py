@@ -31,6 +31,12 @@ sys.path.insert(0, os.path.expanduser('~/.claude/plugins/data/plugins-kit/unreal
 from bootstrap import ensure_dependencies
 ensure_dependencies()
 
+# Restore registry-canonical PATH before p4 subprocess fan-out (see
+# unreal-kit/lib/path_repair.py). Defense-in-depth — even though UE
+# commandlets rarely trip cmd.exe overflow, the cost is negligible.
+from path_repair import repair_path
+repair_path()
+
 sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(__file__), '..', 'lib')))
 import unreal
 from p4cli import (

@@ -28,6 +28,11 @@ _LIB_DIR = _PLUGIN_DIR / "lib"
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
+# Restore registry-canonical PATH before subprocess fan-out — see
+# unreal-kit/lib/path_repair.py for the cmd.exe overflow failure mode.
+from path_repair import repair_path  # noqa: E402
+repair_path()
+
 from ue_discovery import find_engine_dir as _find_engine_dir, find_uproject_from_cwd, find_uproject_from_path
 from ue_runner_config import RunnerConfig, load_config
 
