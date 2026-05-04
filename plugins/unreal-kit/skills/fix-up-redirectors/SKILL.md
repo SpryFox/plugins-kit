@@ -20,6 +20,64 @@ Not every redirector needs the same treatment:
 
 The classifier emits the fix-up safe set and (optionally) the orphaned safe set as separate JSON files. The apply script consumes either shape.
 
+## Blast Radius and Reference Detection
+
+Redirectors are pointers, and pointers get referenced from places the on-disk asset graph cannot see. This skill's reference scan is heuristic by construction: it catches the cases that have been observed and encoded into the scanner, and quietly misses the rest. A clean scan is a *hint* that a fix is safe, not proof. Treat the residual risk as real even when every check passes -- the cost of an unfixed reference is a silent runtime failure (missing asset at load time, broken Blueprint pin, dangling soft ref) that often only shows up under specific gameplay conditions.
+
+### Known reference channels
+
+What the skill sees today:
+
+- **Hard refs in other `.uasset` files** -- caught by phase-1 discovery via the UE asset registry. The redirector's own referencer list comes from here. Reliable for assets that import each other through standard UE serialization.
+- **Soft object paths in other `.uasset` files** -- also caught by phase-1 discovery (the asset registry tracks soft refs). Phase 4's `rename_referencing_soft_object_paths` handles the rewrite.
+- **Literal asset-path strings in source files** -- caught by `bin/scan_code_references.py` (engine in `lib/code_refs.py`). Default extensions: `.cpp`, `.h`, `.hpp`, `.c`, `.cc`, `.cxx`, `.inl`, `.cs`, `.py`, `.ini`, `.uplugin`, `.uproject`. Pattern: regex match for `/Mount/...`-shaped strings, narrowed by (a) mount must be a real `.uproject`/`.uplugin`/`/Engine` mount discovered on disk, (b) the path must resolve to a real `.uasset` or `.umap`. The double filter is what gives the cache its signal-to-noise -- without it, false positives (test fixtures, `/Script/...` class paths, doc URLs, include paths) flood the cache.
+- **Level-redirector `.umap` siblings** -- the apply script's delete-only mode pairs a redirector `.uasset` with its `.umap` sibling so the depot never ends up with one half of the pair.
+
+What the skill does NOT see (each one is a real channel that has bitten projects):
+
+- **Configs that aren't in the default extension list.** `.yaml`, `.json`, `.csv`, `.toml`, `.xml`, and any project-specific data formats are ignored unless the user passes `--extensions` to include them. Any project that drives content from data tables or YAML configs has a coverage gap here.
+- **Dynamically constructed asset paths.** `FString::Printf("/Game/Items/%s", ItemName)` produces a path at runtime that no static scanner can match. The literal `/Game/Items/` substring won't resolve to an asset on disk, so the scan ignores it.
+- **Indirect references through C++ class names.** A `UCLASS()` referenced as `/Script/MyModule.UMyClass` is a class path, not a content path -- and the scanner deliberately filters `/Script/...`. If a redirector is held alive only by a Blueprint that derives from a code class that itself names the asset by string, the chain is invisible to both phases.
+- **References inside `.uasset` files that the asset registry doesn't expose** (custom serialization, third-party plugin formats). Phase 1 trusts the registry; anything outside the registry is a blind spot.
+- **Redirect chains.** A target that is *itself* a redirector resolves to the eventual asset at load time, but the discovery snapshot only sees one hop. Chains longer than one are rare but possible after a series of renames.
+- **References in non-source artifacts** -- `.csv` config tables, perforce-only docs, automated test manifests, build scripts in shells other than the scanned set, anything generated at build time and not committed.
+- **References in code outside the scan root.** The scanner walks `--root` (default cwd). A monorepo with sibling tools that reference game content from outside the project tree won't be covered.
+
+### Strategy: directory-sample, soak, then purge
+
+Because the residual risk is real, the apply path is structured as a series of progressively wider commits, not one big purge:
+
+1. **Directory-sampled test slice.** Use `pick_one_per_dir.py` to reduce the safe set to one redirector per package directory. This exercises every directory shape in the safe set (which is where most "this folder has unusual referencers" surprises live), with a CL small enough to revert in one command. In a reference run, 2839 fix-up redirectors collapsed to a 241-redirector subset; 68 orphaned redirectors collapsed to 18.
+2. **Apply, soak, verify.** Submit the test slice. Run the same verification you'd run for any content change: smoke playtest, automated tests where they exist, visual diff on referencer assets if any were rewritten. Soak for at least a build cycle so any reference channel the scanner missed has time to surface as a load error or visual regression.
+3. **Full purge.** Only after the test slice is clean, re-run the apply on the original safe set (already-fixed redirectors are no-ops, so the second pass is naturally idempotent).
+
+The reason this works: a missed reference channel that breaks N assets in the test slice is cheap to revert (one CL, scoped to ~1% of the directories). The same channel breaking N assets in the full purge is expensive to revert (thousands of files, possibly across many directories whose referencers also got rewritten). Sampling concentrates the blast where reverts are still cheap.
+
+The recommended workflow:
+
+```
+classify -> code-ref filter -> directory-sample -> apply test CL
+        -> soak (smoke playtest, tests, visual diff) -> apply full purge
+```
+
+The fix-up safe set and the orphaned safe set both pass through this pipeline; only the per-direction details differ (orphan path skips the code-ref filter because there are no referencers).
+
+### When to Extend Coverage
+
+When a regression escapes the heuristic -- a missing-asset error, a broken Blueprint, a dangling soft ref after a clean fix-up run -- the playbook is:
+
+1. **Identify the missed channel.** What kind of file held the reference that the scan didn't see? Was it an extension not in `DEFAULT_EXTENSIONS` (e.g. a `.yaml` config, `.csv` data table)? A dynamic path construction? A redirect chain longer than one hop? An asset format outside the registry?
+2. **Extend the scan logic.** Most channels live in `lib/code_refs.py`:
+   - New file extension -> add to `DEFAULT_EXTENSIONS` (or document that the user must pass `--extensions` for that channel).
+   - New path *shape* (e.g. asset paths embedded in JSON quoted strings with extra escaping, or a project-specific naming convention) -> extend `_PATH_RE` or add a parallel matcher; keep the mount + on-disk filter so signal-to-noise stays high.
+   - New mount source (e.g. a non-standard plugin layout) -> extend `discover_mount_points`.
+   - Channels that aren't text-pattern-matchable (dynamic construction, registry blind spots) -> document the gap in this section instead of pretending the scanner covers it; the honest "we don't see this" is more useful than a false sense of safety.
+3. **Invalidate the cache.** This is the easy step to forget. The cache lives at `./.local-data/code_references.yaml` and the filter reuses it for 24 hours by default. After extending coverage, either delete the cache file or pass `--max-age-hours 0` to `filter_safe_by_code_refs.py` so the next run regenerates it. Without this, the filter still reads the pre-fix scan and the regression repeats.
+4. **Re-run the filter** (`bin/filter_safe_by_code_refs.py`) and confirm the previously-missed reference now drops the affected redirector(s) from the safe set.
+5. **Update this section.** Move the new channel from "does NOT see" to "what the skill sees today" and note any new extension/flag the user has to pass.
+
+The skill's value is the explicit map of what's covered and what isn't. Every regression that prompts a coverage extension should also prompt an edit to this section so future Claude knows whether the channel is in scope before promising a clean fix.
+
 ## When to Use
 
 - Periodic content hygiene (every couple of weeks, or before a content freeze)
