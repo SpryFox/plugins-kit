@@ -648,17 +648,18 @@ class TestComputeMinimalDirs:
         c.mkdir()
         files = [str(a / "f1.cpp"), str(ab / "f2.cpp"), str(c / "f3.cpp")]
         result = pr.compute_minimal_dirs(files)
-        result_set = {p.resolve() for p in result}
-        # /a covers /a/b → only /a and /c remain
-        assert result_set == {a.resolve(), c.resolve()}
+        # /a covers /a/b → only /a and /c remain, both recursive
+        assert {(p.resolve(), r) for p, r in result} == {
+            (a.resolve(), True),
+            (c.resolve(), True),
+        }
 
     def test_skips_none_and_missing(self, tmp_path):
         real = tmp_path / "real"
         real.mkdir()
         files = [None, str(real / "x.cpp"), str(tmp_path / "ghost" / "y.cpp")]
         result = pr.compute_minimal_dirs(files)
-        result_set = {p.resolve() for p in result}
-        assert result_set == {real.resolve()}
+        assert {(p.resolve(), r) for p, r in result} == {(real.resolve(), True)}
 
     def test_empty(self):
         assert pr.compute_minimal_dirs([]) == []
@@ -669,7 +670,8 @@ class TestComputeMinimalDirs:
         files = [str(a / "x.cpp"), str(a / "y.cpp"), str(a / "z.cpp")]
         result = pr.compute_minimal_dirs(files)
         assert len(result) == 1
-        assert result[0].resolve() == a.resolve()
+        assert result[0][0].resolve() == a.resolve()
+        assert result[0][1] is True
 
     def test_sibling_dirs_both_kept(self, tmp_path):
         a = tmp_path / "a"
@@ -678,8 +680,41 @@ class TestComputeMinimalDirs:
         b.mkdir()
         files = [str(a / "x.cpp"), str(b / "y.cpp")]
         result = pr.compute_minimal_dirs(files)
-        result_set = {p.resolve() for p in result}
-        assert result_set == {a.resolve(), b.resolve()}
+        assert {(p.resolve(), r) for p, r in result} == {
+            (a.resolve(), True),
+            (b.resolve(), True),
+        }
+
+    def test_workspace_root_does_not_absorb_descendants(self, tmp_path):
+        """A CL touching a workspace-root file plus a deep file must NOT collapse
+        to a recursive scan of the entire workspace. The root is kept as a
+        non-recursive scan target (`<root>/*`); the deep dir keeps its own
+        recursive scan separately. See module docstring for rationale."""
+        ws = tmp_path / "ws"
+        deep = ws / "plugins" / "p4-kit" / "scripts"
+        deep.mkdir(parents=True)
+        files = [str(ws / "CLAUDE.md"), str(deep / "prepare_review.py")]
+        result = pr.compute_minimal_dirs(files, workspace_root=ws)
+        assert {(p.resolve(), r) for p, r in result} == {
+            (ws.resolve(), False),
+            (deep.resolve(), True),
+        }
+
+    def test_workspace_root_only_is_non_recursive(self, tmp_path):
+        ws = tmp_path / "ws"
+        ws.mkdir()
+        files = [str(ws / "CLAUDE.md"), str(ws / "marketplace.json")]
+        result = pr.compute_minimal_dirs(files, workspace_root=ws)
+        assert result == [(ws.resolve(), False)]
+
+    def test_no_workspace_root_arg_preserves_old_collapse(self, tmp_path):
+        """When workspace_root is None, the function still collapses ancestors."""
+        a = tmp_path / "a"
+        ab = a / "b"
+        ab.mkdir(parents=True)
+        files = [str(a / "x.cpp"), str(ab / "y.cpp")]
+        result = pr.compute_minimal_dirs(files)
+        assert {(p.resolve(), r) for p, r in result} == {(a.resolve(), True)}
 
 
 # ---------------------------------------------------------------------------
@@ -711,7 +746,7 @@ class TestFindUnreconciled:
             "... type text\n"
         )
         with patch.object(pr, "run_p4", return_value=(0, out, "")):
-            result = pr.find_unreconciled([d])
+            result = pr.find_unreconciled([(d, True)])
         assert result == [
             {"local": "/ws/src/new.cpp", "depot": "//depot/src/new.cpp", "action": "add"},
             {"local": "/ws/src/edited.cpp", "depot": "//depot/src/edited.cpp", "action": "edit"},
@@ -730,13 +765,34 @@ class TestFindUnreconciled:
             return (0, "", "")
 
         with patch.object(pr, "run_p4", side_effect=fake_run_p4):
-            pr.find_unreconciled([a, b])
+            pr.find_unreconciled([(a, True), (b, True)])
 
         assert captured[0][:3] == ["-ztag", "reconcile", "-n"]
         # Each dir is passed as a recursive `<dir>/...` spec.
         specs = captured[0][3:]
         assert any(s.endswith("/...") and str(a) in s for s in specs)
         assert any(s.endswith("/...") and str(b) in s for s in specs)
+
+    def test_non_recursive_dir_uses_star_spec(self, tmp_path):
+        """A `(dir, False)` entry must scan with `<dir>/*` (immediate children only),
+        not `<dir>/...` -- this is what bounds the workspace-root scan."""
+        root = tmp_path / "ws"
+        deep = root / "plugins" / "scripts"
+        deep.mkdir(parents=True)
+        captured: list[list[str]] = []
+
+        def fake_run_p4(args):
+            captured.append(args)
+            return (0, "", "")
+
+        with patch.object(pr, "run_p4", side_effect=fake_run_p4):
+            pr.find_unreconciled([(root, False), (deep, True)])
+
+        specs = captured[0][3:]
+        assert f"{root}/*" in specs
+        assert f"{deep}/..." in specs
+        # The recursive workspace-root spec must NOT appear.
+        assert f"{root}/..." not in specs
 
     def test_empty_dirs_returns_empty(self):
         # No p4 call should be made when there's nothing to scan.
@@ -752,13 +808,13 @@ class TestFindUnreconciled:
             "run_p4",
             return_value=(1, "", "/ws/x - no file(s) to reconcile.\n"),
         ):
-            assert pr.find_unreconciled([d]) == []
+            assert pr.find_unreconciled([(d, True)]) == []
 
     def test_p4_failure_returns_empty_with_warning(self, tmp_path, capsys):
         d = tmp_path / "x"
         d.mkdir()
         with patch.object(pr, "run_p4", return_value=(1, "", "fatal: bad workspace\n")):
-            assert pr.find_unreconciled([d]) == []
+            assert pr.find_unreconciled([(d, True)]) == []
         err = capsys.readouterr().err
         assert "reconcile check failed" in err
 
@@ -778,7 +834,7 @@ class TestFindUnreconciled:
             "... action add\n"
         )
         with patch.object(pr, "run_p4", return_value=(0, out, "")):
-            result = pr.find_unreconciled([d])
+            result = pr.find_unreconciled([(d, True)])
         assert len(result) == 1
         assert result[0]["local"] == "/ws/good.cpp"
 
@@ -903,6 +959,73 @@ class TestBuildBundle:
         assert u["action"] == "add"
         assert u["depot"] == "//depot/src/forgot.cpp"
         assert Path(u["local"]) == forgotten
+
+    def test_root_level_cl_file_does_not_trigger_recursive_root_scan(self, tmp_path):
+        """Regression: a CL touching a workspace-root file (e.g. CLAUDE.md) plus a
+        deep file used to collapse to `<root>/...`, recursively scanning every
+        untracked dir in the workspace (Binaries/, Intermediate/, IDE files, etc.
+        that may not all be in .p4ignore). The fix bounds root to `<root>/*`."""
+        ws = tmp_path / "ws"
+        deep = ws / "plugins" / "p4-kit" / "scripts"
+        deep.mkdir(parents=True)
+        root_file = ws / "CLAUDE.md"
+        root_file.write_text("rules\n")
+        deep_file = deep / "prepare_review.py"
+        deep_file.write_text("# code\n")
+
+        describe_out = (
+            "Change 7 by u@c on 2026/01/01\n"
+            "\n"
+            "\tEdit\n"
+            "\n"
+            "Affected files ...\n"
+            "... //depot/CLAUDE.md#1 edit\n"
+            "... //depot/plugins/p4-kit/scripts/prepare_review.py#1 edit\n"
+            "\n"
+            "Differences ...\n"
+            "\n"
+            "==== //depot/CLAUDE.md#1 (text) ====\n"
+            "@@ -1 +1 @@\n"
+            "-old\n"
+            "+new\n"
+            "==== //depot/plugins/p4-kit/scripts/prepare_review.py#1 (text) ====\n"
+            "@@ -1 +1 @@\n"
+            "-a\n"
+            "+b\n"
+        )
+        where_out = (
+            "... depotFile //depot/CLAUDE.md\n"
+            f"... path {root_file}\n"
+            "\n"
+            "... depotFile //depot/plugins/p4-kit/scripts/prepare_review.py\n"
+            f"... path {deep_file}\n"
+        )
+        info_out = f"... clientRoot {ws}\n"
+        captured_reconcile_specs: list[str] = []
+
+        def fake_run_p4(args):
+            if args[:2] == ["describe", "-du"]:
+                return (0, describe_out, "")
+            if args[:2] == ["-ztag", "where"]:
+                return (0, where_out, "")
+            if args[:2] == ["-ztag", "info"]:
+                return (0, info_out, "")
+            if args[:3] == ["-ztag", "reconcile", "-n"]:
+                captured_reconcile_specs.extend(args[3:])
+                return (1, "", "no file(s) to reconcile.\n")
+            return (1, "", f"unexpected: {args}")
+
+        with patch.object(pr, "run_p4", side_effect=fake_run_p4):
+            pr.build_bundle("7")
+
+        ws_resolved = ws.resolve()
+        deep_resolved = deep.resolve()
+        # Root scanned non-recursively
+        assert f"{ws_resolved}/*" in captured_reconcile_specs
+        # Recursive root scan must NOT appear (this was the bug)
+        assert f"{ws_resolved}/..." not in captured_reconcile_specs
+        # Deep dir keeps its own recursive scan (not absorbed by root)
+        assert f"{deep_resolved}/..." in captured_reconcile_specs
 
     def test_mixed_edit_and_add_synthesizes_add_hunk(self, tmp_path):
         """Regression: a CL with edits + pure adds must include synthesized hunks for adds."""

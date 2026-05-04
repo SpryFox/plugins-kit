@@ -18,6 +18,14 @@ directories containing CL files, and reports any unreconciled files
 forgotten to include in the CL. `.p4ignore` is honored by p4 itself; files
 already opened in any pending CL are skipped by reconcile.
 
+The workspace root is intentionally excluded from recursive scans -- if a
+CL touches a root-level file, the root is scanned non-recursively (`/*`)
+and deeper CL directories keep their recursive (`/...`) scans separately.
+Recursing from the workspace root would crawl every untracked directory
+in the tree (Binaries/, Intermediate/, build outputs, IDE files, etc.)
+even when `.p4ignore` doesn't list them all -- a blast radius the review
+prep doesn't need.
+
 Output schema:
     {
       "cl": "<CL>",
@@ -340,16 +348,29 @@ def resolve_local_paths(depot_paths: list[str]) -> dict[str, Optional[str]]:
     return result
 
 
-def compute_minimal_dirs(local_paths: list[Optional[str]]) -> list[Path]:
+def compute_minimal_dirs(
+    local_paths: list[Optional[str]],
+    workspace_root: Optional[Path] = None,
+) -> list[tuple[Path, bool]]:
     """Collapse parent directories of `local_paths` to the minimal covering set.
 
+    Returns a list of (directory, recursive) pairs. `recursive=True` means scan
+    `<dir>/...`; `recursive=False` means scan `<dir>/*` (immediate children only).
+
     Given file paths, returns the set of containing directories with descendants
-    removed: e.g. {/a, /a/b, /c} collapses to [/a, /c]. A single recursive
-    `p4 reconcile -n <dir>/...` over each directory then covers everything.
+    removed: e.g. {/a, /a/b, /c} collapses to [(/a, True), (/c, True)]. A single
+    recursive `p4 reconcile -n <dir>/...` over each then covers everything.
+
+    The workspace root is treated specially: it never absorbs descendants, and
+    if it appears in the parent set it is returned with `recursive=False`. This
+    prevents `p4 reconcile -n <root>/...` from crawling every untracked tree in
+    the workspace when a CL happens to touch a root-level file.
 
     Non-existent paths and `None` entries are skipped (e.g. files outside the
     workspace, or whose parent directory was deleted as part of the CL).
     """
+    ws_root = workspace_root.resolve() if workspace_root else None
+
     dirs: set[Path] = set()
     for p in local_paths:
         if not p:
@@ -363,28 +384,44 @@ def compute_minimal_dirs(local_paths: list[Optional[str]]) -> list[Path]:
     if not dirs:
         return []
 
+    root_present = ws_root in dirs
+    # Exclude the workspace root from the descendant-collapse pass. Letting it
+    # absorb deeper dirs would expand a single root-level file into a recursive
+    # scan of the whole workspace.
+    collapsable = [d for d in dirs if d != ws_root]
+
     # Sort shallowest-first so a kept ancestor is checked before its descendants.
-    sorted_dirs = sorted(dirs, key=lambda d: len(d.parts))
-    minimal: list[Path] = []
+    sorted_dirs = sorted(collapsable, key=lambda d: len(d.parts))
+    minimal: list[tuple[Path, bool]] = []
+    kept_paths: list[Path] = []
     for d in sorted_dirs:
-        if any(kept == d or kept in d.parents for kept in minimal):
+        if any(kept == d or kept in d.parents for kept in kept_paths):
             continue
-        minimal.append(d)
+        kept_paths.append(d)
+        minimal.append((d, True))
+
+    if root_present:
+        minimal.append((ws_root, False))
     return minimal
 
 
-def find_unreconciled(dirs: list[Path]) -> list[dict]:
-    """Run `p4 -ztag reconcile -n` recursively over `dirs` and return unreconciled files.
+def find_unreconciled(dir_specs: list[tuple[Path, bool]]) -> list[dict]:
+    """Run `p4 -ztag reconcile -n` over `dir_specs` and return unreconciled files.
 
-    Each entry: {"local": <path>, "depot": <path>, "action": "add"|"edit"|"delete"}.
+    `dir_specs` is a list of (directory, recursive) pairs. Recursive entries are
+    scanned as `<dir>/...`; non-recursive entries as `<dir>/*` (immediate
+    children only -- used for the workspace root to avoid crawling the whole
+    tree).
+
+    Each result entry: {"local": <path>, "depot": <path>, "action": "add"|"edit"|"delete"}.
     `.p4ignore` is honored by p4. Files already opened in any pending CL are skipped.
-    A single p4 invocation handles all directories at once.
+    A single p4 invocation handles all specs at once.
 
     On failure (p4 error, no workspace, etc.) returns []; the review still proceeds.
     """
-    if not dirs:
+    if not dir_specs:
         return []
-    specs = [f"{d}/..." for d in dirs]
+    specs = [f"{d}/..." if recursive else f"{d}/*" for d, recursive in dir_specs]
     rc, out, err = run_p4(["-ztag", "reconcile", "-n", *specs])
     # rc != 0 with "no file(s) to reconcile" means nothing to report -- not an error.
     if rc != 0 and "no file(s) to reconcile" not in (err + out):
@@ -491,7 +528,9 @@ def build_bundle(cl: str) -> dict:
                     seen.add(cm)
         changed_files.append({"depot": depot, "local": local, "claude_mds": claude_mds})
 
-    minimal_dirs = compute_minimal_dirs([f["local"] for f in changed_files])
+    minimal_dirs = compute_minimal_dirs(
+        [f["local"] for f in changed_files], workspace_root
+    )
     unreconciled = find_unreconciled(minimal_dirs)
 
     return {
