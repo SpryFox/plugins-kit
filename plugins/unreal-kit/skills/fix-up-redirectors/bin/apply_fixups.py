@@ -4,7 +4,19 @@ Runs inside Unreal as a commandlet. Reads SAFE_JSON env var. Optionally
 reads CL_DESC_SUFFIX env var (e.g. '[Mix, Tool]') to append a project-specific
 tag to the CL description.
 
-Flow:
+Two modes:
+
+  - Fix-up mode (default): redirectors with referencers. Loads each referencer
+    in UE, force-saves to rewrite import tables, then deletes the redirector
+    .uasset files. Used for the standard fix-up safe set.
+  - Delete-only mode: redirectors with zero referencers (orphans). Skips all
+    UE referencer load/save work — there are no referencers to rewrite.
+    Auto-detected when no records have any referencers, or forced via
+    `--mode=delete-only`. The orphan path is much faster (no commandlet asset
+    loading) and avoids the file-lock dance entirely (UE never opens the
+    redirector packages, so it never holds Windows file handles on them).
+
+Flow (fix-up mode):
 
   1. Guard against duplicate "Fix up redirectors" pending CLs (auto-detects
      P4USER from `p4 info` if not in env).
@@ -20,8 +32,16 @@ Flow:
      them for delete and removes them from the workspace.
   6. Save a manifest.
 
+Flow (delete-only mode): steps 1, 2, then `p4 delete` the redirector files
+(plus their .umap siblings if present — level redirectors come in .uasset+.umap
+pairs and both must land in the CL together). No UE referencer work.
+
 UE5.x note: `unreal.AssetTools.fixup_referencers` does NOT exist in current
-Python bindings. Steps 3-5 are the supported substitute.
+Python bindings. The load+save pattern in step 4 is the supported substitute.
+
+SAFE_JSON resolution: the env var is resolved to an absolute path before
+use. UE commandlets run from a different cwd than the user's shell, so
+relative paths fail silently — always normalize to absolute first.
 """
 import os
 import sys
@@ -55,6 +75,19 @@ SAFE_JSON = os.environ.get('SAFE_JSON')
 CL_DESC_SUFFIX = os.environ.get('CL_DESC_SUFFIX', '').strip()
 FORCE_NEW_CL = '--force-new-cl' in sys.argv
 
+# Parse --mode={fixup,delete-only,auto}; default 'auto' picks based on input shape.
+MODE = 'auto'
+for arg in sys.argv[1:]:
+    if arg.startswith('--mode='):
+        MODE = arg.split('=', 1)[1].strip()
+if MODE not in ('auto', 'fixup', 'delete-only'):
+    fail(f"--mode must be one of: auto, fixup, delete-only (got {MODE!r})")
+
+# Resolve SAFE_JSON to absolute. Commandlets run from <project>/Binaries/Win64
+# (or similar), not the user's shell cwd, so a relative SAFE_JSON silently
+# misses the file. Normalizing here once removes the foot-gun.
+if SAFE_JSON:
+    SAFE_JSON = os.path.abspath(SAFE_JSON)
 if not SAFE_JSON or not os.path.isfile(SAFE_JSON):
     fail(f"SAFE_JSON env var not set or file missing: {SAFE_JSON!r}")
 
@@ -64,6 +97,16 @@ records = safe.get('redirectors', [])
 if not records:
     print("Nothing safe to fix - aborting.")
     sys.exit(0)
+
+# Auto-detect mode from the safe-set shape: if no record has any referencers,
+# this is an orphaned-only set and the delete-only path is correct.
+def _has_any_referencers(rec):
+    return bool(rec.get('referencer_files') or rec.get('referencer_pkgs')
+                or rec.get('has_level_referencer'))
+
+if MODE == 'auto':
+    MODE = 'delete-only' if not any(_has_any_referencers(r) for r in records) else 'fixup'
+print(f"[apply_fixups] mode: {MODE}")
 
 # 1) Guard: refuse if a "Fix up redirectors" CL is already pending for this user.
 if not FORCE_NEW_CL:
@@ -87,122 +130,158 @@ if not FORCE_NEW_CL:
 #    - redirector_files: every redirector .uasset (these will be DELETED).
 #    - referencer_pkgs / referencer_files: union of all referencers,
 #      MINUS any package that is itself a redirector in this safe set
-#      (those will be deleted, not re-saved).
+#      (those will be deleted, not re-saved). Empty in delete-only mode.
 redirector_pkgs = {r['pkg'] for r in records}
 redirector_files = [r['file'] for r in records if r.get('file')]
 
+# In delete-only mode: also include .umap siblings of every redirector .uasset.
+# Level redirectors come in .uasset+.umap pairs and both files must land in
+# the CL together — otherwise the depot keeps a dangling .umap pointing at a
+# deleted .uasset (or vice versa). We add the sibling unconditionally if it
+# exists on disk; cheap to check, prevents an easy-to-miss correctness bug.
+def _umap_sibling(uasset_path):
+    if not uasset_path or not uasset_path.lower().endswith('.uasset'):
+        return None
+    candidate = uasset_path[:-len('.uasset')] + '.umap'
+    return candidate if os.path.isfile(candidate) else None
+
+
+umap_companion_files = []
+if MODE == 'delete-only':
+    for f in list(redirector_files):
+        sibling = _umap_sibling(f)
+        if sibling:
+            umap_companion_files.append(sibling)
+    if umap_companion_files:
+        redirector_files = redirector_files + umap_companion_files
+        print(f"Including {len(umap_companion_files)} .umap sibling(s) of level redirectors.")
+
 referencer_pkgs = set()
 referencer_files = set()
-for r in records:
-    for ref_pkg in (r.get('referencer_pkgs') or []):
-        if ref_pkg in redirector_pkgs:
-            continue
-        referencer_pkgs.add(ref_pkg)
-    for ref_file in (r.get('referencer_files') or []):
-        referencer_files.add(ref_file)
-# Drop referencer files that are themselves redirector files.
-referencer_files -= set(redirector_files)
+if MODE == 'fixup':
+    for r in records:
+        for ref_pkg in (r.get('referencer_pkgs') or []):
+            if ref_pkg in redirector_pkgs:
+                continue
+            referencer_pkgs.add(ref_pkg)
+        for ref_file in (r.get('referencer_files') or []):
+            referencer_files.add(ref_file)
+    # Drop referencer files that are themselves redirector files.
+    referencer_files -= set(redirector_files)
 referencer_files = sorted(referencer_files)
 
 print(f"Redirectors to delete: {len(redirector_files)}")
-print(f"Non-redirector referencers to rewrite: {len(referencer_pkgs)} pkgs / "
-      f"{len(referencer_files)} files")
+if MODE == 'fixup':
+    print(f"Non-redirector referencers to rewrite: {len(referencer_pkgs)} pkgs / "
+          f"{len(referencer_files)} files")
 
 # 3) Create the CL.
-title = f"Fix up redirectors: {len(records)} assets in {scope}"
+mode_label = 'orphans' if MODE == 'delete-only' else 'assets'
+title = f"Fix up redirectors: {len(records)} {mode_label} in {scope}"
 if CL_DESC_SUFFIX:
     title = f"{title} {CL_DESC_SUFFIX}"
-description = (
-    f"{title}\n\n"
-    "Automated cleanup via /fix-up-redirectors. Rewrites referencers to point at "
-    "redirector targets and deletes the redirector .uasset files."
-)
+if MODE == 'delete-only':
+    description = (
+        f"{title}\n\n"
+        "Automated cleanup via /fix-up-redirectors (delete-only mode). "
+        "Deletes orphaned redirector .uasset files (target missing, zero "
+        "referencers) plus their .umap siblings."
+    )
+else:
+    description = (
+        f"{title}\n\n"
+        "Automated cleanup via /fix-up-redirectors. Rewrites referencers to "
+        "point at redirector targets and deletes the redirector .uasset files."
+    )
 cl_num = create_pending_cl(description, client=os.environ.get('P4CLIENT'))
 print(f"Created CL {cl_num}")
 
-# 4) p4 edit only the non-redirector referencer files (so UE can re-save them).
-if referencer_files:
-    edit_files(cl_num, referencer_files)
-    print(f"Opened {len(referencer_files)} referencer file(s) for edit in CL {cl_num}.")
-
-# 5) UE: load each referencer (resolves redirectors at link time), rewrite
-#    soft references via the supported API, then force-save so the package
-#    import table is rewritten to reference the target directly.
-asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
-
-
-def _soft_object_path(pkg_path):
-    asset_name = pkg_path.rsplit('/', 1)[-1]
-    return unreal.SoftObjectPath(f"{pkg_path}.{asset_name}")
-
-
+# Initialize the bookkeeping that both modes' manifest needs.
 loaded_referencers = []
 load_failures = []
-for pkg in sorted(referencer_pkgs):
-    asset = unreal.EditorAssetLibrary.load_asset(pkg)
-    if asset is None:
-        load_failures.append(pkg)
-    else:
-        loaded_referencers.append(pkg)
-print(f"Loaded {len(loaded_referencers)} referencer asset(s) "
-      f"({len(load_failures)} failed to load)")
-
-# Soft-reference rewrite (only meaningful when there are loaded packages).
-redirector_map = {}
-for r in records:
-    target = r.get('target_pkg')
-    if target and r.get('target_exists'):
-        redirector_map[_soft_object_path(r['pkg'])] = _soft_object_path(target)
-if loaded_referencers and redirector_map:
-    pkg_names = unreal.Array(unreal.Name)
-    for p in loaded_referencers:
-        pkg_names.append(unreal.Name(p))
-    asset_tools.rename_referencing_soft_object_paths(pkg_names, redirector_map)
-    print("Rewrote soft references.")
-
 saved = 0
 save_failures = []
-for pkg in loaded_referencers:
-    asset = unreal.EditorAssetLibrary.load_asset(pkg)
-    if asset is None or not unreal.EditorAssetLibrary.save_loaded_asset(asset, only_if_is_dirty=False):
-        save_failures.append(pkg)
-    else:
-        saved += 1
-print(f"Force-saved {saved} referencer package(s) "
-      f"({len(save_failures)} failures)")
-
-# 6) Delete each redirector via UE, then have P4 record the deletes.
-#    `EditorAssetLibrary.delete_asset` unloads the package from memory and
-#    removes the local .uasset, releasing the Windows file handle that UE
-#    would otherwise be holding. Without this step, `p4 delete`'s internal
-#    unlink fights UE for the file lock and the batch fails partway.
 ue_deleted = 0
 ue_delete_failures = []
-for r in records:
-    pkg = r['pkg']
+
+# 4) Mode-specific work.
+if MODE == 'fixup':
+    # 4a) p4 edit only the non-redirector referencer files (so UE can re-save them).
+    if referencer_files:
+        edit_files(cl_num, referencer_files)
+        print(f"Opened {len(referencer_files)} referencer file(s) for edit in CL {cl_num}.")
+
+    # 4b) UE: load each referencer (resolves redirectors at link time), rewrite
+    #     soft references via the supported API, then force-save so the package
+    #     import table is rewritten to reference the target directly.
+    asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
+
+    def _soft_object_path(pkg_path):
+        asset_name = pkg_path.rsplit('/', 1)[-1]
+        return unreal.SoftObjectPath(f"{pkg_path}.{asset_name}")
+
+    for pkg in sorted(referencer_pkgs):
+        asset = unreal.EditorAssetLibrary.load_asset(pkg)
+        if asset is None:
+            load_failures.append(pkg)
+        else:
+            loaded_referencers.append(pkg)
+    print(f"Loaded {len(loaded_referencers)} referencer asset(s) "
+          f"({len(load_failures)} failed to load)")
+
+    # Soft-reference rewrite (only meaningful when there are loaded packages).
+    redirector_map = {}
+    for r in records:
+        target = r.get('target_pkg')
+        if target and r.get('target_exists'):
+            redirector_map[_soft_object_path(r['pkg'])] = _soft_object_path(target)
+    if loaded_referencers and redirector_map:
+        pkg_names = unreal.Array(unreal.Name)
+        for p in loaded_referencers:
+            pkg_names.append(unreal.Name(p))
+        asset_tools.rename_referencing_soft_object_paths(pkg_names, redirector_map)
+        print("Rewrote soft references.")
+
+    for pkg in loaded_referencers:
+        asset = unreal.EditorAssetLibrary.load_asset(pkg)
+        if asset is None or not unreal.EditorAssetLibrary.save_loaded_asset(asset, only_if_is_dirty=False):
+            save_failures.append(pkg)
+        else:
+            saved += 1
+    print(f"Force-saved {saved} referencer package(s) "
+          f"({len(save_failures)} failures)")
+
+    # 4c) Delete each redirector via UE first, releasing the Windows file
+    #     handle so `p4 delete` can succeed. Without this step `p4 delete`'s
+    #     internal unlink fights UE for the lock and the batch fails partway.
+    for r in records:
+        pkg = r['pkg']
+        try:
+            if unreal.EditorAssetLibrary.does_asset_exist(pkg):
+                if unreal.EditorAssetLibrary.delete_asset(pkg):
+                    ue_deleted += 1
+                    continue
+            ue_delete_failures.append(pkg)
+        except Exception as exc:
+            ue_delete_failures.append(f"{pkg}: {exc}")
+    print(f"UE-deleted {ue_deleted} redirector asset(s) "
+          f"({len(ue_delete_failures)} failures)")
+
+    # Force a GC pass so any lingering handles on package objects are released
+    # before P4 tries to record the delete.
     try:
-        if unreal.EditorAssetLibrary.does_asset_exist(pkg):
-            if unreal.EditorAssetLibrary.delete_asset(pkg):
-                ue_deleted += 1
-                continue
-        ue_delete_failures.append(pkg)
-    except Exception as exc:
-        ue_delete_failures.append(f"{pkg}: {exc}")
-print(f"UE-deleted {ue_deleted} redirector asset(s) "
-      f"({len(ue_delete_failures)} failures)")
+        unreal.SystemLibrary.collect_garbage(0)
+    except Exception:
+        pass
 
-# Force a GC pass so any lingering handles on package objects are released
-# before P4 tries to record the delete.
-try:
-    unreal.SystemLibrary.collect_garbage(0)
-except Exception:
-    pass
-
-# UE's source-control plugin auto-opens the deletes into the default CL.
-# `p4 delete -c <CL>` does NOT move already-opened files - it just no-ops.
-# Use `p4 reopen -c <CL>` to herd them into our pending CL, falling back
-# to `p4 delete -c <CL>` for any that source control didn't auto-open.
+# 5) Open redirector .uasset (and .umap sibling) files for delete in the CL.
+#    In fixup mode UE already deleted them on disk + auto-opened them in the
+#    default CL — we use `p4 reopen -c` to herd them into our pending CL, with
+#    `p4 delete -c` as fallback. In delete-only mode UE never touched them, so
+#    `p4 delete -c` does the whole job.
 delete_failures = []
+lock_failures = []  # files that hit "in use by another process" and need a retry pass
+
 if redirector_files:
     rc, out, _err = run_p4(['-x', '-', 'fstat', '-T', 'depotFile,action,change'],
                            stdin='\n'.join(redirector_files))
@@ -210,7 +289,6 @@ if redirector_files:
     not_opened = []
     cur_path = None
     cur_action = None
-    cur_change = None
     if rc == 0:
         for line in out.splitlines():
             line = line.strip()
@@ -219,13 +297,11 @@ if redirector_files:
                     auto_opened.append(cur_path)
                 elif cur_path and cur_action is None:
                     not_opened.append(cur_path)
-                cur_path = cur_action = cur_change = None
+                cur_path = cur_action = None
             elif line.startswith('... depotFile '):
                 cur_path = line[len('... depotFile '):]
             elif line.startswith('... action '):
                 cur_action = line[len('... action '):]
-            elif line.startswith('... change '):
-                cur_change = line[len('... change '):]
         if cur_path and cur_action == 'delete':
             auto_opened.append(cur_path)
         elif cur_path and cur_action is None:
@@ -239,22 +315,64 @@ if redirector_files:
             delete_failures.extend(auto_opened)
             sys.stderr.write("[apply_fixups] WARN: p4 reopen batch failed; see error above.\n")
     if not_opened:
-        try:
-            delete_files(cl_num, not_opened)
-            print(f"Opened {len(not_opened)} redirector(s) for delete in CL {cl_num}.")
-        except SystemExit:
-            delete_failures.extend(not_opened)
-            sys.stderr.write("[apply_fixups] WARN: p4 delete batch failed; see error above.\n")
+        # Per-file `p4 delete` so a single locked file doesn't sink the whole
+        # batch. Files that hit "in use by another process" go to lock_failures
+        # for the post-UE retry pass below.
+        for path in not_opened:
+            rc, _out, err = run_p4(['delete', '-c', cl_num, path])
+            if rc == 0:
+                continue
+            err_lower = (err or '').lower()
+            if 'in use by another process' in err_lower or 'access is denied' in err_lower:
+                lock_failures.append(path)
+            else:
+                delete_failures.append(path)
+                sys.stderr.write(f"[apply_fixups] WARN: p4 delete failed for {path}: {err.strip()}\n")
+        if not_opened:
+            print(f"Attempted p4 delete on {len(not_opened)} file(s); "
+                  f"{len(not_opened) - len(lock_failures) - len(delete_failures)} succeeded, "
+                  f"{len(lock_failures)} locked (will retry via reconcile post-exit).")
+
+# 6) Lock-failure retry pass.
+#    UE has been observed to keep Windows file handles open on referencer
+#    packages even after `delete_asset` returns (and even after a GC). The
+#    locked files can't be `p4 delete`d while UE holds them — but UE has
+#    already deleted them on disk by the time we hit this path. Once UE
+#    exits, the handles release and `p4 reconcile` notices the local delete
+#    and opens the file for delete in the CL. We can't wait for UE-exit
+#    inside the commandlet, so we attach a delayed-reconcile script that the
+#    skill phase will run after the commandlet returns.
+retry_script = None
+if lock_failures:
+    # Drop a tiny shell script next to the manifest. The skill's Phase 4
+    # tail invokes it once the commandlet exits; reconcile picks up locally-
+    # deleted files and opens them for delete in the same CL.
+    retry_dir = os.path.join(str(unreal.Paths.project_dir()), 'Saved', 'PythonOutput')
+    os.makedirs(retry_dir, exist_ok=True)
+    retry_script = os.path.join(retry_dir, f'redirectors_lock_retry_{cl_num}.txt')
+    # Plain newline-separated file list; the skill's retry step pipes it to
+    # `p4 -x - reconcile -c <CL>`.
+    with open(retry_script, 'w') as f:
+        for path in lock_failures:
+            f.write(path + '\n')
+    print(f"[apply_fixups] {len(lock_failures)} file(s) locked by UE; "
+          f"reconcile-after-exit list at {retry_script}")
+    print(f"[apply_fixups] Run after UE exits: "
+          f"p4 -x - reconcile -c {cl_num} < {retry_script}")
 
 # 7) Manifest.
 manifest = {
     'cl': cl_num,
     'scope': scope,
-    'redirectors_deleted': len(redirector_files) - len(delete_failures),
+    'mode': MODE,
+    'redirectors_deleted': len(redirector_files) - len(delete_failures) - len(lock_failures),
     'referencers_saved': saved,
     'referencer_save_failures': save_failures,
     'redirector_delete_failures': delete_failures,
+    'redirector_lock_failures': lock_failures,
     'load_failures': load_failures,
+    'umap_companions_included': umap_companion_files,
+    'lock_retry_list': retry_script,
 }
 manifest_path = os.path.join(
     str(unreal.Paths.project_dir()), 'Saved', 'PythonOutput',
@@ -263,6 +381,10 @@ manifest_path = os.path.join(
 save_apply_manifest(manifest_path, manifest)
 
 print()
-print(f"Done. CL {cl_num}: deleted {manifest['redirectors_deleted']} redirectors, "
-      f"saved {saved} referencers.")
+print(f"Done. CL {cl_num}: deleted {manifest['redirectors_deleted']} redirectors"
+      + (f", saved {saved} referencers" if MODE == 'fixup' else "")
+      + ".")
+if lock_failures:
+    print(f"  ({len(lock_failures)} file(s) locked by UE — retry via the "
+          f"reconcile command above after UE exits.)")
 print(f"Manifest: {manifest_path}")
