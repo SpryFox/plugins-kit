@@ -60,7 +60,7 @@
     {
       "name": "git-kit",
       "description": "GitHub CLI bootstrap: ensures gh is installed, the user is authenticated, and (optionally) a member of a required organization",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "author": {
         "name": "Christina"
       },

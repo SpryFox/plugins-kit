@@ -18,7 +18,7 @@ import subprocess
 from pathlib import Path
 
 
-GH_AUTH_LOGIN_HINT = "! gh auth login --hostname github.com --git-protocol https --web"
+GH_AUTH_LOGIN_CMD = "gh auth login --hostname github.com --git-protocol https --web"
 
 
 def bootstrap(ctx) -> None:
@@ -31,14 +31,17 @@ def bootstrap(ctx) -> None:
     if not auth_ok:
         ctx.log("github auth: not logged in")
         ctx.add_failure(
-            "user_config",
+            "config",
             field="github_auth",
-            user_msg="Not logged in to GitHub. Authenticate via the GitHub CLI.",
+            user_msg="Not logged in to GitHub. fix-all will launch the browser-based login flow.",
             agent_msg=(
-                "GitHub CLI is not authenticated. Tell the user to authenticate "
-                f"by typing `{GH_AUTH_LOGIN_HINT}` (with the leading `!`) at the "
-                "Claude Code prompt -- the `!` runs it in their terminal so the "
-                "browser flow works. After they confirm auth succeeded, type 'fixed'."
+                "GitHub CLI is not authenticated. Run this Bash command with a long "
+                f"timeout (600000 ms): `printf '\\n' | {GH_AUTH_LOGIN_CMD}`. The "
+                "leading `printf` pre-feeds the Enter that gh prompts for; gh will "
+                "print a one-time code, open the user's default browser to "
+                "github.com/login/device, and block until the user enters the code "
+                "and approves. Show the code to the user verbatim from stdout so "
+                "they can paste it. The command returns when auth completes."
             ),
         )
         return
