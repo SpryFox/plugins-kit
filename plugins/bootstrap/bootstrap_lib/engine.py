@@ -277,7 +277,11 @@ def main():
     # via `tail bootstrap.log`, but never surface in the user-facing hook output.
     display_lines = []
     for header, actions, _oks in display_sections:
-        if actions:
+        if not actions:
+            continue
+        if len(actions) == 1:
+            display_lines.append(f"--- {header}: {actions[0]} ---")
+        else:
             display_lines.append(f"--- {header} ---")
             display_lines.extend(actions)
 
@@ -1379,10 +1383,9 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                 if current_result.passed:
                     ok_entries.append(f"{prefix}marketplace {mkt_name}: up to date")
                 else:
-                    action_entries.append(f"{prefix}marketplace {mkt_name}: updating (alwaysUpdate)")
                     upd_result = update_marketplace(mkt_name)
                     if upd_result.passed:
-                        action_entries.append(f"{prefix}marketplace {mkt_name}: updated")
+                        action_entries.append(f"{prefix}marketplace {mkt_name}: updated (alwaysUpdate)")
                     else:
                         action_entries.append(f"{prefix}marketplace {mkt_name}: update failed - {upd_result.message}")
                         failures.append({
@@ -1395,12 +1398,11 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                 ok_entries.append(f"{prefix}marketplace {mkt_name}: ok")
         else:
             # Auto-add marketplace via CLI
-            action_entries.append(f"{prefix}marketplace {mkt_name}: not found, adding")
             add_result = add_marketplace(source_url, mkt_name)
             if add_result.passed:
-                action_entries.append(f"{prefix}marketplace {mkt_name}: added via `claude plugin marketplace add {source_url}` (modifies known_marketplaces.json)")
+                action_entries.append(f"{prefix}marketplace {mkt_name}: added ({source_url})")
             else:
-                action_entries.append(f"{prefix}marketplace {mkt_name}: FAILED - {add_result.message}")
+                action_entries.append(f"{prefix}marketplace {mkt_name}: add failed - {add_result.message}")
                 failures.append({
                     "type": "marketplace",
                     "name": mkt_name,
@@ -1426,12 +1428,11 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
         install_result = check_plugin_installed(plugin_ref)
         if not install_result.passed:
             # Auto-install via CLI
-            action_entries.append(f"{prefix}plugin {plugin_ref}: not installed, running `claude plugin install {cli_ref} --scope {desired_scope}`")
             inst = install_plugin(plugin_ref, scope=desired_scope)
             if inst.passed:
-                action_entries.append(f"{prefix}plugin {plugin_ref}: installed (added '{cli_ref}' to settings.json enabledPlugins)")
+                action_entries.append(f"{prefix}plugin {plugin_ref}: installed at {desired_scope} scope")
             else:
-                action_entries.append(f"{prefix}plugin {plugin_ref}: FAILED - {inst.message}")
+                action_entries.append(f"{prefix}plugin {plugin_ref}: install failed - {inst.message}")
                 failures.append({
                     "type": "plugin",
                     "ref": plugin_ref,
@@ -1447,12 +1448,11 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
         if install_result.passed:
             scope_check = check_plugin_enabled_at_scope(plugin_ref, desired_scope, project_dir)
             if not scope_check.passed:
-                action_entries.append(f"{prefix}plugin {plugin_ref}: {scope_check.message}, installing at {desired_scope} scope")
                 reinst = install_plugin(plugin_ref, scope=desired_scope)
                 if reinst.passed:
-                    action_entries.append(f"{prefix}plugin {plugin_ref}: installed at {desired_scope} scope")
+                    action_entries.append(f"{prefix}plugin {plugin_ref}: re-installed at {desired_scope} scope ({scope_check.message})")
                 else:
-                    action_entries.append(f"{prefix}plugin {plugin_ref}: install at {desired_scope} failed - {reinst.message}")
+                    action_entries.append(f"{prefix}plugin {plugin_ref}: scope install failed ({scope_check.message}) - {reinst.message}")
                     failures.append({
                         "type": "plugin",
                         "ref": plugin_ref,
@@ -1471,24 +1471,22 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
             if install_result.passed:
                 ver_result = check_plugin_version(plugin_ref)
                 if not ver_result.up_to_date:
-                    action_entries.append(f"{prefix}plugin {plugin_ref}: outdated ({ver_result.message}), running `claude plugin update {cli_ref}`")
                     upd_result = update_plugin(plugin_ref, scope=desired_scope)
                     if upd_result.passed:
-                        action_entries.append(f"{prefix}plugin {plugin_ref}: updated to {ver_result.latest_version}")
+                        action_entries.append(f"{prefix}plugin {plugin_ref}: updated {ver_result.installed_version} -> {ver_result.latest_version}")
                     else:
-                        action_entries.append(f"{prefix}plugin {plugin_ref}: update failed - {upd_result.message}")
+                        action_entries.append(f"{prefix}plugin {plugin_ref}: update failed ({ver_result.message}) - {upd_result.message}")
 
             # Check min_version constraint (auto-update, then fail if still unsatisfied)
             if install_result.passed and min_version:
                 from .marketplace_lifecycle import check_plugin_min_version
                 min_result = check_plugin_min_version(plugin_ref, min_version)
                 if not min_result.up_to_date:
-                    action_entries.append(f"{prefix}plugin {plugin_ref}: installed {min_result.installed_version} < required {min_version}, running `claude plugin update {cli_ref}`")
                     upd_result = update_plugin(plugin_ref, scope=desired_scope)
                     if upd_result.passed:
                         recheck = check_plugin_min_version(plugin_ref, min_version)
                         if recheck.up_to_date:
-                            action_entries.append(f"{prefix}plugin {plugin_ref}: updated to {recheck.installed_version} (satisfies >= {min_version})")
+                            action_entries.append(f"{prefix}plugin {plugin_ref}: updated {min_result.installed_version} -> {recheck.installed_version} (satisfies >= {min_version})")
                         else:
                             action_entries.append(f"{prefix}plugin {plugin_ref}: installed {recheck.installed_version} < required {min_version}, update failed to satisfy constraint")
                             failures.append({
@@ -1511,10 +1509,9 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
             if enabled_result.passed:
                 ok_entries.append(f"{prefix}plugin {plugin_ref}: ok")
             else:
-                action_entries.append(f"{prefix}plugin {plugin_ref}: installed but not enabled at {desired_scope} scope, running `claude plugin enable {cli_ref}`")
                 en_result = enable_plugin_in_claude(plugin_ref)
                 if en_result.passed:
-                    action_entries.append(f"{prefix}plugin {plugin_ref}: enabled (added '{cli_ref}' to settings.json enabledPlugins)")
+                    action_entries.append(f"{prefix}plugin {plugin_ref}: enabled at {desired_scope} scope")
                 else:
                     action_entries.append(f"{prefix}plugin {plugin_ref}: enable failed - {en_result.message}")
                     failures.append({

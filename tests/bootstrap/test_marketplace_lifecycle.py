@@ -261,8 +261,7 @@ class TestMarketplaceAlwaysUpdate:
             )
             mock_update.assert_called_once_with("my-market")
 
-        assert any("updating (alwaysUpdate)" in e for e in action_entries)
-        assert any("updated" in e for e in action_entries)
+        assert any("updated (alwaysUpdate)" in e for e in action_entries)
 
     def test_always_update_silent_when_current(self, tmp_path, monkeypatch):
         """When alwaysUpdate is true but marketplace is current, result is silent (ok_entries)."""
@@ -950,8 +949,7 @@ class TestEngineMinVersionFlow:
                 action_entries, ok_entries, plugin_name="test",
             )
 
-        assert any("installed 0.8.3 < required 0.9.1, running" in e for e in action_entries)
-        assert any("updated to 0.9.1 (satisfies >= 0.9.1)" in e for e in action_entries)
+        assert any("updated 0.8.3 -> 0.9.1 (satisfies >= 0.9.1)" in e for e in action_entries)
         assert not any(f["type"] == "plugin" and "min_version" in f.get("message", "") for f in failures)
 
     def test_should_record_failure_when_update_fails(self, tmp_path, monkeypatch):
