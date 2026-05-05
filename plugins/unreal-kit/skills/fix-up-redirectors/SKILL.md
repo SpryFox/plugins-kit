@@ -99,7 +99,7 @@ The skill takes up to two positional args: an optional **mode keyword** and an o
 |---|---|---|---|
 | `/fix-up-redirectors` | (none -- show menu) | -- | Print the "Common operations" menu below and ask which the user wants. Do NOT start any phase. |
 | `/fix-up-redirectors /Game/Art` | full (default) | `/Game/Art` | Run all phases: discover, classify, report, code-ref filter, apply both fix-up safe set and (if user opts in at Phase 3) orphaned safe set. |
-| `/fix-up-redirectors orphaned_safe` | orphan-only | `/Game` | Skip the fix-up path entirely. Discover, classify, report orphan counts, then Phase 4 in `--mode=delete-only` against `orphaned.json`. **Skip Phase 3.5** (orphans have no referencers, so source-code references can't apply). |
+| `/fix-up-redirectors orphaned_safe` | orphan-only | `/Game` | Skip the fix-up path entirely. Discover, classify, report orphan counts, then Phase 4 against `orphaned.json` (the apply script auto-detects delete-only mode from the input shape). **Skip Phase 3.5** (orphans have no referencers, so source-code references can't apply). |
 | `/fix-up-redirectors orphaned_safe /Game/Art` | orphan-only | `/Game/Art` | Same as orphan-only, but scoped. |
 
 Anything that isn't the literal string `orphaned_safe` is treated as a scope. The mode keyword, if present, must come first.
@@ -282,13 +282,12 @@ SAFE_JSON="$PWD/tmp/redirectors/safe_filtered.json" \
   "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/bin/apply_fixups.py"
 ```
 
-For the orphaned safe set (delete-only), point `SAFE_JSON` at `orphaned.json` from Phase 2. The script auto-detects the input shape and switches to delete-only mode (no referencer load/save, no code-ref filter required because orphans have no referencers). To force it explicitly, pass `--mode=delete-only`:
+For the orphaned safe set (delete-only), point `SAFE_JSON` at `orphaned.json` from Phase 2. The script auto-detects the input shape and switches to delete-only mode (no referencer load/save, no code-ref filter required because orphans have no referencers):
 
 ```bash
 SAFE_JSON="$PWD/tmp/redirectors/orphaned.json" \
   "${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/ue-runner.cmd" \
-  "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/bin/apply_fixups.py" \
-  --mode=delete-only
+  "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/bin/apply_fixups.py"
 ```
 
 To prepend a project-specific CL tag (e.g. for naming conventions like `[Mix, Tool]`), pass it via env:
@@ -359,7 +358,7 @@ The skill follows a facade-over-libs structure:
   - `classify_safety.py` — Phase 2 (emits fix-up safe set + optional orphaned safe set + report)
   - `filter_safe_by_code_refs.py` / `scan_code_references.py` — Phase 3.5
   - `pick_one_per_dir.py` — per-directory subset reducer (works on either safe-set shape)
-  - `apply_fixups.py` — Phase 4 (fix-up mode and delete-only mode; auto-detected or `--mode=delete-only`)
+  - `apply_fixups.py` — Phase 4 (fix-up mode and delete-only mode; auto-detected from the input shape)
 - `lib/p4cli.py` — host-side P4 CLI (find, run, parse opened, where mapping)
 - `lib/package_paths.py` — UE-side mount-point map and package -> on-disk path
 - `lib/redirector_record.py` — YAML/JSON I/O for the discovery and safe-set files (`load_safe_set` / `save_safe_set` are reused by `pick_one_per_dir.py`)
