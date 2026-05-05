@@ -46,7 +46,7 @@ def bootstrap(ctx) -> None:
         )
         return
 
-    ctx.log(f"github auth: ok (logged in as {auth_user})" if auth_user else "github auth: ok")
+    ctx.log_ok(f"github auth: ok (logged in as {auth_user})" if auth_user else "github auth: ok")
 
     required_org, access_remediation = _project_org_config(ctx.project_dir)
     if not required_org:
@@ -54,7 +54,7 @@ def bootstrap(ctx) -> None:
 
     member, orgs = _check_org_membership(gh, required_org)
     if member:
-        ctx.log(f"github org: ok (member of {required_org})")
+        ctx.log_ok(f"github org: ok (member of {required_org})")
         return
 
     org_list = ", ".join(orgs) if orgs else "(none visible)"

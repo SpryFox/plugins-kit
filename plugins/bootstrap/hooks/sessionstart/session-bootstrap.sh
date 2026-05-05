@@ -109,13 +109,10 @@ if [ -f "$_COOLDOWN_FILE" ] && [ ! -f "$_ALERT_FILE" ]; then
     _NOW=$(date +%s 2>/dev/null || echo "0")
     _AGE=$((_NOW - _LAST_RUN))
     if [ $_AGE -lt $_COOLDOWN_SECS ]; then
-        # Log the skip so users can tell "bootstrap was throttled" apart from
-        # "bootstrap ran and found nothing" when debugging.
-        _SKIP_TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "unknown-time")"
-        {
-            echo "--- Shell $_SKIP_TS ---"
-            echo "cooldown: skipped (last run ${_AGE}s ago for $PWD; reset with 'bootstrap-reset-cooldown')"
-        } >> "$PLUGIN_DATA/bootstrap.log" 2>/dev/null || true
+        # Cooldown skip is silent: it isn't a remediation, it's a throttle. The
+        # cooldown file's mtime ($_COOLDOWN_FILE) records when bootstrap last
+        # ran, which is enough to distinguish "throttled" from "passed clean"
+        # during debugging. Use 'bootstrap-reset-cooldown' to force a re-run.
         HOOK_OUTPUT_EMITTED=1
         exit 0
     fi

@@ -77,7 +77,9 @@ def main():
             details.append(f"deduped {path_repair_result.deduped}")
         if path_repair_result.restored:
             details.append(f"restored {path_repair_result.restored} from registry")
-        bootstrap_action_entries.append(
+        # Logged as ok (verbose-only): PATH bloat returns next session, so this
+        # is a transient cleanup, not a persistent remediation worth surfacing.
+        bootstrap_ok_entries.append(
             f"PATH repaired: {path_repair_result.before_entries} -> "
             f"{path_repair_result.after_entries} entries "
             f"({', '.join(details)})"
@@ -1639,7 +1641,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
     script_def = manifest.get("script")
     if script_def:
         script_failures = _run_script_phase(
-            script_def, plugin_root, data_dir, config, action_entries,
+            script_def, plugin_root, data_dir, config, action_entries, ok_entries,
             prefix=prefix, plugin_name=plugin_name, project_dir=project_dir,
         )
         failures.extend(script_failures)
@@ -1683,10 +1685,13 @@ def _find_plugins_dir(plugin_root):
 
 
 
-def _run_script_phase(script_def, plugin_root, data_dir, config, log_entries, prefix="", plugin_name="", project_dir=None):
+def _run_script_phase(script_def, plugin_root, data_dir, config, action_entries, ok_entries=None, prefix="", plugin_name="", project_dir=None):
     """Run a custom bootstrap script. Returns list of failures."""
     import importlib.util
 
+    if ok_entries is None:
+        ok_entries = []
+    log_entries = action_entries  # Failures and unconditional messages.
     script_path = os.path.join(plugin_root, script_def["path"])
     entry_point = script_def.get("entry_point", "bootstrap")
 
@@ -1695,7 +1700,7 @@ def _run_script_phase(script_def, plugin_root, data_dir, config, log_entries, pr
         return []
 
     # Build context object for the script
-    ctx = _ScriptContext(config, data_dir, plugin_root, log_entries, prefix, plugin_name, project_dir)
+    ctx = _ScriptContext(config, data_dir, plugin_root, log_entries, ok_entries, prefix, plugin_name, project_dir)
 
     try:
         spec = importlib.util.spec_from_file_location("_bootstrap_script", script_path)
@@ -1720,7 +1725,7 @@ def _run_script_phase(script_def, plugin_root, data_dir, config, log_entries, pr
 class _ScriptContext:
     """Context object passed to custom bootstrap scripts."""
 
-    def __init__(self, config, data_dir, plugin_root, log_entries, prefix, plugin_name, project_dir=None):
+    def __init__(self, config, data_dir, plugin_root, log_entries, ok_entries, prefix, plugin_name, project_dir=None):
         self.config = dict(config) if config else {}
         self.config_path = os.path.join(data_dir, "config.yaml")
         self.data_dir = data_dir
@@ -1732,6 +1737,7 @@ class _ScriptContext:
         self.project_dir = project_dir
         self.failures = []
         self._log_entries = log_entries
+        self._ok_entries = ok_entries
         self._prefix = prefix
         self._plugin_name = plugin_name
 
@@ -1747,8 +1753,12 @@ class _ScriptContext:
         self.failures.append(failure)
 
     def log(self, message: str) -> None:
-        """Add a log entry."""
+        """Add an action log entry. Always shown to the user."""
         self._log_entries.append(f"{self._prefix}{message}")
+
+    def log_ok(self, message: str) -> None:
+        """Add an ok log entry. Hidden from the user; shown only in verbose mode."""
+        self._ok_entries.append(f"{self._prefix}{message}")
 
 
 def _read_new_log_entries(data_dir, start_time=None):

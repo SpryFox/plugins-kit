@@ -64,13 +64,15 @@ class TestCooldownContract:
             "reset via bootstrap-reset-cooldown when needed"
         )
 
-    def test_skip_is_logged(self) -> None:
+    def test_skip_is_silent(self) -> None:
         text = SESSION_BOOTSTRAP.read_text()
-        assert "cooldown: skipped" in text, (
-            "cooldown skips must emit a log line so users can distinguish "
-            "throttled-skip from clean-pass"
+        assert "cooldown: skipped" not in text, (
+            "cooldown skips must not emit a log line — throttle is not a "
+            "remediation, and the entry was leaking into user-visible bootstrap output"
         )
-        assert "bootstrap-reset-cooldown" in text, "log line should mention the reset tool"
+        # Reset helper is still referenced elsewhere in the script (install path,
+        # comments) so users have a path to force a re-run when needed.
+        assert "bootstrap-reset-cooldown" in text, "reset tool reference should remain"
 
     def test_reset_script_installed_to_local_bin(self) -> None:
         text = SESSION_BOOTSTRAP.read_text()

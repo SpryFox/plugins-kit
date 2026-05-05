@@ -33,7 +33,7 @@ def install(ctx) -> None:
     # install script stays quiet on subsequent SessionStarts instead of nagging
     # about a "conflicting" statusLine the user intentionally chose.
     if (Path(ctx.data_dir) / CUSTOMIZED_FLAG).exists():
-        ctx.log("statusline: user customized (skipping)")
+        ctx.log_ok("statusline: user customized (skipping)")
         return
 
     installed_script = _resolve_installed_script(ctx.data_dir)
@@ -75,7 +75,7 @@ def install(ctx) -> None:
     settings_path, current_command = existing
 
     if current_command == expected_command:
-        ctx.log("statusline: already installed (no-op)")
+        ctx.log_ok("statusline: already installed (no-op)")
         return
 
     if _is_ours(current_command):
