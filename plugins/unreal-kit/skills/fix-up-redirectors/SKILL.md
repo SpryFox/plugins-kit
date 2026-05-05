@@ -1,9 +1,9 @@
 ---
 name: fix-up-redirectors
 skill-type: technique-skill
-description: Use when cleaning up Unreal ObjectRedirector assets in a P4-backed UE project. Fixes safe redirectors in a fresh CL. Do NOT use for non-P4 projects.
+description: Use when cleaning up Unreal ObjectRedirector assets in a P4-backed UE project. Fixes safe redirectors and/or deletes orphaned redirectors in a fresh CL. Do NOT use for non-P4 projects.
 disable-model-invocation: false
-argument-hint: "[scope path, e.g. /Game/Art - omit for whole project]"
+argument-hint: "[mode] [scope] -- mode: 'orphaned_safe' for orphans only; scope: e.g. /Game/Art (omit for whole project). With no args, lists common operations and asks."
 ---
 
 # Fix Up Redirectors
@@ -91,16 +91,62 @@ The skill's value is the explicit map of what's covered and what isn't. Every re
 - The unreal-kit plugin installed; `ue-runner` available
 - A working dir for outputs (the skill defaults to `tmp/redirectors/` in cwd)
 
-## Arguments
+## Arguments and modes
 
-- No arg: scan all of `/Game`
-- One arg: scan a sub-path (e.g. `/Game/Art`, `/Game/UI/Widgets`)
+The skill takes up to two positional args: an optional **mode keyword** and an optional **scope** (a UE content path like `/Game/Art`). Either, both, or neither may be present.
+
+| Invocation | Mode | Scope | Behavior |
+|---|---|---|---|
+| `/fix-up-redirectors` | (none -- show menu) | -- | Print the "Common operations" menu below and ask which the user wants. Do NOT start any phase. |
+| `/fix-up-redirectors /Game/Art` | full (default) | `/Game/Art` | Run all phases: discover, classify, report, code-ref filter, apply both fix-up safe set and (if user opts in at Phase 3) orphaned safe set. |
+| `/fix-up-redirectors orphaned_safe` | orphan-only | `/Game` | Skip the fix-up path entirely. Discover, classify, report orphan counts, then Phase 4 in `--mode=delete-only` against `orphaned.json`. **Skip Phase 3.5** (orphans have no referencers, so source-code references can't apply). |
+| `/fix-up-redirectors orphaned_safe /Game/Art` | orphan-only | `/Game/Art` | Same as orphan-only, but scoped. |
+
+Anything that isn't the literal string `orphaned_safe` is treated as a scope. The mode keyword, if present, must come first.
+
+Future mode keywords (e.g. `fix_up_safe` to skip the orphan path, `referenced_broken` to dump a manual-cleanup report) plug into this same table -- add a row, branch the affected phases.
+
+## Common operations (printed when invoked with no args)
+
+When the user types `/fix-up-redirectors` with no args, print exactly this menu and ask which they want -- do NOT start any phase yet:
+
+```
+Fix Up Redirectors -- common operations:
+
+  /fix-up-redirectors
+      Show this menu.
+
+  /fix-up-redirectors orphaned_safe
+      Delete the "orphaned safe" redirectors (target gone, zero referencers,
+      not checked out by anyone). Pure p4 deletes -- no referencer rewrites,
+      no code-ref filter. Cheap and routine; consider running every couple
+      of weeks.
+
+  /fix-up-redirectors /Game/SomePath
+      Full pipeline scoped to a sub-path: classify every redirector under
+      /Game/SomePath, run the code-ref filter, apply fix-ups for the safe
+      set, optionally delete orphans. Use this for content hygiene after a
+      rename/move pass in a specific area.
+
+  /fix-up-redirectors
+  (with no scope, after picking a mode)
+      Same as above but over all of /Game. Recommended only when the safe
+      set is small or after a successful directory-sampled test slice.
+
+  /fix-up-redirectors orphaned_safe /Game/SomePath
+      Orphan deletes scoped to a sub-path.
+
+Which would you like to run?
+```
+
+Pick the matching mode + scope from the user's reply and re-enter the skill at Phase 1.
 
 ## Step tracking
 
-This skill has six phases. Track progress in a TodoWrite list with one entry per phase so nothing is skipped between Discover, Classify, Report, Code-ref filter, Apply, and Final report.
+The full pipeline has six phases (Discover, Classify, Report, Code-ref filter, Apply, Final report). Track progress in a TodoWrite list. Per-mode skips:
 
-The orphan path uses the same phases but skips the code-ref filter (orphans have no referencers, so source-code references aren't relevant) and uses `--mode=delete-only` in Phase 4.
+- **full mode**: all six phases.
+- **orphan-only mode**: Discover, Classify, Report (orphan-focused), **skip Phase 3.5**, Apply (`--mode=delete-only`), Final report.
 
 ## Recommended: per-directory subset for broad purges
 
@@ -185,13 +231,16 @@ Scanning <scope>... <total> redirectors found.
   <N>  in non-writable mounts (plugin content; skipped)
 ```
 
-Then ask: **"Want me to fix the N safe ones in a new CL? [y/N]"**
+Then ask, depending on mode:
 
-If there are orphaned redirectors, also ask whether to delete them in a separate CL (delete-only mode is independent of the fix-up path; it can run before, after, or instead).
+- **full mode**: **"Want me to fix the N safe ones in a new CL? [y/N]"** -- and, if there are orphaned redirectors, separately ask whether to delete them in another CL (delete-only mode is independent of the fix-up path; it can run before, after, or instead).
+- **orphan-only mode**: only ask about the orphan path: **"Want me to delete the N orphaned redirectors in a new CL? [y/N]"** -- the fix-up safe count is informational; do not offer to fix it in this run (the user explicitly chose `orphaned_safe`).
 
 Do NOT proceed without explicit yes.
 
 ## Phase 3.5 - Filter against code references (host Python, only at apply time)
+
+**Skip this phase entirely in orphan-only mode.** Orphans have zero referencers by definition, including zero source-code referencers, so there's nothing for the filter to drop. Running it would just regenerate the cache for no benefit.
 
 A redirector that's still referenced from C++/C#/Python source must NOT be fixed - the code would silently start pointing at a missing asset. We treat code references the same way we treat P4 checkouts: a hard block.
 
