@@ -73,6 +73,27 @@ plugins-kit/                          # Marketplace root
 
 For UE Python automation (running scripts, the `ue_runner` host-side runner, in-editor patterns, sys.path conventions, dependency bootstrap), invoke the `ue-python-api` skill at `plugins/unreal-kit/skills/ue-python-api/SKILL.md`.
 
+## Bootstrap (foundation for all plugins)
+
+The **bootstrap** plugin is the dependency-management layer every other plugin in this marketplace rides on. Claude Code runs it via a SessionStart hook at the start of every session; bootstrap then reads each enabled plugin's `bootstrap.json` and ensures system tools, venvs, git deps, marketplaces, and per-user config are in the state the plugins need. **No bootstrap, no working plugins.** When a `bootstrap.json` changes (e.g. a new Python dependency, a new check), the next session that actually runs bootstrap will apply those checks and remediate.
+
+**Healthy bootstrap is silent.** No SessionStart output does NOT mean bootstrap is broken; it means every check passed (or hit a cache). To verify a plugin's bootstrap actually ran, read its log at `~/.claude/plugins/data/<marketplace>/<plugin>/bootstrap.log`. If the log doesn't exist, bootstrap never reached that plugin -- most often because the per-project cooldown short-circuited the run (see below).
+
+**Per-project cooldown.** After bootstrap finishes for a project, it writes a per-project timestamp at `~/.claude/plugins/data/plugins-kit/bootstrap/cooldowns/last_run_epoch.<sha1-of-cwd>`. Subsequent SessionStart hooks within the cooldown window are skipped entirely -- bootstrap does NOT re-check anything, no logs are written, no remediation runs. After a `bootstrap.json` change, after publishing a plugin update you want pulled in immediately, or any time bootstrap appears to be ignoring you, clear the cooldown:
+
+```bash
+bash plugins/bootstrap/scripts/bootstrap-reset-cooldown.sh             # current project (CWD)
+bash plugins/bootstrap/scripts/bootstrap-reset-cooldown.sh --all       # every project
+bash plugins/bootstrap/scripts/bootstrap-reset-cooldown.sh --status    # list cooldowns + ages, no writes
+bash plugins/bootstrap/scripts/bootstrap-reset-cooldown.sh --clear-alerts  # also nuke pending alert/display files
+```
+
+The reset script's `--help` is the canonical doc; the usage block lives inline at `plugins/bootstrap/scripts/bootstrap-reset-cooldown.sh:2-18`.
+
+**Two caches, do not confuse them.** The cooldown above short-circuits the entire bootstrap run for a project. Separately, the engine content-hashes individual *checks* via `bootstrap_cache.sha256` in the same data dir -- that cache skips one specific check when its input manifest hasn't changed. The cooldown is the bigger hammer; clearing it is the right tool ~99% of the time. Don't reach for `bootstrap_cache.sha256` unless you've ruled out the cooldown.
+
+For deeper material -- manifest schema, condition categories, fix-all flow, engine internals -- invoke `/bootstrap`.
+
 ## Development Workflow
 
 **Automated tests required** — every new module or integration point must have corresponding tests in `tests/` before the work is considered complete. Test directories mirror the plugin structure (e.g. `tests/bootstrap/` for the bootstrap plugin). This standard was established with the bootstrap plugin's M1 test suite and applies to all subsequent development.
@@ -285,6 +306,21 @@ claude_md:
         you need the venv refreshed before the next session.
       origin: User directive 2026-04-28.
       added: "2026-04-28"
+    - id: bootstrap_cooldown_reset
+      keywords: [cooldown, bootstrap not running, force bootstrap, plugin update not applying, last_run_epoch, bootstrap-reset-cooldown, silent skip, no bootstrap log]
+      summary: Bootstrap throttles itself per-project via a cooldown file; clear it with bootstrap-reset-cooldown.sh when bootstrap appears to be ignoring you.
+      detail: |
+        After bootstrap runs for a project it writes ~/.claude/plugins/data/plugins-kit/bootstrap/cooldowns/last_run_epoch.<sha1-of-cwd>.
+        Subsequent SessionStart hooks within the cooldown window skip bootstrap entirely -- no
+        log entry, no checks, no remediation. Symptoms: a published plugin update doesn't take
+        effect, a bootstrap.json change isn't applied, or a plugin's bootstrap.log is stale.
+        Reset with `bash plugins/bootstrap/scripts/bootstrap-reset-cooldown.sh` (current
+        project), `--all` (every project), or `--status` (list cooldowns + ages, no writes).
+        Do not confuse with bootstrap_cache.sha256 (the per-check content-hash cache); the
+        cooldown is the bigger hammer and the right tool 99% of the time. See the "Bootstrap"
+        section above for full context.
+      origin: User directive 2026-05-05 -- documentation gap surfaced when a unreal-kit publish appeared not to apply.
+      added: "2026-05-05"
   conventions:
     - rule: When adding a new plugin Python dependency, update <plugin>/pyproject.toml AND <plugin>/bootstrap.json venv.check_imports together.
       keywords: [pyproject.toml, bootstrap.json, dependency, venv, check_imports]
