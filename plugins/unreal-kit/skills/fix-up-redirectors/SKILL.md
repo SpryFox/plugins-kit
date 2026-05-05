@@ -157,7 +157,7 @@ Why this works: most "this might break something" scenarios are directory-shaped
 Use the reducer on either the fix-up safe set or the orphaned safe set; the input/output JSON shape is the same.
 
 ```bash
-uv run python \
+~/.claude/plugins/data/plugins-kit/unreal-kit/.venv/Scripts/python.exe \
   "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/bin/pick_one_per_dir.py" \
   --in tmp/redirectors/safe_filtered.json \
   --out tmp/redirectors/safe_per_dir.json
@@ -186,7 +186,7 @@ The discovery YAML lands at `tmp/redirectors/redirectors_discovery.yaml`. It con
 The classifier is a host-side script (no Unreal needed). Run it from the project root so `p4` picks up the right `P4USER`/`P4CLIENT` from `.p4config.txt`:
 
 ```bash
-uv run python \
+~/.claude/plugins/data/plugins-kit/unreal-kit/.venv/Scripts/python.exe \
   "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/bin/classify_safety.py" \
   --discovery tmp/redirectors/redirectors_discovery.yaml \
   --out-safe tmp/redirectors/safe.json \
@@ -194,7 +194,7 @@ uv run python \
   --out-report tmp/redirectors/report.json
 ```
 
-`uv run python` is the standard way to invoke Python from any plugins-kit script — it activates the right venv and works on Windows where bare `python` resolves to a Microsoft Store stub. Requires `pyyaml` in the venv (declared in the skill's host-side requirements).
+The host-side classifier needs `pyyaml`, which the bootstrap engine installs into the unreal-kit plugin's venv at `~/.claude/plugins/data/plugins-kit/unreal-kit/.venv/`. Invoke that venv's Python directly -- the path is stable across plugin versions and resolves the right interpreter regardless of cwd. **Do NOT use `uv run python`** unless the cwd has a matching `pyproject.toml` listing `pyyaml`; from a project root that doesn't (the common case for this skill, since you run from your Unreal project's root for `p4` to pick up `.p4config.txt`), `uv` falls back to a basic Python without `pyyaml` and the script crashes with `ModuleNotFoundError`. On macOS/Linux the venv path is `~/.claude/plugins/data/plugins-kit/unreal-kit/.venv/bin/python`.
 
 The classifier runs `p4 opened -a` once for the workspace, then buckets each redirector:
 
@@ -247,7 +247,7 @@ A redirector that's still referenced from C++/C#/Python source must NOT be fixed
 The cache lives at `./.local-data/code_references.yaml` (per-project, not checked in). It's only required when applying. The filter script regenerates it transparently if it's missing or older than 24 hours; otherwise it reuses the cached scan:
 
 ```bash
-uv run python \
+~/.claude/plugins/data/plugins-kit/unreal-kit/.venv/Scripts/python.exe \
   "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/bin/filter_safe_by_code_refs.py" \
   --safe-in tmp/redirectors/safe.json \
   --safe-out tmp/redirectors/safe_filtered.json \
@@ -266,7 +266,7 @@ Code-ref filter: <kept>/<total> remain after dropping <dropped> referenced from 
 To force a fresh scan ahead of time (e.g. you just renamed a bunch of assets in source):
 
 ```bash
-uv run python \
+~/.claude/plugins/data/plugins-kit/unreal-kit/.venv/Scripts/python.exe \
   "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/bin/scan_code_references.py"
 ```
 

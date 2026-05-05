@@ -163,14 +163,23 @@ def reopen_files(cl_num, files, batch_size=200):
 
 def get_p4_user():
     """Return the current P4 user. Prefers $P4USER env var; falls back to
-    `p4 -F %userName% info` so callers don't need to set the env var.
-    Returns the empty string only if both probes fail."""
+    `p4 info` parsed for "User name: <name>". Returns the empty string only
+    if every probe fails.
+
+    On some Perforce servers `p4 -F %userName% info` exits 0 with empty
+    stdout (the %userName% format variable is supported by `p4 user -o`
+    but not by `p4 info`). We previously used that form and it silently
+    skipped the existing-CL guard. The plain-text parse below is robust
+    across server versions."""
     env_user = os.environ.get('P4USER', '').strip()
     if env_user:
         return env_user
-    rc, out, _err = run_p4(['-F', '%userName%', 'info'])
-    if rc == 0:
-        return out.strip().splitlines()[0].strip() if out.strip() else ''
+    rc, out, _err = run_p4(['info'])
+    if rc != 0:
+        return ''
+    for line in out.splitlines():
+        if line.startswith('User name:'):
+            return line.split(':', 1)[1].strip()
     return ''
 
 
