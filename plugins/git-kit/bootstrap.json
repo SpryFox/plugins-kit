@@ -1,0 +1,17 @@
+{
+  "tools": [
+    {
+      "name": "gh",
+      "installPath": "~/AppData/Local/Microsoft/WinGet/Links",
+      "install": {
+        "windows": "winget install --id GitHub.cli --accept-source-agreements --accept-package-agreements --silent --disable-interactivity",
+        "macos": "brew install gh",
+        "ubuntu": "manual"
+      }
+    }
+  ],
+  "script": {
+    "path": "scripts/bootstrap.py",
+    "entry_point": "bootstrap"
+  }
+}

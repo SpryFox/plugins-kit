@@ -1,0 +1,9 @@
+{
+  "name": "git-kit",
+  "version": "0.1.0",
+  "description": "GitHub CLI bootstrap: ensures gh is installed, the user is authenticated to GitHub, and (optionally) a member of a required organization",
+  "author": {
+    "name": "Christina"
+  },
+  "keywords": ["github", "gh", "git", "auth", "bootstrap"]
+}
