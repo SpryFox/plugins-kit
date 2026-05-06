@@ -134,11 +134,18 @@ if not FORCE_NEW_CL:
 redirector_pkgs = {r['pkg'] for r in records}
 redirector_files = [r['file'] for r in records if r.get('file')]
 
-# In delete-only mode: also include .umap siblings of every redirector .uasset.
+# Always include .umap siblings of every redirector .uasset, in both modes.
 # Level redirectors come in .uasset+.umap pairs and both files must land in
 # the CL together — otherwise the depot keeps a dangling .umap pointing at a
-# deleted .uasset (or vice versa). We add the sibling unconditionally if it
-# exists on disk; cheap to check, prevents an easy-to-miss correctness bug.
+# deleted .uasset (or vice versa). Two distinct shapes need this:
+#   - Normal level redirectors: both .uasset and .umap exist on disk; UE deletes
+#     both; we need both in the apply CL.
+#   - .umap-native packages: discovery (UE asset registry) reports a .uasset
+#     path but on disk only the .umap exists; UE delete_asset removes the .umap
+#     and auto-opens it for delete in default; without pairing, the .umap is
+#     stranded outside the apply CL while the .uasset path is a phantom.
+# We add the sibling unconditionally if it exists on disk; cheap to check,
+# prevents an easy-to-miss correctness bug in either mode.
 def _umap_sibling(uasset_path):
     if not uasset_path or not uasset_path.lower().endswith('.uasset'):
         return None
@@ -147,14 +154,13 @@ def _umap_sibling(uasset_path):
 
 
 umap_companion_files = []
-if MODE == 'delete-only':
-    for f in list(redirector_files):
-        sibling = _umap_sibling(f)
-        if sibling:
-            umap_companion_files.append(sibling)
-    if umap_companion_files:
-        redirector_files = redirector_files + umap_companion_files
-        print(f"Including {len(umap_companion_files)} .umap sibling(s) of level redirectors.")
+for f in list(redirector_files):
+    sibling = _umap_sibling(f)
+    if sibling:
+        umap_companion_files.append(sibling)
+if umap_companion_files:
+    redirector_files = redirector_files + umap_companion_files
+    print(f"Including {len(umap_companion_files)} .umap sibling(s) of level redirectors.")
 
 referencer_pkgs = set()
 referencer_files = set()
