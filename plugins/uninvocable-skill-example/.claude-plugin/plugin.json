@@ -1,9 +1,0 @@
-{
-  "name": "uninvocable-skill-example",
-  "version": "0.2.0",
-  "description": "Reproduction case: a plugin shipping a single skill with only Anthropic-standard frontmatter that should be /-invocable per the docs but isn't",
-  "author": {
-    "name": "Christina"
-  },
-  "keywords": ["bug-repro", "diagnostic"]
-}
