@@ -323,7 +323,16 @@ if redirector_files:
             if rc == 0:
                 continue
             err_lower = (err or '').lower()
-            if 'in use by another process' in err_lower or 'access is denied' in err_lower:
+            # Windows P4 emits "being used by another process" (the wording from
+            # the OS error string), not "in use by another process". Cover both
+            # phrasings plus the generic "access is denied" so the lock path is
+            # entered whenever the OS denied us a handle to delete.
+            locked_markers = (
+                'being used by another process',
+                'in use by another process',
+                'access is denied',
+            )
+            if any(marker in err_lower for marker in locked_markers):
                 lock_failures.append(path)
             else:
                 delete_failures.append(path)
@@ -336,29 +345,32 @@ if redirector_files:
 # 6) Lock-failure retry pass.
 #    UE has been observed to keep Windows file handles open on referencer
 #    packages even after `delete_asset` returns (and even after a GC). The
-#    locked files can't be `p4 delete`d while UE holds them — but UE has
-#    already deleted them on disk by the time we hit this path. Once UE
-#    exits, the handles release and `p4 reconcile` notices the local delete
-#    and opens the file for delete in the CL. We can't wait for UE-exit
-#    inside the commandlet, so we attach a delayed-reconcile script that the
-#    skill phase will run after the commandlet returns.
+#    locked files can't be `p4 delete`d while UE holds them. Empirically the
+#    files are STILL ON DISK when the commandlet exits -- UE held the handle
+#    long enough that disk-delete never happened in-process -- so the post-
+#    exit retry needs `p4 delete` (which marks the depot delete and removes
+#    the local file in one step), NOT `p4 reconcile` (which would see an
+#    unchanged file on disk and do nothing).
+#    We can't wait for UE-exit inside the commandlet, so we attach a
+#    delayed-delete file list that the skill phase runs after the commandlet
+#    returns. If a future UE version actually finishes the on-disk delete
+#    before exiting, `p4 delete` errors per-file with "file not found" and
+#    the user can fall back to `p4 reconcile` against the same list.
 retry_script = None
 if lock_failures:
-    # Drop a tiny shell script next to the manifest. The skill's Phase 4
-    # tail invokes it once the commandlet exits; reconcile picks up locally-
-    # deleted files and opens them for delete in the same CL.
+    # Drop a newline-separated file list next to the manifest. The skill's
+    # Phase 4 tail pipes it to `p4 -x - delete -c <CL>` once the commandlet
+    # exits and the locks release.
     retry_dir = os.path.join(str(unreal.Paths.project_dir()), 'Saved', 'PythonOutput')
     os.makedirs(retry_dir, exist_ok=True)
     retry_script = os.path.join(retry_dir, f'redirectors_lock_retry_{cl_num}.txt')
-    # Plain newline-separated file list; the skill's retry step pipes it to
-    # `p4 -x - reconcile -c <CL>`.
     with open(retry_script, 'w') as f:
         for path in lock_failures:
             f.write(path + '\n')
     print(f"[apply_fixups] {len(lock_failures)} file(s) locked by UE; "
-          f"reconcile-after-exit list at {retry_script}")
+          f"retry list at {retry_script}")
     print(f"[apply_fixups] Run after UE exits: "
-          f"p4 -x - reconcile -c {cl_num} < {retry_script}")
+          f"p4 -x - delete -c {cl_num} < {retry_script}")
 
 # 7) Manifest.
 manifest = {
