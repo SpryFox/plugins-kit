@@ -2,7 +2,7 @@
 _schema_version: 1
 name: local-code-review
 skill-type: technique-skill
-description: Use when the user requests a code review of a pending Perforce changelist, OR when the agent is about to ask the user to review/submit a CL it just opened. Do NOT use for git diffs or non-Perforce review workflows.
+description: Use when reviewing a pending Perforce changelist, or before asking the user to submit a CL just opened. Do NOT use for git diffs or non-Perforce reviews.
 ---
 
 # Local Code Review

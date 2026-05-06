@@ -1,7 +1,7 @@
 ---
 name: fix-up-redirectors
 skill-type: technique-skill
-description: Use when cleaning up Unreal ObjectRedirector assets in a P4-backed UE project. Fixes safe redirectors and/or deletes orphaned redirectors in a fresh CL. Do NOT use for non-P4 projects.
+description: Use when cleaning up Unreal ObjectRedirector assets in a P4-backed UE project. Do NOT use for non-P4 projects.
 disable-model-invocation: false
 argument-hint: "[mode] [scope] -- mode: 'orphaned_safe' for orphans only; scope: e.g. /Game/Art (omit for whole project). With no args, lists common operations and asks."
 ---
