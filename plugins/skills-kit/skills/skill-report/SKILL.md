@@ -3,7 +3,7 @@ _schema_version: 1
 name: skill-report
 author: christina
 skill-type: technique-skill
-description: Use when the user invokes /skill-report to produce a roster of all skills visible from the current session, grouped by location and skill-type. Do NOT use for auditing a SKILL.md against the framework (use /skill-audit).
+description: Use when the user invokes /skill-report to list all skills by location and type. Do NOT use for auditing a SKILL.md (use /skill-audit).
 disable-model-invocation: true
 user-invocable: true
 argument-hint: "[output path]"
@@ -63,10 +63,10 @@ technique_skill:
           action: If --out was used, surface the resolved path so the user can open it; otherwise the report is already in chat.
           expected: User can read or open the report.
       gotchas:
-        - The "Plugin: skills-kit" row reads from ~/.claude/plugins/installed_plugins.json and shows the active version, which can lag the on-disk cache. The plugin-version banner above is the authoritative signal of which version actually ran.
-        - Implied frontmatter is per (skill-type, variant). User-only technique-skills imply both disable-model-invocation: true and user-invocable: true; other types imply neither. Per-skill rows show only flags that DIFFER from the implied set.
-        - Project skills resolve relative to cwd (`<cwd>/.claude/skills`). If invoked from outside a project tree the Project section will be empty; this is expected, not a bug.
-        - The script reads only files. It does not modify SKILL.md frontmatter and does not call any P4 / git commands.
+        - "The Plugin: skills-kit row reads from ~/.claude/plugins/installed_plugins.json and shows the active version, which can lag the on-disk cache. The plugin-version banner above is the authoritative signal of which version actually ran."
+        - "Implied frontmatter is per (skill-type, variant). User-only technique-skills imply both disable-model-invocation true and user-invocable true; other types imply neither. Per-skill rows show only flags that DIFFER from the implied set."
+        - "Project skills resolve relative to cwd (<cwd>/.claude/skills). If invoked from outside a project tree the Project section will be empty; this is expected, not a bug."
+        - "The script reads only files. It does not modify SKILL.md frontmatter and does not call any P4 / git commands."
       reference_section: usage.md
   reference_index:
     - id: usage
