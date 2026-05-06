@@ -321,6 +321,21 @@ claude_md:
         section above for full context.
       origin: User directive 2026-05-05 -- documentation gap surfaced when a unreal-kit publish appeared not to apply.
       added: "2026-05-05"
+    - id: host_python_via_plugin_venv
+      keywords: [host-side python, plugin venv, uv run python, ModuleNotFoundError, foreign cwd, project root, pyyaml, skill examples]
+      summary: SKILL.md examples that invoke host-side Python must use the explicit plugin-venv path, not `uv run python`, when the documented cwd is the user's project root.
+      detail: |
+        `uv run python` resolves the venv from the cwd's pyproject.toml. When a skill instructs
+        the user to run from a project root that has no matching pyproject.toml (e.g. an
+        Unreal project root, where p4 picks up .p4config.txt), uv falls back to a bare
+        interpreter without the plugin's installed dependencies and the script crashes with
+        ModuleNotFoundError. Bootstrap installs each plugin's venv at a stable canonical path:
+          Windows: ~/.claude/plugins/data/<marketplace>/<plugin>/.venv/Scripts/python.exe
+          macOS/Linux: ~/.claude/plugins/data/<marketplace>/<plugin>/.venv/bin/python
+        The path does not change across plugin versions and resolves correctly from any cwd.
+        Use it directly in SKILL.md examples instead of `uv run python`.
+      origin: Surfaced 2026-05-05 in unreal-kit fix-up-redirectors -- broke Phase 2 with ModuleNotFoundError: yaml. Fixed in 0.9.4.
+      added: "2026-05-05"
   conventions:
     - rule: When adding a new plugin Python dependency, update <plugin>/pyproject.toml AND <plugin>/bootstrap.json venv.check_imports together.
       keywords: [pyproject.toml, bootstrap.json, dependency, venv, check_imports]
