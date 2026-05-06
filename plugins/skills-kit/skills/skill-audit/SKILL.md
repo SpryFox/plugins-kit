@@ -1,6 +1,7 @@
 ---
 _schema_version: 1
 name: skill-audit
+author: christina
 skill-type: technique-skill
 description: Use when the user invokes /skill-audit to audit a SKILL.md against the framework's type contract and the content-allocation rules. Do NOT use for CLAUDE.md (use /claude-md-audit).
 disable-model-invocation: true

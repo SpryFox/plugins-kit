@@ -1,6 +1,7 @@
 ---
 _schema_version: 1
 name: skill-authoring
+author: christina
 skill-type: domain-skill
 description: Use when authoring, auditing, or refining a Claude Code skill. Do NOT use for invoking existing skills or for general writing tasks.
 ---

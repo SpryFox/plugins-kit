@@ -1,6 +1,7 @@
 ---
 _schema_version: 1
 name: local-code-review
+author: christina
 skill-type: technique-skill
 description: Use when reviewing a pending Perforce changelist, or before asking the user to submit a CL just opened. Do NOT use for git diffs or non-Perforce reviews.
 ---

@@ -1,6 +1,7 @@
 ---
 _schema_version: 1
 name: statusline
+author: christina
 skill-type: technique-skill
 description: Use when the user invokes /statusline or asks to inspect, customize, or reset their Claude Code status line. Do NOT use for unrelated UI customization.
 disable-model-invocation: true

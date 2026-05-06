@@ -1,6 +1,7 @@
 ---
 _schema_version: 1
 name: claude-md-audit
+author: christina
 skill-type: technique-skill
 description: Use when the user invokes /claude-md-audit to audit a CLAUDE.md against the cohesion-principles content-allocation framework. Do NOT use for SKILL.md files (use /skill-audit).
 disable-model-invocation: true

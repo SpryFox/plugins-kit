@@ -1,6 +1,7 @@
 ---
 _schema_version: 1
 name: insight-engineering
+author: christina
 skill-type: pattern-skill
 description: Use when designing a tool that produces a materialized insight from deep scans or inference over project data. Do NOT use for one-shot print-and-exit scripts.
 ---

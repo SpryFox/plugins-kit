@@ -1,6 +1,7 @@
 ---
 _schema_version: 1
 name: ue-python-api
+author: christina
 skill-type: capability-skill
 description: Use when reading, writing, or extracting Unreal Editor data via Python. Do NOT use for blueprint edits or non-Python Editor work.
 ---

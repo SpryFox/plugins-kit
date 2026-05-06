@@ -1,5 +1,6 @@
 ---
 name: fix-up-redirectors
+author: christina
 skill-type: technique-skill
 description: Use when cleaning up Unreal ObjectRedirector assets in a P4-backed UE project. Do NOT use for non-P4 projects.
 disable-model-invocation: false

@@ -1,6 +1,7 @@
 ---
 _schema_version: 1
 name: ue-mcp-server
+author: christina
 skill-type: capability-skill
 description: Use when automating the Unreal Editor via the MCP server -- spawning actors, authoring graphs, driving PIE. Do NOT use for on-disk asset inspection.
 ---

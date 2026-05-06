@@ -1,6 +1,7 @@
 ---
 _schema_version: 1
 name: bootstrap
+author: christina
 skill-type: reference-skill
 description: Use when interpreting SessionStart bootstrap messages or configuring user/project dependency manifests. Do NOT use for non-bootstrap debugging.
 ---
