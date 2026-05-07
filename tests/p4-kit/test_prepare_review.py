@@ -497,6 +497,50 @@ class TestHasDescribeContent:
     def test_false_when_differences_empty(self):
         assert not pr.has_describe_content("Differences ...\n(no files)\n")
 
+    def test_true_for_pure_add_with_only_affected_files_section(self):
+        """Pure-add CLs may emit no Differences-section headers at all.
+
+        Perforce gives pure-add CLs no `==== ====` headers under
+        `Differences ...` because there is no prior version to diff against.
+        The synthesizable add action listed under `Affected files ...`
+        is enough to mark the describe as reviewable -- extract_diff
+        will fill in the diff body via p4 print.
+        """
+        out = (
+            "Affected files ...\n"
+            "\n"
+            "... //depot/new.py#1 add\n"
+            "\n"
+            "Differences ...\n"
+        )
+        assert pr.has_describe_content(out)
+
+    def test_true_for_pure_delete_with_only_shelved_files_section(self):
+        out = (
+            "Shelved files ...\n"
+            "\n"
+            "... //depot/old.py#3 delete\n"
+            "\n"
+            "Differences ...\n"
+        )
+        assert pr.has_describe_content(out)
+
+    def test_false_for_edit_only_section_without_differences_headers(self):
+        """Edits cannot be synthesized -- they need real diff bodies.
+
+        A describe that lists only edits in Affected files but has no
+        Differences-section headers means the diff is genuinely missing
+        (e.g. a pending edit that hasn't been shelved yet). Reject it so
+        callers fall through to the shelved fallback.
+        """
+        out = (
+            "Affected files ...\n"
+            "\n"
+            "... //depot/changed.py#5 edit\n"
+            "\n"
+        )
+        assert not pr.has_describe_content(out)
+
 
 # ---------------------------------------------------------------------------
 # fetch_describe — shelved fallback
@@ -545,6 +589,104 @@ class TestFetchDescribe:
             out, is_shelved = pr.fetch_describe("123")
         assert out == add_only
         assert is_shelved is False
+
+    def test_accepts_submitted_pure_add_with_no_differences_headers(self):
+        """Submitted pure-add CLs whose `==== ====` headers are missing under Differences.
+
+        Some Perforce describe responses for submitted pure-add CLs list the
+        adds in `Affected files ...` but emit an empty `Differences ...`
+        section -- there is nothing to diff against. extract_diff can still
+        synthesize hunks via `p4 print #<rev>`, so fetch_describe should
+        accept this output rather than rejecting it.
+        """
+        submitted_pure_add = (
+            "Change 999 by user@client on 2026/01/01 12:00:00\n"
+            "\n"
+            "\tdesc\n"
+            "\n"
+            "Affected files ...\n"
+            "\n"
+            "... //depot/new.py#1 add\n"
+            "\n"
+            "Differences ...\n"
+        )
+        with patch.object(pr, "run_p4", return_value=(0, submitted_pure_add, "")) as mock:
+            out, is_shelved = pr.fetch_describe("999")
+        assert is_shelved is False
+        # No fallback to -S needed since the submitted output is reviewable.
+        assert mock.call_count == 1
+
+    def test_pending_pure_add_routed_to_shelved_path(self):
+        """Pending pure-add CLs must be read via -S so synthesis uses @=<CL>.
+
+        Going through the regular describe would return is_shelved=False,
+        and `p4 print #1` for a pending add would fail (no submitted rev
+        exists). Forcing the -S path returns is_shelved=True so synthesis
+        uses the shelved spec @=<CL>, which works.
+        """
+        pending_unshelved = (
+            "Change 144098 by user@client on 2026/01/01 12:00:00 *pending*\n"
+            "\n"
+            "\tdesc\n"
+            "\n"
+            "Affected files ...\n"
+            "\n"
+            "... //depot/new.py#1 add\n"
+            "\n"
+        )
+        pending_shelved = (
+            "Change 144098 by user@client on 2026/01/01 12:00:00 *pending*\n"
+            "\n"
+            "\tdesc\n"
+            "\n"
+            "Shelved files ...\n"
+            "\n"
+            "... //depot/new.py#1 add\n"
+            "\n"
+            "Differences ...\n"
+        )
+
+        def side(args):
+            if "-S" in args:
+                return (0, pending_shelved, "")
+            return (0, pending_unshelved, "")
+
+        with patch.object(pr, "run_p4", side_effect=side) as mock:
+            out, is_shelved = pr.fetch_describe("144098")
+        assert is_shelved is True
+        assert out == pending_shelved
+        assert mock.call_count == 2
+
+    def test_pending_unshelved_raises_with_shelve_hint(self):
+        """A pending CL with no shelved content gets a useful error.
+
+        Synthesis of pending adds requires shelved content (@=<CL>); a
+        pending CL with no shelf cannot be reviewed. The error must point
+        the caller at `p4 shelve` rather than emitting a generic 'no
+        describe content' message.
+        """
+        pending_unshelved = (
+            "Change 144098 by user@client on 2026/01/01 12:00:00 *pending*\n"
+            "\n"
+            "\tdesc\n"
+            "\n"
+            "Affected files ...\n"
+            "\n"
+            "... //depot/new.py#1 add\n"
+            "\n"
+        )
+        empty_shelved = (
+            "Change 144098 by user@client on 2026/01/01 12:00:00 *pending*\n"
+        )
+
+        def side(args):
+            if "-S" in args:
+                return (0, empty_shelved, "")
+            return (0, pending_unshelved, "")
+
+        with patch.object(pr, "run_p4", side_effect=side):
+            with pytest.raises(ValueError, match=r"shelve.*144098"):
+                pr.fetch_describe("144098")
 
 
 # ---------------------------------------------------------------------------

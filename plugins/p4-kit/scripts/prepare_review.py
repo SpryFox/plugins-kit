@@ -87,21 +87,62 @@ def run_p4(args: list[str]) -> tuple[int, str, str]:
 
 
 def has_describe_content(output: str) -> bool:
-    """True if p4 describe output has a Differences section with at least one file header."""
-    if "Differences ..." not in output:
-        return False
-    after = output.split("Differences ...", 1)[1]
-    return any(_FILE_HEADER.match(line) for line in after.splitlines())
+    """True if p4 describe output has reviewable content.
+
+    Reviewable means EITHER:
+    - the Differences section has at least one ==== file header (which
+      extract_diff parses directly), OR
+    - the Affected/Shelved files section lists at least one synthesizable
+      action (add/delete), since pure-add and pure-delete CLs have empty
+      Differences sections but extract_diff can fill them in via p4 print.
+
+    A describe with only `edit` actions and no Differences headers is not
+    reviewable here -- edits need real diff bodies, not synthesis.
+    """
+    if "Differences ..." in output:
+        after = output.split("Differences ...", 1)[1]
+        if any(_FILE_HEADER.match(line) for line in after.splitlines()):
+            return True
+    actions = parse_file_actions(output)
+    return any(
+        action in _ADD_ACTIONS or action in _DELETE_ACTIONS
+        for _, action in actions.values()
+    )
+
+
+def _is_pending(output: str) -> bool:
+    """True if the first `Change ...` header line marks the CL as `*pending*`."""
+    for line in output.splitlines():
+        if line.startswith("Change "):
+            return "*pending*" in line
+    return False
 
 
 def fetch_describe(cl: str) -> tuple[str, bool]:
-    """Return (`p4 describe -du` output, is_shelved) for CL, with shelved (`-S`) fallback."""
+    """Return (`p4 describe -du` output, is_shelved) for CL.
+
+    Routing:
+    - Submitted CLs come back from the regular describe with `is_shelved=False`
+      so synthesis fetches via `#<rev>`.
+    - Pending CLs are routed to the shelved (`-S`) describe with `is_shelved=True`
+      so synthesis fetches via `@=<CL>`. Going through `#<rev>` would fail for
+      pending adds because no submitted revision exists yet.
+    - Pending CLs that have not been shelved fail with a hint to shelve first.
+    """
     rc, out, _ = run_p4(["describe", "-du", cl])
-    if rc == 0 and has_describe_content(out):
+    if rc == 0 and not _is_pending(out) and has_describe_content(out):
         return out, False
-    rc, out, _ = run_p4(["describe", "-du", "-S", cl])
-    if rc == 0 and has_describe_content(out):
-        return out, True
+
+    rc_s, out_s, _ = run_p4(["describe", "-du", "-S", cl])
+    if rc_s == 0 and has_describe_content(out_s):
+        return out_s, True
+
+    if rc == 0 and _is_pending(out):
+        raise ValueError(
+            f"pending CL {cl} has no shelved content to review. "
+            f"Shelve the CL first so the review tool can read its diff: "
+            f"`p4 shelve -c {cl}`"
+        )
     raise ValueError(f"no describe content found for CL {cl} (tried committed and shelved)")
 
 
