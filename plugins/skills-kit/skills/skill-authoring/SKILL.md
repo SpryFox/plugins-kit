@@ -58,8 +58,8 @@ domain_skill:
         summary: Worked audit of a real skill, with the friction the framework surfaces about itself.
       - id: scripts
         path: references/scripts.md
-        keywords: [audit.py, classify.py, tag.py, schemas.py, scripts, deterministic checks, heuristic detectors, type inference, frontmatter tagging, mixed-type detection, judgment-required, idempotent, calibration, smoke-test, friction]
-        summary: Audit, classify, tag script reference -- usage, output verdicts, gotchas, calibration history.
+        keywords: [audit.py, classify.py, tag.py, schemas.py, skill_hierarchy_report.py, scripts, deterministic checks, heuristic detectors, type inference, frontmatter tagging, mixed-type detection, judgment-required, idempotent, calibration, smoke-test, friction, hierarchy report, HTML report, skill enumeration, marketplace grouping, available-skills surface, installed_plugins.json, skill-type tooltip]
+        summary: Audit, classify, tag, and hierarchy-report script reference -- usage, output verdicts, gotchas, calibration history.
       - id: patterns_actions
         path: references/patterns-actions.md
         keywords: [actions pattern, multi-step recipe, YAML steps, capture, tell_user, facade script, narration, deterministic execution, ordered sequence, sub-domain action, capability action]
@@ -98,6 +98,13 @@ domain_skill:
       tool: scripts/tag.py
       scope_axes: [single-skill]
       reference_section: scripts.md (tag.py)
+    - id: hierarchy_report
+      keywords: [hierarchy report, HTML report, skill enumeration, available skills surface, marketplace grouping, browse skills, user project plugin breakdown, skill-type tooltip]
+      description: Emit an interactive HTML report enumerating every SKILL.md under user / project / plugin roots, grouped by marketplace and plugin with skill-type hover tooltips.
+      operation: python scripts/skill_hierarchy_report.py [--project-root PATH] [--out PATH]
+      tool: scripts/skill_hierarchy_report.py
+      scope_axes: [corpus-wide]
+      reference_section: scripts.md (skill_hierarchy_report.py)
   tools:
     - name: audit
       command: python scripts/audit.py
@@ -108,4 +115,7 @@ domain_skill:
     - name: tag
       command: python scripts/tag.py
       description: Idempotent frontmatter tagger; refuses to invent or overwrite without --force.
+    - name: hierarchy_report
+      command: python scripts/skill_hierarchy_report.py
+      description: HTML hierarchy report of every SKILL.md under user / project / plugin roots; marketplace-grouped tables with skill-type hover tooltips.
 ```
