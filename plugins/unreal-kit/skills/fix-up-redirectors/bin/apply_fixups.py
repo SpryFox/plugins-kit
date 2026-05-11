@@ -209,9 +209,39 @@ saved = 0
 save_failures = []
 ue_deleted = 0
 ue_delete_failures = []
+collections_reopened = []
 
 # 4) Mode-specific work.
 if MODE == 'fixup':
+    # 4-pre) Suppress UE's per-collection auto-submit during this commandlet.
+    #
+    # UE's CollectionManager (Engine/Source/Developer/CollectionManager/Private/
+    # CollectionContainer.cpp::HandleRedirectorsDeleted) listens for redirector
+    # deletions, rewrites every affected .collection file (Content/Collections/
+    # *.collection) in-place, and -- if UCollectionSettings::bAutoCommitOnSave
+    # is true (the engine default) -- immediately submits each one as its own
+    # one-file changelist via FCheckIn. Description shows up as "Collection
+    # '<Name>' not modified" (Collection.cpp:1121) when the logical members are
+    # unchanged but the on-disk paths got rewritten.
+    #
+    # In a typical fix-up run that touches collection members, this generates
+    # dozens of stray one-file CLs that fragment review and pollute the change
+    # history. The setting is editor-wide (not per-asset), so we flip the CDO
+    # for the lifetime of this commandlet. UE exits, the value resets -- no
+    # project .ini change, no impact on interactive editor sessions.
+    #
+    # The collection file STILL gets correctly rewritten and left open-for-edit
+    # in P4; step 4d below moves it into the apply CL alongside the redirector
+    # deletes so the whole batch lands as one reviewable changelist.
+    try:
+        unreal.get_default_object(unreal.CollectionSettings).set_editor_property(
+            'b_auto_commit_on_save', False
+        )
+        print("Disabled UCollectionSettings.bAutoCommitOnSave for this commandlet.")
+    except Exception as exc:
+        print(f"[apply_fixups] WARN: could not flip bAutoCommitOnSave ({exc}); "
+              f"UE may auto-submit collection files into stray one-file CLs.")
+
     # 4a) p4 edit only the non-redirector referencer files (so UE can re-save them).
     if referencer_files:
         edit_files(cl_num, referencer_files)
@@ -279,6 +309,30 @@ if MODE == 'fixup':
         unreal.SystemLibrary.collect_garbage(0)
     except Exception:
         pass
+
+    # 4d) Herd UE-auto-opened .collection files into the apply CL.
+    #     With bAutoCommitOnSave flipped off above, UE still calls
+    #     SourceControlProvider::CheckOut on each affected .collection (so the
+    #     file is correctly rewritten on disk and opened-for-edit in P4) but
+    #     skips FCheckIn. The default landing spot for UE-internal checkouts
+    #     is the workspace's default CL. Sweep there and reopen into our apply
+    #     CL so the rewrites travel with the redirector deletes as one atomic,
+    #     reviewable changelist.
+    rc, out, _err = run_p4(['opened', '-c', 'default', '//...Content/Collections/....collection'])
+    if rc == 0:
+        for line in out.splitlines():
+            # Format: //depot/path/file.collection#N - edit default change (text) by user@client
+            if ' - ' in line:
+                depot_path = line.split('#', 1)[0]
+                if depot_path.endswith('.collection'):
+                    collections_reopened.append(depot_path)
+    if collections_reopened:
+        try:
+            reopen_files(cl_num, collections_reopened)
+            print(f"Reopened {len(collections_reopened)} UE-touched .collection file(s) into CL {cl_num}.")
+        except SystemExit:
+            sys.stderr.write("[apply_fixups] WARN: p4 reopen of .collection files failed; "
+                             "they remain in default CL.\n")
 
 # 5) Open redirector .uasset (and .umap sibling) files for delete in the CL.
 #    In fixup mode UE already deleted them on disk + auto-opened them in the
@@ -390,6 +444,7 @@ manifest = {
     'redirector_lock_failures': lock_failures,
     'load_failures': load_failures,
     'umap_companions_included': umap_companion_files,
+    'collections_reopened': collections_reopened,
     'lock_retry_list': retry_script,
 }
 manifest_path = os.path.join(
