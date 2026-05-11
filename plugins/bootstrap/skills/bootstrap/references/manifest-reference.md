@@ -235,6 +235,41 @@ Each entry in the `plugins` array declares a plugin the engine should ensure is 
 | `enabled` | No (default `true`) | If `false`, the engine disables the plugin |
 | `scope` | No (default `"user"`) | Installation scope (`user` or `project`) |
 | `min_version` | No | Minimum required installed version — see below |
+| `install` | No (default `"auto"`) | `"auto"` (default) or `"manual"` — see below |
+
+### `install`
+
+Declares how the engine should treat the plugin's installation lifecycle.
+
+- **`"auto"`** (default) — the engine ensures the plugin is installed, scoped, enabled, and up to date on every run. Existing behavior; entries without this field behave identically to before.
+- **`"manual"`** — the engine **never installs, enables, disables, or moves scope** for this plugin. The user is expected to opt in with `claude plugin install <plugin>@<marketplace>`. Once installed, the engine still keeps the plugin up to date via `claude plugin update`. The user owns install state; bootstrap owns version freshness.
+
+Use `"manual"` for plugins that should be available in the marketplace but opt-in per developer. Common cases:
+
+- Admin/utility plugins (e.g. `claude-admin`, `claude-sandbox`) — installed only by team members who actually use them.
+- Plugins gated by access (license keys, private credentials) — installing them for someone who can't authenticate creates noisy failures.
+
+**Output examples** (install: manual):
+
+When not installed:
+```
+plugin spryfox-plugins:claude-admin: not installed (install: manual; run `claude plugin install claude-admin@spryfox-plugins` to enable)
+```
+
+When installed and up to date:
+```
+plugin spryfox-plugins:claude-admin: up to date (install: manual)
+```
+
+When installed and a new version is available:
+```
+plugin spryfox-plugins:claude-admin: updated 0.1.0 -> 0.2.0 (install: manual)
+```
+
+**Interactions:**
+
+- `enabled` and `scope` are ignored when `install: "manual"` — the user owns those decisions.
+- `min_version` is currently honored only for `install: "auto"` entries. If you need a minimum version on a manual plugin, that constraint has to be communicated to the user out-of-band; the engine does not force-update a manual plugin to satisfy it (would defeat the purpose of "user owns install").
 
 ### `min_version`
 

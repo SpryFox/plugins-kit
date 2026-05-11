@@ -1416,8 +1416,12 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
         enabled = plugin_def.get("enabled", True)
         desired_scope = plugin_def.get("scope", "user")
         min_version = plugin_def.get("min_version", "")
+        install_mode = plugin_def.get("install", "auto")
         if not plugin_ref:
             continue
+        if install_mode not in ("auto", "manual"):
+            action_entries.append(f"{prefix}plugin {plugin_ref}: unknown install mode '{install_mode}' (expected 'auto' or 'manual'); treating as 'auto'")
+            install_mode = "auto"
 
         from .marketplace_lifecycle import check_plugin_installed, install_plugin
 
@@ -1427,6 +1431,11 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
         # Check if plugin is installed (global registry, handles both ref formats)
         install_result = check_plugin_installed(plugin_ref)
         if not install_result.passed:
+            if install_mode == "manual":
+                # User is expected to install via `claude plugin install ...`;
+                # we only manage updates once they do. Don't surface a failure.
+                ok_entries.append(f"{prefix}plugin {plugin_ref}: not installed (install: manual; run `claude plugin install {cli_ref}` to enable)")
+                continue
             # Auto-install via CLI
             inst = install_plugin(plugin_ref, scope=desired_scope)
             if inst.passed:
@@ -1444,8 +1453,10 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
         from .marketplace_lifecycle import enable_plugin_in_claude, disable_plugin_in_claude, check_plugin_enabled, check_plugin_enabled_at_scope, check_plugin_version, update_plugin, ensure_registry_scope
 
         # Ensure plugin is enabled at desired scope (reads settings file directly,
-        # not installed_plugins.json which can have stale scope metadata)
-        if install_result.passed:
+        # not installed_plugins.json which can have stale scope metadata). Skip
+        # for install: manual -- the user owns scope and enable state; we just
+        # manage version updates.
+        if install_result.passed and install_mode != "manual":
             scope_check = check_plugin_enabled_at_scope(plugin_ref, desired_scope, project_dir)
             if not scope_check.passed:
                 reinst = install_plugin(plugin_ref, scope=desired_scope)
@@ -1466,7 +1477,20 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
             # fail if it's stale. Fix the data before running those commands.
             ensure_registry_scope(plugin_ref, desired_scope)
 
-        if enabled:
+        if install_mode == "manual":
+            # Manual-install plugins: only manage version updates. Skip
+            # enable/disable side effects so the user's choices are respected.
+            if install_result.passed:
+                ver_result = check_plugin_version(plugin_ref)
+                if not ver_result.up_to_date:
+                    upd_result = update_plugin(plugin_ref, scope=desired_scope)
+                    if upd_result.passed:
+                        action_entries.append(f"{prefix}plugin {plugin_ref}: updated {ver_result.installed_version} -> {ver_result.latest_version} (install: manual)")
+                    else:
+                        action_entries.append(f"{prefix}plugin {plugin_ref}: update failed ({ver_result.message}) - {upd_result.message}")
+                else:
+                    ok_entries.append(f"{prefix}plugin {plugin_ref}: up to date (install: manual)")
+        elif enabled:
             # Check if version is up to date (only for already-installed plugins)
             if install_result.passed:
                 ver_result = check_plugin_version(plugin_ref)
