@@ -2,6 +2,17 @@
 
 Load this when you are interpreting a references-audit report and deciding how to fix each finding. The scanner's job is detection; the classification and remediation here is inference work — that's why it lives in a skill, not in the script.
 
+## YAML-transcription note
+
+When authoring an audit-skill and transcribing category descriptions, detection signals, remediations, or examples from this document into the skill's YAML body (notably the `taxonomy:` list), any string containing backticks, asterisks, or square brackets must be double-quoted in YAML. Plain (unquoted) scalars with backticks fail to parse with `found character '\`' that cannot start any token`. For short text with internal backticks, use double-quoted strings and escape any internal `"` as `\"`. For longer remediation text spanning multiple sentences, prefer the YAML folded block scalar `>-` (which strips newlines) or literal block scalar `|-` (which preserves them). Example: the category A detection signal `WARNING '/example:old-name'` becomes `detection_signal: "WARNING '/example:old-name'"` in YAML, while a multi-sentence remediation becomes:
+
+```yaml
+default_remediation: >-
+  Mechanical find/replace of the old name with the new name within
+  the file. If the surrounding sentence describes old behavior, also
+  update the prose so it matches the new skill.
+```
+
 ## The triage pipeline
 
 ```
