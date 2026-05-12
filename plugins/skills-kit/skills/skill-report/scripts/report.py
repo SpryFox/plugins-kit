@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""report.py -- generate a location- and type-grouped roster of SKILL.md files.
+"""report.py -- generate a roster of SKILL.md files in markdown or HTML.
 
 Walks three sets of roots:
   - User skills    ~/.claude/skills/
@@ -7,169 +7,78 @@ Walks three sets of roots:
   - Plugin skills  per ~/.claude/plugins/installed_plugins.json (active install per plugin)
 
 For each SKILL.md, parses the YAML frontmatter and the first fenced YAML block in
-the body (the type contract). Renders a markdown report grouped first by location,
-then by skill-type. Per-type implied frontmatter is declared once at the top of
-its group so per-skill rows do not duplicate it.
+the body (the type contract).
 
-Stdlib + PyYAML (a skills-kit dependency).
+Two output formats:
+  --format markdown (default) -- location-then-type grouped markdown; per-type
+    implied frontmatter declared once so per-skill rows don't repeat it.
+  --format html               -- interactive HTML hierarchy with one column per
+    frontmatter key (delegated to sibling skill_hierarchy_report.py).
+
+Default output paths:
+  markdown: <project-root>/tmp/skill-report.md
+  html:     <project-root>/tmp/skill-report.html
+The resolved path is always echoed to stdout. Pass `--out -` to write to stdout.
+
+Stdlib + PyYAML (a skills-kit dependency). Discovery is delegated to the
+plugin-level `_corpus.py` shared module so both formats enumerate the corpus
+the same way.
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import os
-import re
 import sys
 from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
 
-import yaml
-
-
-CONTRACT_ROOTS = (
-    "reference_skill",
-    "pattern_skill",
-    "technique_skill",
-    "discipline_skill",
-    "domain_skill",
-    "capability_skill",
+# Plugin-level scripts/ dir holds the shared corpus module. From this script
+# (.../skills/skill-report/scripts/report.py) walk three parents up to land in
+# .../skills-kit/, then into scripts/.
+_PLUGIN_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(_PLUGIN_ROOT / "scripts"))
+from _corpus import (  # type: ignore  # noqa: E402
+    PluginEntry,
+    SkillCorpus,
+    SkillRecord,
+    detect_skill_type,
+    discover_corpus,
 )
-
-FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?\n)^---\s*\n", re.DOTALL | re.MULTILINE)
-YAML_FENCE_RE = re.compile(r"```yaml\s*\n(.*?)```", re.DOTALL)
-
-
-def parse_skill_md(path: Path) -> dict | None:
-    """Return {frontmatter, body, path} or None on read failure."""
-    try:
-        text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return None
-
-    fm: dict = {}
-    body_text = text
-    m = FRONTMATTER_RE.match(text)
-    if m:
-        try:
-            fm = yaml.safe_load(m.group(1)) or {}
-        except yaml.YAMLError:
-            fm = {}
-        body_text = text[m.end():]
-
-    body_yaml: dict | None = None
-    bm = YAML_FENCE_RE.search(body_text)
-    if bm:
-        try:
-            body_yaml = yaml.safe_load(bm.group(1))
-        except yaml.YAMLError:
-            body_yaml = None
-
-    return {"frontmatter": fm, "body": body_yaml, "path": path}
-
-
-def detect_skill_type(skill: dict) -> tuple[str, str]:
-    """Return (skill_type, variant). variant is 'user-only' / 'auto' for technique-skill, else ''."""
-    fm = skill.get("frontmatter") or {}
-    body = skill.get("body") or {}
-
-    declared = (fm.get("skill-type") or "").strip().lower()
-
-    body_type = ""
-    if isinstance(body, dict):
-        for root in CONTRACT_ROOTS:
-            if root in body:
-                body_type = root.replace("_", "-")
-                break
-
-    skill_type = declared or body_type or "(unknown)"
-
-    variant = ""
-    if skill_type == "technique-skill":
-        block = body.get("technique_skill") if isinstance(body, dict) else None
-        trigger = ""
-        if isinstance(block, dict):
-            trigger = (block.get("trigger_model") or "").strip().lower()
-        variant = "user-only" if trigger == "user-only" else "auto"
-
-    return skill_type, variant
 
 
 def implied_flags(skill_type: str, variant: str) -> dict:
     """Frontmatter values implied by the (type, variant) contract.
 
-    Only entries with implied=True are surfaced as 'implied' in the report header;
-    per-skill rows show flags only when their value differs from this map.
+    Per-skill rows surface a flag only when its value differs from this map.
     """
     if skill_type == "technique-skill" and variant == "user-only":
         return {"disable-model-invocation": True, "user-invocable": True}
     return {"disable-model-invocation": False, "user-invocable": False}
 
 
-def enumerate_user(home: Path) -> list[Path]:
-    root = home / ".claude" / "skills"
-    return sorted(root.rglob("SKILL.md")) if root.is_dir() else []
+def fmt_flag(name: str, value) -> str:
+    return f"`{name}: {str(value).lower()}`"
 
 
-def enumerate_project(cwd: Path) -> list[Path]:
-    root = cwd / ".claude" / "skills"
-    return sorted(root.rglob("SKILL.md")) if root.is_dir() else []
-
-
-def enumerate_plugins(home: Path) -> list[tuple[str, str, str, list[Path]]]:
-    manifest = home / ".claude" / "plugins" / "installed_plugins.json"
-    if not manifest.is_file():
-        return []
-    try:
-        data = json.loads(manifest.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return []
-
-    out: list[tuple[str, str, str, list[Path]]] = []
-    for key, installs in data.get("plugins", {}).items():
-        if "@" in key:
-            plugin_name, marketplace = key.split("@", 1)
-        else:
-            plugin_name, marketplace = key, "(unknown)"
-        for install in installs:
-            install_path = Path(install.get("installPath", ""))
-            version = install.get("version", "")
-            skills_root = install_path / "skills"
-            if not skills_root.is_dir():
-                continue
-            paths = sorted(skills_root.rglob("SKILL.md"))
-            out.append((plugin_name, marketplace, version, paths))
-    return out
-
-
-def build_groups(paths: list[Path]) -> OrderedDict:
-    """Group skill records by (skill_type, variant); each group sorted by name."""
-    bucket: dict[tuple[str, str], list[dict]] = {}
-    for p in paths:
-        sk = parse_skill_md(p)
-        if sk is None:
-            continue
-        key = detect_skill_type(sk)
-        bucket.setdefault(key, []).append(sk)
-
+def group_by_type(records: list[SkillRecord]) -> OrderedDict:
+    """Group records by (skill_type, variant); each group sorted by name."""
+    bucket: dict[tuple[str, str], list[SkillRecord]] = {}
+    for rec in records:
+        bucket.setdefault(detect_skill_type(rec), []).append(rec)
     for lst in bucket.values():
-        lst.sort(key=lambda s: ((s.get("frontmatter") or {}).get("name") or s["path"].name).lower())
-
-    ordered = OrderedDict()
+        lst.sort(key=lambda r: ((r.frontmatter.get("name") or r.path.name)).lower())
+    ordered: OrderedDict = OrderedDict()
     for k in sorted(bucket.keys()):
         ordered[k] = bucket[k]
     return ordered
 
 
-def fmt_flag(name: str, value) -> str:
-    return f"`{name}: {str(value).lower()}`"
-
-
-def render_skill_row(sk: dict, implied: dict) -> list[str]:
-    fm = sk.get("frontmatter") or {}
-    name = fm.get("name") or sk["path"].name
-    desc = (fm.get("description") or "").strip()
+def render_skill_row(rec: SkillRecord, implied: dict) -> list[str]:
+    fm = rec.frontmatter or {}
+    name = fm.get("name") or rec.path.name
+    desc = str(fm.get("description") or "").strip()
     author = fm.get("author")
 
     tag = f" [author: {author}]" if author else ""
@@ -190,12 +99,24 @@ def render_skill_row(sk: dict, implied: dict) -> list[str]:
     return rows
 
 
-def render(report: OrderedDict) -> str:
+def render(corpus: SkillCorpus) -> str:
+    sections: OrderedDict[str, OrderedDict] = OrderedDict()
+    sections["User (~/.claude/skills)"] = group_by_type(corpus.user)
+    if corpus.project_skills_root is not None:
+        sections[f"Project ({corpus.project_skills_root})"] = group_by_type(
+            corpus.project
+        )
+    for plugin in corpus.plugins:
+        if not plugin.skills:
+            continue
+        label = f"Plugin: {plugin.name} ({plugin.marketplace}, v{plugin.version})"
+        sections[label] = group_by_type(plugin.skills)
+
     lines: list[str] = ["# Skill Report", ""]
     lines.append(f"Generated {datetime.now().isoformat(timespec='seconds')}")
     lines.append("")
 
-    for loc_name, groups in report.items():
+    for loc_name, groups in sections.items():
         lines.append(f"## {loc_name}")
         lines.append("")
         if not groups:
@@ -211,35 +132,72 @@ def render(report: OrderedDict) -> str:
             if implied_pairs:
                 lines.append(f"_Implied frontmatter: {', '.join(implied_pairs)}_")
                 lines.append("")
-            for sk in skills:
-                lines.extend(render_skill_row(sk, implied))
+            for rec in skills:
+                lines.extend(render_skill_row(rec, implied))
             lines.append("")
 
     return "\n".join(lines)
 
 
+def _force_utf8_stdout() -> None:
+    """Reconfigure stdout to UTF-8 so descriptions containing em-dashes / smart
+    quotes / etc. don't mojibake on Windows consoles (default cp1252)."""
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+    except (AttributeError, ValueError):
+        pass
+
+
+DEFAULT_FILENAME = {"markdown": "skill-report.md", "html": "skill-report.html"}
+
+
 def main() -> int:
+    _force_utf8_stdout()
     parser = argparse.ArgumentParser(description="Generate a skill inventory report.")
-    parser.add_argument("--out", help="Write report to this path instead of stdout.")
+    parser.add_argument(
+        "--format",
+        choices=("markdown", "html"),
+        default="markdown",
+        help="Output format (default: markdown).",
+    )
+    parser.add_argument(
+        "--out",
+        help=(
+            "Write report to this path. "
+            "Default: <project-root>/tmp/skill-report.<md|html>. "
+            "Pass '-' to write to stdout instead."
+        ),
+    )
     parser.add_argument("--cwd", default=os.getcwd(), help="Project root (default: cwd).")
     args = parser.parse_args()
 
-    home = Path.home()
-    cwd = Path(args.cwd).resolve()
+    project_root = Path(args.cwd).resolve()
+    corpus = discover_corpus(project_root=project_root)
 
-    report: OrderedDict[str, OrderedDict] = OrderedDict()
-    report[f"User (~/.claude/skills)"] = build_groups(enumerate_user(home))
-    report[f"Project ({cwd}/.claude/skills)"] = build_groups(enumerate_project(cwd))
-    for plugin_name, marketplace, version, paths in enumerate_plugins(home):
-        label = f"Plugin: {plugin_name} ({marketplace}, v{version})"
-        report[label] = build_groups(paths)
-
-    out = render(report)
-    if args.out:
-        Path(args.out).write_text(out, encoding="utf-8")
+    if args.format == "html":
+        # Sibling module under skills-kit/skills/skill-report/scripts/.
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from skill_hierarchy_report import render_html  # type: ignore  # noqa: E402
+        text = render_html(corpus)
     else:
-        sys.stdout.write(out)
+        text = render(corpus)
+
+    if args.out == "-":
+        sys.stdout.write(text)
         sys.stdout.write("\n")
+        return 0
+
+    default_path = project_root / "tmp" / DEFAULT_FILENAME[args.format]
+    out_path = Path(args.out).resolve() if args.out else default_path
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(text, encoding="utf-8")
+    skill_bearing = [p for p in corpus.plugins if p.skills]
+    print(f"Wrote {out_path}")
+    print(f"  user skills:    {len(corpus.user)}")
+    print(f"  project skills: {len(corpus.project)}")
+    print(f"  plugins:        {len(skill_bearing)} "
+          f"({sum(len(p.skills) for p in skill_bearing)} skills)")
+    print(f"  total:          {corpus.total_skills}")
     return 0
 
 

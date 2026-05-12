@@ -2,23 +2,33 @@
 """skill_hierarchy_report.py -- emit an HTML hierarchy report of every SKILL.md
 discoverable under user, project, and installed-plugin roots.
 
+Preferred entry point:
+
+    /skill-report --format html
+
+This script is the backend for that command and also remains directly
+runnable for dev iteration or scripting. The `render_html(corpus)` function
+is imported by `report.py` when `--format html` is set.
+
 Hierarchy:
 
     All (N)
       |- User skills (N)         -- ~/.claude/skills/
       |- Project skills (N)      -- <project>/.claude/skills/
       `- Plugins (N plugins)     -- enumerated from installed_plugins.json
-            |- <plugin-1> (N)
-            |- <plugin-2> (N)
-            `- ...
+            |- <marketplace-1>
+            |    |- <marketplace-1>:<plugin-a> (N)
+            |    `- <marketplace-1>:<plugin-b> (N)
+            `- <marketplace-2>
+                 `- ...
 
 Sections are HTML <details>/<summary>, so the report is interactive without
 any JavaScript. Expanding a plugin (or User/Project) section reveals a table
 of every skill in that scope. Columns are the union of every frontmatter key
-seen across the audited corpus, with `name` first and `description` last;
+seen across the section's skills, with `name` first and `description` last;
 table width is intentionally unconstrained (assumes an ultra-wide monitor).
 
-Usage:
+Standalone usage:
     python skill_hierarchy_report.py [--project-root PATH] [--out PATH]
                                      [--installed-plugins PATH]
                                      [--user-skills PATH]
@@ -26,114 +36,37 @@ Usage:
 All flags are optional. Defaults assume the standard Claude Code install
 layout. When run without --out the report goes to:
     <project-root>/tmp/skill-hierarchy.html
+
+The resolved output path is always echoed to stdout.
+
+Discovery is delegated to the plugin-level `_corpus.py` shared module so this
+script and the markdown skill-report enumerate the corpus the same way.
 """
 
 import argparse
 import html
 import json
 import os
-import re
 import sys
-from collections import defaultdict
+from collections import OrderedDict
 from pathlib import Path
 
-# Make _shared.parse_frontmatter importable when this script is run from
-# anywhere; we deliberately drop the script's own dir from sys.path[0] only
-# if a shadowing module is detected (e.g. tmp/inspect.py).
-_SCRIPTS_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(_SCRIPTS_DIR))
-from _shared import parse_frontmatter  # type: ignore  # noqa: E402
+# Plugin-level scripts/ dir holds the shared corpus module. From this script
+# (.../skills/skill-report/scripts/skill_hierarchy_report.py) walk three
+# parents up to land in .../skills-kit/, then into scripts/.
+_PLUGIN_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(_PLUGIN_ROOT / "scripts"))
+from _corpus import (  # type: ignore  # noqa: E402
+    PluginEntry,
+    SkillCorpus,
+    SkillRecord,
+    discover_corpus,
+)
 
 
 HOME = Path(os.path.expanduser("~"))
 DEFAULT_USER_SKILLS = HOME / ".claude" / "skills"
 DEFAULT_INSTALLED_PLUGINS_JSON = HOME / ".claude" / "plugins" / "installed_plugins.json"
-
-
-# ----------------------------------------------------------------------------
-# Discovery
-# ----------------------------------------------------------------------------
-
-
-def find_skill_mds(root: Path) -> list[Path]:
-    """Return every SKILL.md two levels deep under `root` (root/<skill>/SKILL.md)
-    plus a fallback recursive scan if the flat layout produced nothing.
-    """
-    if not root.exists():
-        return []
-    flat = sorted(root.glob("*/SKILL.md"))
-    if flat:
-        return flat
-    # Some plugins nest skills under deeper paths; fall back to a bounded walk.
-    return sorted(root.rglob("SKILL.md"))
-
-
-def discover_user_skills(user_skills_root: Path) -> list[tuple[str, Path]]:
-    """Return [(skill-name, SKILL.md-path), ...] for user-scope skills."""
-    out = []
-    for skill_md in find_skill_mds(user_skills_root):
-        out.append((skill_md.parent.name, skill_md))
-    return out
-
-
-def discover_project_skills(project_root: Path | None) -> list[tuple[str, Path]]:
-    """Return [(skill-name, SKILL.md-path), ...] for project-scope skills."""
-    if project_root is None:
-        return []
-    project_skills_dir = project_root / ".claude" / "skills"
-    return [(p.parent.name, p) for p in find_skill_mds(project_skills_dir)]
-
-
-def discover_plugin_skills(
-    installed_plugins_json: Path,
-) -> dict[str, dict[str, list[tuple[str, Path]]]]:
-    """Read installed_plugins.json and return a nested dict:
-
-        {marketplace: {plugin_name: [(skill_name, SKILL.md_path), ...]}}
-
-    Plugins with no skills are dropped. Marketplaces with no skill-bearing
-    plugins are dropped.
-    """
-    if not installed_plugins_json.exists():
-        return {}
-    data = json.loads(installed_plugins_json.read_text(encoding="utf-8"))
-    plugins = data.get("plugins", {})
-    by_marketplace: dict[str, dict[str, list[tuple[str, Path]]]] = {}
-    for key, entries in plugins.items():
-        if not entries:
-            continue
-        install_path = Path(entries[0]["installPath"])
-        # Key format: "<plugin-name>@<marketplace>"
-        if "@" in key:
-            plugin_name, marketplace = key.split("@", 1)
-        else:
-            plugin_name, marketplace = key, "unknown"
-        skills_dir = install_path / "skills"
-        skills = [(p.parent.name, p) for p in find_skill_mds(skills_dir)]
-        if skills:
-            by_marketplace.setdefault(marketplace, {})[plugin_name] = skills
-    return by_marketplace
-
-
-# ----------------------------------------------------------------------------
-# Frontmatter parsing
-# ----------------------------------------------------------------------------
-
-
-def read_frontmatter(skill_md: Path) -> dict[str, str]:
-    try:
-        content = skill_md.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return {}
-    fm = parse_frontmatter(content)
-    if fm is None:
-        return {}
-    return dict(fm.fields)
-
-
-def estimate_tokens(text: str) -> int:
-    """Cheap chars/4 token estimate; consistent across rows for relative comparison."""
-    return max(0, round(len(text) / 4))
 
 
 # ----------------------------------------------------------------------------
@@ -147,7 +80,7 @@ def estimate_tokens(text: str) -> int:
 SKILL_TYPE_TOOLTIPS: dict[str, dict] = {
     "reference-skill": {
         "purpose": "Collects facts, conventions, or syntax the agent retrieves on demand. Optimized for lookup, not procedure.",
-        "audit": "Drop a fresh agent into a topic — does it find and apply the right fact?",
+        "audit": "Drop a fresh agent into a topic -- does it find and apply the right fact?",
         "prohibits": "adversarial pressure testing; rule + counter pairs; workflow checklists",
         "frontmatter_required": "name, description",
         "contract_required": (
@@ -223,9 +156,6 @@ SKILL_TYPE_TOOLTIPS: dict[str, dict] = {
 
 
 def render_skill_type_tooltip_html(skill_type: str) -> str:
-    """Render the rich tooltip for a known skill-type value. Returns empty
-    string when the value isn't a canonical type (e.g. blank, or a stray
-    legacy spelling)."""
     info = SKILL_TYPE_TOOLTIPS.get(skill_type)
     if not info:
         return ""
@@ -391,38 +321,48 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 """
 
 
-def _esc(value: object) -> str:
+def _stringify(value: object) -> str:
+    """Coerce a frontmatter value to a display string.
+
+    PyYAML returns native types (bool / int / list / dict). The HTML cell
+    needs a string; this function gives a consistent rendering across types.
+    """
     if value is None:
         return ""
     if isinstance(value, bool):
         return "true" if value else "false"
-    return html.escape(str(value), quote=False)
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, list):
+        return ", ".join(_stringify(v) for v in value)
+    if isinstance(value, dict):
+        try:
+            return json.dumps(value, sort_keys=True, default=str)
+        except (TypeError, ValueError):
+            return str(value)
+    return str(value)
+
+
+def _esc(value: object) -> str:
+    return html.escape(_stringify(value), quote=False)
 
 
 def union_columns(skills: list[dict]) -> list[str]:
     """Return the ordered union of frontmatter keys present in `skills`.
 
-    `name` first, `description` last (per spec). Everything else
-    alphabetical between.
+    `name` first, `description` last; everything else alphabetical between.
     """
     keys = set()
     for s in skills:
         keys.update(s["fm"].keys())
     middle = sorted(keys - {"name", "description"})
-    columns = []
-    columns.append("name")
+    columns = ["name"]
     columns.extend(middle)
     columns.append("description")
     return columns
 
 
-def render_skill_table(skills: list[dict], qualifier: str | None) -> str:
-    """Render a single table for a list of skill dicts.
-
-    qualifier: when set (e.g. plugin name), the first column is rendered as
-    `plugin:skill-name`. When None (User/Project skills), the name column is
-    just the bare skill name.
-    """
+def render_skill_table(skills: list[dict]) -> str:
     if not skills:
         return '<p class="empty">No skills.</p>'
     columns = union_columns(skills)
@@ -439,11 +379,11 @@ def render_skill_table(skills: list[dict], qualifier: str | None) -> str:
                 cells.append(f'<td class="desc">{_esc(fm.get(col, ""))}</td>')
             elif col == "skill-type":
                 value = fm.get(col, "")
-                tooltip_html = render_skill_type_tooltip_html(str(value))
+                tooltip_html = render_skill_type_tooltip_html(_stringify(value))
                 if tooltip_html:
                     cells.append(
                         f'<td><span class="skill-type-cell" tabindex="0">'
-                        f'{_esc(value)}{tooltip_html}</span></td>'
+                        f"{_esc(value)}{tooltip_html}</span></td>"
                     )
                 else:
                     cells.append(f"<td>{_esc(value)}</td>")
@@ -459,103 +399,124 @@ def render_skill_table(skills: list[dict], qualifier: str | None) -> str:
     )
 
 
-def build_skill_dicts(
-    skills: list[tuple[str, Path]],
-    name_qualifier: str | None,
-) -> list[dict]:
-    """Read frontmatter and build the per-skill dict used by the renderer.
+def _to_view_dict(rec: SkillRecord, qualifier: str | None) -> dict:
+    """Adapt a corpus SkillRecord to the renderer's per-skill view dict."""
+    display = f"{qualifier}:{rec.skill_name}" if qualifier else rec.skill_name
+    return {
+        "display_name": display,
+        "skill_name": rec.skill_name,
+        "path": rec.path,
+        "fm": rec.frontmatter,
+    }
 
-    name_qualifier: prepended as 'qualifier:skill-name' when set; otherwise
-    the bare skill name is used.
+
+def _group_plugins_by_marketplace(
+    plugins: list[PluginEntry],
+) -> "OrderedDict[str, list[PluginEntry]]":
+    """Return marketplace -> [PluginEntry, ...], sorted by marketplace then plugin name.
+
+    Plugins with no skills are dropped; marketplaces with no skill-bearing
+    plugins are dropped.
     """
-    out = []
-    for skill_name, skill_md in skills:
-        fm = read_frontmatter(skill_md)
-        display = f"{name_qualifier}:{skill_name}" if name_qualifier else skill_name
-        out.append({
-            "display_name": display,
-            "skill_name": skill_name,
-            "path": skill_md,
-            "fm": fm,
-        })
-    return out
+    bucket: dict[str, list[PluginEntry]] = {}
+    for p in plugins:
+        if not p.skills:
+            continue
+        bucket.setdefault(p.marketplace, []).append(p)
+    ordered: OrderedDict[str, list[PluginEntry]] = OrderedDict()
+    for mkt in sorted(bucket.keys(), key=str.lower):
+        ordered[mkt] = sorted(bucket[mkt], key=lambda p: p.name.lower())
+    return ordered
 
 
-def render_html(
-    user_skills: list[dict],
-    project_skills: list[dict],
-    marketplace_groups: list[tuple[str, list[tuple[str, list[dict]]]]],
-    project_root: Path | None,
-) -> str:
+def render_html(corpus: SkillCorpus) -> str:
+    user_views = [_to_view_dict(r, None) for r in corpus.user]
+    project_views = [_to_view_dict(r, None) for r in corpus.project]
+    marketplaces = _group_plugins_by_marketplace(corpus.plugins)
+
     plugin_skill_count = sum(
-        len(skills) for _, plugins in marketplace_groups for _, skills in plugins
+        len(p.skills) for plugins in marketplaces.values() for p in plugins
     )
-    plugin_count = sum(len(plugins) for _, plugins in marketplace_groups)
-    total = len(user_skills) + len(project_skills) + plugin_skill_count
+    plugin_count = sum(len(plugins) for plugins in marketplaces.values())
+    total = len(user_views) + len(project_views) + plugin_skill_count
 
-    parts = []
+    parts: list[str] = []
     parts.append("<!doctype html>")
     parts.append('<html lang="en"><head><meta charset="utf-8">')
     parts.append("<title>Skill Hierarchy Report</title>")
     parts.append(f"<style>{CSS}</style>")
     parts.append("</head><body>")
     parts.append("<h1>Skill Hierarchy Report</h1>")
-    parts.append('<p class="meta">'
-                 f"Generated by <code>skill_hierarchy_report.py</code>. "
-                 "Sections collapse and expand. Tables are not width-limited."
-                 "</p>")
+    parts.append(
+        '<p class="meta">'
+        "Generated by <code>skill_hierarchy_report.py</code>. "
+        "Sections collapse and expand. Tables are not width-limited."
+        "</p>"
+    )
 
     # All
-    parts.append('<details class="level-all" open><summary>All <span class="count">'
-                 f"({total} skills)</span></summary>")
+    parts.append(
+        '<details class="level-all" open><summary>All <span class="count">'
+        f"({total} skills)</span></summary>"
+    )
     parts.append('<div class="body">')
 
     # User skills
-    parts.append('<details class="level-group"><summary>User skills '
-                 f'<span class="count">({len(user_skills)} skills)</span></summary>')
+    parts.append(
+        '<details class="level-group"><summary>User skills '
+        f'<span class="count">({len(user_views)} skills)</span></summary>'
+    )
     parts.append('<div class="body">')
-    parts.append(f'<p class="path">Source: <code>{_esc(DEFAULT_USER_SKILLS)}</code></p>')
-    parts.append(render_skill_table(user_skills, qualifier=None))
+    parts.append(f'<p class="path">Source: <code>{_esc(corpus.user_skills_root)}</code></p>')
+    parts.append(render_skill_table(user_views))
     parts.append("</div></details>")
 
     # Project skills
-    parts.append('<details class="level-group"><summary>Project skills '
-                 f'<span class="count">({len(project_skills)} skills)</span></summary>')
+    parts.append(
+        '<details class="level-group"><summary>Project skills '
+        f'<span class="count">({len(project_views)} skills)</span></summary>'
+    )
     parts.append('<div class="body">')
-    if project_root is not None:
-        parts.append(f'<p class="path">Source: <code>{_esc(project_root / ".claude" / "skills")}</code></p>')
-    parts.append(render_skill_table(project_skills, qualifier=None))
+    if corpus.project_skills_root is not None:
+        parts.append(
+            f'<p class="path">Source: <code>{_esc(corpus.project_skills_root)}</code></p>'
+        )
+    parts.append(render_skill_table(project_views))
     parts.append("</div></details>")
 
     # Plugins -- grouped by marketplace
-    parts.append('<details class="level-group"><summary>Plugins '
-                 f'<span class="count">({plugin_skill_count} skills)</span></summary>')
+    parts.append(
+        '<details class="level-group"><summary>Plugins '
+        f'<span class="count">({plugin_skill_count} skills)</span></summary>'
+    )
     parts.append('<div class="body">')
-    if not marketplace_groups:
+    if not marketplaces:
         parts.append('<p class="empty">No installed plugins with skills.</p>')
-    for marketplace, plugins in sorted(marketplace_groups, key=lambda kv: kv[0].lower()):
-        if not plugins:
-            continue
-        mkt_skill_count = sum(len(skills) for _, skills in plugins)
-        parts.append('<details class="level-marketplace"><summary>'
-                     f'<span class="scope-name">{_esc(marketplace)}</span> '
-                     f'<span class="count">({mkt_skill_count} skills)</span>'
-                     "</summary>")
+    for marketplace, plugin_list in marketplaces.items():
+        mkt_skill_count = sum(len(p.skills) for p in plugin_list)
+        parts.append(
+            '<details class="level-marketplace"><summary>'
+            f'<span class="scope-name">{_esc(marketplace)}</span> '
+            f'<span class="count">({mkt_skill_count} skills)</span>'
+            "</summary>"
+        )
         parts.append('<div class="body">')
-        for plugin_name, skills in sorted(plugins, key=lambda kv: kv[0].lower()):
-            qualified = f"{marketplace}:{plugin_name}"
-            parts.append('<details class="level-plugin"><summary>'
-                         f'<span class="scope-name">{_esc(qualified)}</span> '
-                         f'<span class="count">({len(skills)} skills)</span>'
-                         "</summary>")
+        for plugin in plugin_list:
+            qualified = f"{plugin.marketplace}:{plugin.name}"
+            views = [_to_view_dict(r, qualified) for r in plugin.skills]
+            parts.append(
+                '<details class="level-plugin"><summary>'
+                f'<span class="scope-name">{_esc(qualified)}</span> '
+                f'<span class="count">({len(views)} skills)</span>'
+                "</summary>"
+            )
             parts.append('<div class="body">')
-            parts.append(render_skill_table(skills, qualifier=qualified))
+            parts.append(render_skill_table(views))
             parts.append("</div></details>")
-        parts.append("</div></details>")  # close marketplace
-    parts.append("</div></details>")  # close Plugins group
+        parts.append("</div></details>")
+    parts.append("</div></details>")
 
-    parts.append("</div></details>")  # close All
-
+    parts.append("</div></details>")
     parts.append("</body></html>")
     return "\n".join(parts)
 
@@ -565,7 +526,15 @@ def render_html(
 # ----------------------------------------------------------------------------
 
 
+def _force_utf8_stdout() -> None:
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+    except (AttributeError, ValueError):
+        pass
+
+
 def main(argv: list[str]) -> int:
+    _force_utf8_stdout()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--project-root",
@@ -593,39 +562,29 @@ def main(argv: list[str]) -> int:
     )
     args = parser.parse_args(argv)
 
-    project_root = args.project_root or Path.cwd()
-    out_path = args.out or (project_root / "tmp" / "skill-hierarchy.html")
+    project_root = (args.project_root or Path.cwd()).resolve()
+    out_path = (args.out or (project_root / "tmp" / "skill-hierarchy.html")).resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    user_raw = discover_user_skills(args.user_skills)
-    project_raw = discover_project_skills(project_root)
-    plugin_raw = discover_plugin_skills(args.installed_plugins)
-
-    user_skills = build_skill_dicts(user_raw, name_qualifier=None)
-    project_skills = build_skill_dicts(project_raw, name_qualifier=None)
-    marketplace_groups: list[tuple[str, list[tuple[str, list[dict]]]]] = []
-    for marketplace, plugins in plugin_raw.items():
-        plugin_list = []
-        for plugin_name, skills in plugins.items():
-            qualified = f"{marketplace}:{plugin_name}"
-            plugin_list.append((plugin_name, build_skill_dicts(skills, name_qualifier=qualified)))
-        marketplace_groups.append((marketplace, plugin_list))
-
-    html_text = render_html(user_skills, project_skills, marketplace_groups, project_root)
+    corpus = discover_corpus(
+        project_root=project_root,
+        user_skills_root=args.user_skills,
+        installed_plugins_json=args.installed_plugins,
+    )
+    html_text = render_html(corpus)
     out_path.write_text(html_text, encoding="utf-8")
 
+    marketplaces = _group_plugins_by_marketplace(corpus.plugins)
+    plugin_count = sum(len(plugins) for plugins in marketplaces.values())
     plugin_skill_count = sum(
-        len(skills) for _, plugins in marketplace_groups for _, skills in plugins
+        len(p.skills) for plugins in marketplaces.values() for p in plugins
     )
-    plugin_count = sum(len(plugins) for _, plugins in marketplace_groups)
-    n_marketplaces = sum(1 for _, plugins in marketplace_groups if plugins)
-    total = len(user_skills) + len(project_skills) + plugin_skill_count
     print(f"Wrote {out_path}")
-    print(f"  user skills:    {len(user_skills)}")
-    print(f"  project skills: {len(project_skills)}")
-    print(f"  marketplaces:   {n_marketplaces}")
+    print(f"  user skills:    {len(corpus.user)}")
+    print(f"  project skills: {len(corpus.project)}")
+    print(f"  marketplaces:   {len(marketplaces)}")
     print(f"  plugins:        {plugin_count} ({plugin_skill_count} skills)")
-    print(f"  total:          {total}")
+    print(f"  total:          {corpus.total_skills}")
     return 0
 
 

@@ -3,7 +3,7 @@ _schema_version: 1
 name: skill-report
 author: christina
 skill-type: technique-skill
-description: Use when the user invokes /skill-report to list all skills by location and type. Do NOT use for auditing a SKILL.md (use /skill-audit).
+description: Use when the user invokes /skill-report to list all skills by location and type, in markdown (default) or interactive HTML (--format html). Do NOT use for auditing a SKILL.md (use /skill-audit).
 disable-model-invocation: true
 user-invocable: true
 argument-hint: "[output path]"
@@ -27,8 +27,9 @@ technique_skill:
   scope:
     covers:
       - listing User / Project / Plugin skills with location, type, name, description, and author
-      - declaring per-type implied frontmatter once so per-skill rows do not repeat it
-      - writing the report to stdout or to a file via --out
+      - rendering as markdown (default) or interactive HTML via --format html
+      - declaring per-type implied frontmatter once in the markdown output so per-skill rows do not repeat it
+      - writing the report to <project-root>/tmp/skill-report.{md,html} by default, or a caller-supplied path, or stdout via --out -
     excludes:
       - auditing a single SKILL.md against framework rules (use /skill-audit)
       - editing SKILL.md frontmatter or body content
@@ -42,26 +43,36 @@ technique_skill:
         - name: OUT_PATH
           required: false
           description: |
-            If provided, write the report to this path; otherwise print to stdout.
-            Mapped to the script's --out flag.
+            Where to write the report. If omitted, defaults to
+            <project-root>/tmp/skill-report.md (or .html when --format html is set).
+            Pass the literal `-` to write to stdout instead. Mapped to --out.
+        - name: FORMAT
+          required: false
+          description: |
+            Output format flag: `--format markdown` (default) or `--format html`.
+            HTML mode renders an interactive collapsible hierarchy with one column
+            per frontmatter key and skill-type hover tooltips.
       preconditions:
         - The skills-kit plugin is installed (this skill ships with it).
         - PyYAML is available (skills-kit declares it as a dependency).
       steps:
         - n: 1
-          action: Resolve OUT_PATH from $ARGUMENTS; pass through to the script's --out flag if present.
+          action: Resolve OUT_PATH and FORMAT from $ARGUMENTS; pass through to the script's --out and --format flags.
           tool: argument parsing
           input: $ARGUMENTS
-          expected: A list of script flags (empty or a single --out value).
+          expected: A list of script flags (path / '-' / --format html, in any combination).
         - n: 2
           action: Run the report script via the plugin venv.
           tool: report.py
           input: |
-            uv run python "${CLAUDE_PLUGIN_ROOT}/skills/skill-report/scripts/report.py" [--out <path>]
-          expected: Markdown report on stdout (or written to OUT_PATH).
+            uv run python "${CLAUDE_PLUGIN_ROOT}/skills/skill-report/scripts/report.py" [--format markdown|html] [--out <path>|-]
+          expected: |
+            With no args or an explicit path, the script writes the report to disk and
+            echoes the resolved path to stdout. With `--out -`, the report body is
+            written to stdout in the chosen format.
         - n: 3
-          action: If --out was used, surface the resolved path so the user can open it; otherwise the report is already in chat.
-          expected: User can read or open the report.
+          action: Always surface the resolved output path to the user (the script echoes it; relay it verbatim).
+          expected: User sees the absolute path and can open it.
       gotchas:
         - "The Plugin: skills-kit row reads from ~/.claude/plugins/installed_plugins.json and shows the active version, which can lag the on-disk cache. The plugin-version banner above is the authoritative signal of which version actually ran."
         - "Implied frontmatter is per (skill-type, variant). User-only technique-skills imply both disable-model-invocation true and user-invocable true; other types imply neither. Per-skill rows show only flags that DIFFER from the implied set."
@@ -77,8 +88,19 @@ technique_skill:
 
 ## Argument grammar
 
-- `(none)` -- write the report to stdout (rendered in chat).
-- `<path>` -- write the report to that file path instead of stdout.
+Markdown (default):
+
+- `(none)` -- write to `<project-root>/tmp/skill-report.md`.
+- `<path>` -- write to that file path.
+- `-` -- write the markdown body to stdout (renders in chat).
+
+HTML (interactive hierarchy with hover tooltips):
+
+- `--format html` -- write to `<project-root>/tmp/skill-report.html`.
+- `--format html <path>` -- write HTML to that path.
+- `--format html -` -- write HTML to stdout.
+
+In every file-write case, the script echoes the resolved output path; that path must always be surfaced to the user.
 
 ## Output shape (summary)
 

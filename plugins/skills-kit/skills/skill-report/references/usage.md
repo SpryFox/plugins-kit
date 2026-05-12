@@ -9,22 +9,46 @@ location semantics, output-shape contract, or implication rules.
 User-only slash command:
 
 ```
-/skill-report                  # report to stdout (rendered in chat)
-/skill-report tmp/skills.md    # report written to file
+/skill-report                          # markdown to <project-root>/tmp/skill-report.md (default)
+/skill-report tmp/skills.md            # markdown to that path
+/skill-report -                        # markdown body printed to stdout (rendered in chat)
+/skill-report --format html            # interactive HTML to <project-root>/tmp/skill-report.html
+/skill-report --format html tmp/x.html # HTML to that path
+/skill-report --format html -          # HTML printed to stdout
 ```
 
 Direct script invocation (under the plugin's uv venv):
 
 ```
-uv run python "${CLAUDE_PLUGIN_ROOT}/skills/skill-report/scripts/report.py" [--out <path>] [--cwd <dir>]
+uv run python "${CLAUDE_PLUGIN_ROOT}/skills/skill-report/scripts/report.py" \
+    [--format markdown|html] [--out <path>|-] [--cwd <dir>]
+```
+
+The HTML backend (also runnable directly for dev iteration):
+
+```
+uv run python "${CLAUDE_PLUGIN_ROOT}/skills/skill-report/scripts/skill_hierarchy_report.py" \
+    [--project-root PATH] [--out PATH] [--installed-plugins PATH] [--user-skills PATH]
 ```
 
 ### Flags
 
-- `--out <path>` -- write the report to `<path>` instead of stdout.
-- `--cwd <dir>` -- treat `<dir>` as the project root for the Project tier (default: process cwd).
+- `--format markdown|html` -- output format. Default: `markdown`. HTML mode produces an interactive collapsible hierarchy with one column per frontmatter key and skill-type hover tooltips; markdown produces the location-then-type grouped roster described below.
+- `--out <path>` -- write the report to `<path>`. Default: `<project-root>/tmp/skill-report.md` for markdown, `<project-root>/tmp/skill-report.html` for HTML. Pass `-` to write the body to stdout instead of a file.
+- `--cwd <dir>` -- treat `<dir>` as the project root for the Project tier (default: process cwd). The `tmp/` default path is computed relative to this.
+
+On every file-write invocation the script echoes the resolved absolute path so callers can relay it to the user.
 
 Exit codes: `0` on success; non-zero on argument-parse errors. The script does not fail on per-file parse problems -- it skips unreadable or malformed SKILL.md files silently and reports what it could parse.
+
+## HTML mode
+
+`--format html` delegates to the `render_html(corpus)` function in the sibling `skill_hierarchy_report.py` module. Output is a single self-contained HTML file (no external assets, no JavaScript):
+
+- A three-level `<details>`/`<summary>` hierarchy: All -> User/Project/Plugins -> per-marketplace plugin tables. The top-level `All` is open by default; everything below collapses.
+- Each table's columns are the union of every frontmatter key in that section's skills, with `name` first and `description` last; ultra-wide-monitor friendly (no width cap).
+- The `skill-type` cell carries a hover tooltip describing the type's purpose, audit criterion, prohibited patterns, required frontmatter, and required contract-block fields.
+- Plugins with no skills are dropped; marketplaces with no skill-bearing plugins are dropped.
 
 ## Locations resolved
 
