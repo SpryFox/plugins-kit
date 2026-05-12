@@ -279,11 +279,7 @@ def main():
     for header, actions, _oks in display_sections:
         if not actions:
             continue
-        if len(actions) == 1:
-            display_lines.append(f"--- {header}: {actions[0]} ---")
-        else:
-            display_lines.append(f"--- {header} ---")
-            display_lines.extend(actions)
+        display_lines.append(f"--- {header}: {'; '.join(actions)} ---")
 
     if args.console:
         # Console mode: plain text to stdout, no JSON
