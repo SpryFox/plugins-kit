@@ -37,6 +37,16 @@ All three resolve to the same SKILL.md and run the same `audit_references.py` sc
 
 When showing example skill-reference syntax in prose, use `/example:` or `/proposed:` prefixes (e.g. `/example:skill-name`, `/proposed:run-bot`). The scanner ignores any reference with one of these prefixes and never reports it as broken.
 
+For **historical artifacts** (rollout summaries, design plans whose proposed names were later renamed or never built, postmortem docs that record past state), a per-file allowlist in YAML frontmatter declares which legacy names are expected to no longer resolve:
+
+```yaml
+---
+audit-references-allow-stale: plan, designer-plan, rollback-to-preflight
+---
+```
+
+Listed bare names are silenced inside that file only, for both soft refs and hard deps. Any *new* broken reference in the same file still fires — the allowlist is an explicit exception list, not a file-level bypass. Prefer this over rewriting historical refs to backticks or `/proposed:` prefixes when the doc's value is the historical record itself. The allowlist is documented in the editor's note inside the doc, so a reader sees both the declared exceptions and the reason for them.
+
 ## Step 1: Pick the Scope
 
 The scope tells the script which files to audit. The agent picks based on what the user asked for; if the user did not specify, use the default `skills`.

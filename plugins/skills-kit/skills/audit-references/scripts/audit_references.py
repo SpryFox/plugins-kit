@@ -26,6 +26,20 @@ category hint, so downstream tooling can classify and apply mechanical fixes.
 Fenced code blocks (``` and ~~~) and YAML frontmatter are masked before
 scanning, so refs that appear inside them do not trigger findings.
 
+A file can declare a per-file allowlist for legacy / historical references
+that intentionally do not resolve, via a comma-separated YAML frontmatter
+field `audit-references-allow-stale`:
+
+    ---
+    audit-references-allow-stale: plan, designer-plan, rollback-to-preflight
+    ---
+
+Listed bare names are silenced for both soft refs (`/plan`) and hard deps
+(`skill: "plan"`) -- but only inside that file, and only for the names on
+the list. Any new broken reference in the same file still fires. This is
+preferred over `--ignore-file` for historical artifacts: it co-locates the
+exception with the doc that owns it and stays granular.
+
 Exit codes: 0 = clean (no errors), 1 = broken hard dependencies found.
 """
 
@@ -56,6 +70,7 @@ class SourceFile:
     skill_name: str | None  # set when kind == "skill"
     hard_deps: list[tuple[str, int]] = field(default_factory=list)
     soft_refs: list[tuple[str, int]] = field(default_factory=list)
+    allow_stale: set[str] = field(default_factory=set)  # frontmatter allowlist
 
 
 # Claude CLI builtins -- not skills, just slash commands
@@ -344,16 +359,21 @@ def build_source_file(
     source: str,
 ) -> SourceFile:
     text = md_path.read_text(encoding="utf-8", errors="replace")
-    skill_name = None
-    if kind == "skill":
-        fm = parse_frontmatter(text)
-        skill_name = fm.get("name") or None
+    fm = parse_frontmatter(text)
+    skill_name = fm.get("name") or None if kind == "skill" else None
+    allow_stale_raw = fm.get("audit-references-allow-stale", "")
+    allow_stale = {
+        token.strip()
+        for token in allow_stale_raw.replace("[", " ").replace("]", " ").split(",")
+        if token.strip()
+    }
     body = mask_non_scanned(text)
     return SourceFile(
         path=md_path,
         kind=kind,
         source=source,
         skill_name=skill_name,
+        allow_stale=allow_stale,
         hard_deps=find_hard_deps(body),
         soft_refs=find_soft_refs(body),
     )
@@ -587,25 +607,28 @@ def analyze(
         owner = src.skill_name or _fwd(src.path)
         file_str = _fwd(src.path)
         for dep, line in src.hard_deps:
-            if dep not in all_names:
-                add_finding(
-                    "ERROR", "hard-dep",
-                    f"ERROR: {owner} ({src.source}, {src.kind}) at "
-                    f"{file_str}:{line} has hard dep `skill: \"{dep}\"` "
-                    f"but \"{dep}\" does not exist",
-                    file=file_str, line=line, ref=dep,
-                    owner=owner, source=src.source, kind=src.kind,
-                )
+            if dep in all_names or dep in src.allow_stale:
+                continue
+            add_finding(
+                "ERROR", "hard-dep",
+                f"ERROR: {owner} ({src.source}, {src.kind}) at "
+                f"{file_str}:{line} has hard dep `skill: \"{dep}\"` "
+                f"but \"{dep}\" does not exist",
+                file=file_str, line=line, ref=dep,
+                owner=owner, source=src.source, kind=src.kind,
+            )
         for ref, line in src.soft_refs:
-            if ref not in all_names:
-                add_finding(
-                    "WARNING", "soft-ref",
-                    f"WARNING: {owner} ({src.source}, {src.kind}) at "
-                    f"{file_str}:{line} references `/{ref}` but "
-                    f"\"{ref}\" does not exist",
-                    file=file_str, line=line, ref=ref,
-                    owner=owner, source=src.source, kind=src.kind,
-                )
+            bare = ref.split(":", 1)[-1] if ":" in ref else ref
+            if ref in all_names or bare in src.allow_stale or ref in src.allow_stale:
+                continue
+            add_finding(
+                "WARNING", "soft-ref",
+                f"WARNING: {owner} ({src.source}, {src.kind}) at "
+                f"{file_str}:{line} references `/{ref}` but "
+                f"\"{ref}\" does not exist",
+                file=file_str, line=line, ref=ref,
+                owner=owner, source=src.source, kind=src.kind,
+            )
 
     # Shadowed skills (user overrides project) -- skill-pool issue, scope-independent
     for name, entries in name_map.items():

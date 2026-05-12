@@ -44,11 +44,12 @@ The AUTO/DISCUSS split is conservative: when in doubt, route to DISCUSS. The use
 
 - **Detection signal.** WARNING `/example:old-name`; no current skill covers the responsibility. The reference is often the subject of a whole section or paragraph.
 - **Bucket.** DISCUSS — the delete-vs-rephrase sub-case is judgment.
-- **Default remediation.** Three sub-cases, picked by structural context:
+- **Default remediation.** Four sub-cases, picked by structural context:
   1. Reference is the **subject of a whole section/paragraph** -> delete the section.
   2. Reference is an **incidental clause** (e.g. "similar to the old skill") -> delete the clause, keep the surrounding sentence.
-  3. Reference is **historical context** (e.g. "previously known as ...") -> demote to backticked literal (`` `old-name` ``).
-- **Example (CL 147036).** dialog-domain referenced the deleted `dialog-experiments` skill; the whole "External Analysis Tools" section was removed.
+  3. Reference is **historical context inside a doc that mixes live and stale names** (e.g. "previously known as ...") -> demote to backticked literal (`` `old-name` ``).
+  4. **The whole document is a historical artifact** (rollout summary, design plan recording past intent, postmortem) where consistent backtick-demotion would either be noise or destroy the historical record -> add the legacy names to the file's `audit-references-allow-stale` YAML frontmatter and write an editor's note at the top explaining current state. Leave the slash refs in place. This preserves typography parity with the doc's other still-live references and keeps the audit honest: a *new* broken ref in the same doc still fires.
+- **Example (CL 147036).** dialog-domain referenced the deleted `dialog-experiments` skill; the whole "External Analysis Tools" section was removed. **Example (allow-stale).** A rollout summary describing 2026-Q1 work lists `/plan`, `/preflight`, `/swarm submit` in a single bullet. `/plan` was later merged into `/designer-plan-domain`; the others still resolve. Demoting just `/plan` would produce inconsistent typography; adding `plan, designer-plan` to the file's `audit-references-allow-stale` plus a one-line editor's note silences the audit without rewriting the historical record.
 
 ### C. Merged skill (subskill folded into parent)
 
