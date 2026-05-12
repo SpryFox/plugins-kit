@@ -1,15 +1,15 @@
 ---
 _schema_version: 1
-name: audit-references
+name: references-audit
 author: christina
 skill-type: technique-skill
-description: Use when the user invokes /audit-references to scan SKILL.md, reference docs, or arbitrary .md files for broken skill cross-references, then categorize and remediate the findings. Do NOT use for single-skill validation (use /skill-audit).
+description: Use when the user invokes /references-audit to scan SKILL.md, reference docs, or arbitrary .md files for broken skill cross-references, then categorize and remediate the findings. Do NOT use for single-skill validation (use /skill-audit).
 disable-model-invocation: true
 user-invocable: true
 argument-hint: "[--scope skills|references|md|all] [--path FILE] [--ignore-dir GLOB] [--ignore-file GLOB] [--verbose] [--json]"
 ---
 
-# Audit References
+# References Audit
 
 ## Plugin version (always echo first)
 
@@ -27,11 +27,11 @@ Plugin skills are discovered from `~/.claude/plugins/installed_plugins.json` and
 
 This skill can be invoked three ways:
 
-- **Slash command (project-scoped):** `/audit-references [args]`
-- **Slash command (plugin-qualified):** `/skills-kit:audit-references [args]`
-- **Skill tool (from another skill):** `Skill: "audit-references"` with `args` containing the desired flags. Pass scope decisions through `args` rather than hardcoding them at the call site so the caller stays generic.
+- **Slash command (project-scoped):** `/references-audit [args]`
+- **Slash command (plugin-qualified):** `/skills-kit:references-audit [args]`
+- **Skill tool (from another skill):** `Skill: "references-audit"` with `args` containing the desired flags. Pass scope decisions through `args` rather than hardcoding them at the call site so the caller stays generic.
 
-All three resolve to the same SKILL.md and run the same `audit_references.py` script.
+All three resolve to the same SKILL.md and run the same `references_audit.py` script.
 
 ## Documentation Convention
 
@@ -41,9 +41,11 @@ For **historical artifacts** (rollout summaries, design plans whose proposed nam
 
 ```yaml
 ---
-audit-references-allow-stale: plan, designer-plan, rollback-to-preflight
+references-audit-allow-stale: plan, designer-plan, rollback-to-preflight
 ---
 ```
+
+The legacy field name `audit-references-allow-stale` is still recognized for backward compatibility with files written before the 0.8.0 rename; prefer the new name on any file you touch.
 
 Listed bare names are silenced inside that file only, for both soft refs and hard deps. Any *new* broken reference in the same file still fires — the allowlist is an explicit exception list, not a file-level bypass. Prefer this over rewriting historical refs to backticks or `/proposed:` prefixes when the doc's value is the historical record itself. The allowlist is documented in the editor's note inside the doc, so a reader sees both the declared exceptions and the reason for them.
 
@@ -64,7 +66,7 @@ Scopes can also be combined with commas: `--scope skills,references` audits SKIL
 ## Step 2: Run the Analysis
 
 ```
-uv run python "${CLAUDE_PLUGIN_ROOT}/skills/audit-references/scripts/audit_references.py" \
+uv run python "${CLAUDE_PLUGIN_ROOT}/skills/references-audit/scripts/references_audit.py" \
   --project-dir .claude/skills \
   --user-dir $HOME/.claude/skills \
   $ARGUMENTS
@@ -131,6 +133,6 @@ The taxonomy doc is the authoritative reference for detection signals, default r
 
 - **Prose-form hard deps** like "invoke `/example:review-read-comments` using the Skill tool" are classified as soft refs, not hard deps. The slash reference is still caught, just at WARNING level instead of ERROR.
 - **Frontmatter parsing is regex-based** — handles the simple `key: value` shape used by SKILL.md files but does not parse the YAML contract block inside the body. The skill pool is built from frontmatter `name:` values only.
-- **NON_SKILL_WORDS exclusion list** may occasionally filter a real skill name that collides with a common path segment (e.g. if someone creates a skill named "build"). Check the exclusion list in `audit_references.py` if a reference seems missing.
+- **NON_SKILL_WORDS exclusion list** may occasionally filter a real skill name that collides with a common path segment (e.g. if someone creates a skill named "build"). Check the exclusion list in `references_audit.py` if a reference seems missing.
 - **`settings.json`, `*.py`, and other non-markdown files** are not scanned at any scope.
 - **Compound-adjective prose** like `X-/Y-foo` will match the trailing token (here, `Y-foo`) as a slash reference and produce a false positive. Category E in the taxonomy doc covers the remediation: reword the prose.

@@ -23,7 +23,7 @@ The first line of your response MUST be the `Running ...` line printed above. Th
 - **Roster** -- corpus-wide markdown inventory grouped by location and type.
 - **Hierarchy** -- corpus-wide interactive HTML browser with frontmatter columns and skill-type tooltips.
 
-Future fix-up operations (auto-remediation of common findings) belong here too -- the audit namespace covers analysis, reporting, and fix as a single toolkit, matching the precedent set by `/audit-references` and `/cl`.
+Future fix-up operations (auto-remediation of common findings) belong here too -- the audit namespace covers analysis, reporting, and fix as a single toolkit, matching the precedent set by `/references-audit` and `/cl`.
 
 ```yaml
 technique_skill:
@@ -247,4 +247,4 @@ Typical workflows:
 - Mechanical validator: `plugins/skills-kit/skills/skill-authoring/scripts/audit.py`.
 - Shared corpus discovery: `plugins/skills-kit/scripts/_corpus.py` (used by the roster and hierarchy subcommands).
 - Sibling audit skill: `/claude-md-audit` for CLAUDE.md files.
-- Sibling cross-reference scan/fix: `/audit-references` for broken `(in skills-kit:...)` cross-reference cleanup.
+- Sibling cross-reference scan/fix: `/references-audit` for broken `(in skills-kit:...)` cross-reference cleanup.

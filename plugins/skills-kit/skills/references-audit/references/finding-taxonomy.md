@@ -1,6 +1,6 @@
 # Finding Taxonomy and Remediation
 
-Load this when you are interpreting an audit-references report and deciding how to fix each finding. The scanner's job is detection; the classification and remediation here is inference work — that's why it lives in a skill, not in the script.
+Load this when you are interpreting a references-audit report and deciding how to fix each finding. The scanner's job is detection; the classification and remediation here is inference work — that's why it lives in a skill, not in the script.
 
 ## The triage pipeline
 
@@ -37,7 +37,7 @@ The AUTO/DISCUSS split is conservative: when in doubt, route to DISCUSS. The use
 - **Example (CL 147036).**
   ```
   - references using this prefix are not flagged as `/skill-deps`
-  + references using this prefix are not flagged as `/audit-references`
+  + references using this prefix are not flagged as `/references-audit`
   ```
 
 ### B. Retired/deleted skill (no replacement)
@@ -48,8 +48,8 @@ The AUTO/DISCUSS split is conservative: when in doubt, route to DISCUSS. The use
   1. Reference is the **subject of a whole section/paragraph** -> delete the section.
   2. Reference is an **incidental clause** (e.g. "similar to the old skill") -> delete the clause, keep the surrounding sentence.
   3. Reference is **historical context inside a doc that mixes live and stale names** (e.g. "previously known as ...") -> demote to backticked literal (`` `old-name` ``).
-  4. **The whole document is a historical artifact** (rollout summary, design plan recording past intent, postmortem) where consistent backtick-demotion would either be noise or destroy the historical record -> add the legacy names to the file's `audit-references-allow-stale` YAML frontmatter and write an editor's note at the top explaining current state. Leave the slash refs in place. This preserves typography parity with the doc's other still-live references and keeps the audit honest: a *new* broken ref in the same doc still fires.
-- **Example (CL 147036).** dialog-domain referenced the deleted `dialog-experiments` skill; the whole "External Analysis Tools" section was removed. **Example (allow-stale).** A rollout summary describing 2026-Q1 work lists `/plan`, `/preflight`, `/swarm submit` in a single bullet. `/plan` was later merged into `/designer-plan-domain`; the others still resolve. Demoting just `/plan` would produce inconsistent typography; adding `plan, designer-plan` to the file's `audit-references-allow-stale` plus a one-line editor's note silences the audit without rewriting the historical record.
+  4. **The whole document is a historical artifact** (rollout summary, design plan recording past intent, postmortem) where consistent backtick-demotion would either be noise or destroy the historical record -> add the legacy names to the file's `references-audit-allow-stale` YAML frontmatter and write an editor's note at the top explaining current state. Leave the slash refs in place. This preserves typography parity with the doc's other still-live references and keeps the audit honest: a *new* broken ref in the same doc still fires.
+- **Example (CL 147036).** dialog-domain referenced the deleted `dialog-experiments` skill; the whole "External Analysis Tools" section was removed. **Example (allow-stale).** A rollout summary describing 2026-Q1 work lists `/plan`, `/preflight`, `/swarm submit` in a single bullet. `/plan` was later merged into `/designer-plan-domain`; the others still resolve. Demoting just `/plan` would produce inconsistent typography; adding `plan, designer-plan` to the file's `references-audit-allow-stale` plus a one-line editor's note silences the audit without rewriting the historical record.
 
 ### C. Merged skill (subskill folded into parent)
 
@@ -141,7 +141,7 @@ The AUTO/DISCUSS split is conservative: when in doubt, route to DISCUSS. The use
 
 When the AUTO bucket is non-empty, launch a single background agent. The brief is fully self-contained -- the agent does not reclassify, it applies. Use this template:
 
-> **Task: apply audit-references AUTO fixes.**
+> **Task: apply references-audit AUTO fixes.**
 >
 > Audit-references identified N broken cross-references in this project. The classification and remediation has been done already; your job is to apply the listed edits exactly as specified. Do not reclassify; do not invent new fixes; do not touch files outside the list.
 >
@@ -166,11 +166,11 @@ When the AUTO bucket is non-empty, launch a single background agent. The brief i
 > 2. The list of findings skipped, each with the reason.
 > 3. Any newly-noticed issues that fall outside the brief (do not act on them).
 >
-> Return this as a short structured report. The main agent will re-run audit-references after you return and reconcile any remaining findings.
+> Return this as a short structured report. The main agent will re-run references-audit after you return and reconcile any remaining findings.
 
 The main agent constructs the per-finding payload by:
 
-- Reading the JSON output from `audit_references.py --json`.
+- Reading the JSON output from `references_audit.py --json`.
 - For each finding routed to AUTO, computing the **exact before-text** by reading the cited file at the cited line.
 - Computing the **after-text** per the category's default remediation above.
 - Bundling all payloads into the single Agent call.

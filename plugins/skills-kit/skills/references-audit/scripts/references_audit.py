@@ -1,4 +1,4 @@
-"""audit_references.py -- static analysis for Claude Code skill cross-references.
+"""references_audit.py -- static analysis for Claude Code skill cross-references.
 
 Scans markdown files for `/skill-name` references and Skill-tool invocations,
 builds a dependency graph against the discovered skill pool, and reports broken
@@ -28,10 +28,12 @@ scanning, so refs that appear inside them do not trigger findings.
 
 A file can declare a per-file allowlist for legacy / historical references
 that intentionally do not resolve, via a comma-separated YAML frontmatter
-field `audit-references-allow-stale`:
+field `references-audit-allow-stale` (preferred) or the legacy spelling
+`audit-references-allow-stale` (kept for back-compat with files written
+before the 0.8.0 rename):
 
     ---
-    audit-references-allow-stale: plan, designer-plan, rollback-to-preflight
+    references-audit-allow-stale: plan, designer-plan, rollback-to-preflight
     ---
 
 Listed bare names are silenced for both soft refs (`/plan`) and hard deps
@@ -361,7 +363,12 @@ def build_source_file(
     text = md_path.read_text(encoding="utf-8", errors="replace")
     fm = parse_frontmatter(text)
     skill_name = fm.get("name") or None if kind == "skill" else None
-    allow_stale_raw = fm.get("audit-references-allow-stale", "")
+    # Prefer the new field name; fall back to the legacy spelling for files
+    # written before the 0.8.0 rename.
+    allow_stale_raw = fm.get(
+        "references-audit-allow-stale",
+        fm.get("audit-references-allow-stale", ""),
+    )
     allow_stale = {
         token.strip()
         for token in allow_stale_raw.replace("[", " ").replace("]", " ").split(",")

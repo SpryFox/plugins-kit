@@ -89,7 +89,7 @@ The interactive HTML hierarchy report ships with the `/skill-audit` skill (the u
 
 See `/skill-audit`'s `references/usage.md` for the full reference, including the companion `roster` subcommand for the markdown view.
 
-The `/skill-report` slash command from 0.6.x has been retired -- both reports moved under `/skill-audit` because the namespace covers analysis broadly (single-skill audits, corpus-wide reports, future auto-fixes), matching the precedent set by `/audit-references` and `/cl`.
+The `/skill-report` slash command from 0.6.x has been retired -- both reports moved under `/skill-audit` because the namespace covers analysis broadly (single-skill audits, corpus-wide reports, future auto-fixes), matching the precedent set by `/references-audit` and `/cl`.
 
 The hierarchy is three levels deep:
 
