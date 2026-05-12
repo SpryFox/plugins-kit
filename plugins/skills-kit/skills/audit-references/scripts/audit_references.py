@@ -194,16 +194,54 @@ def is_skill_md(path: Path) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def find_project_skill_roots(base_dir: Path) -> list[Path]:
+    """Resolve `--project-dir` to one or more `.claude/skills` directories.
+
+    Projects commonly nest skill directories under sub-trees (for example
+    `.teamcity/.claude/skills/`). When `--project-dir` points at a project
+    root or at the top-level `.claude/skills`, walk the implied project root
+    and return every `.claude/skills` directory found. Duplicates are
+    deduplicated, results are returned in deterministic path order.
+    """
+    if not base_dir.exists():
+        return []
+    if base_dir.name == "skills" and base_dir.parent.name == ".claude":
+        project_root = base_dir.parent.parent
+    else:
+        project_root = base_dir
+    roots: set[Path] = set()
+    if base_dir.name == "skills" and base_dir.parent.name == ".claude":
+        roots.add(base_dir.resolve())
+    if project_root.exists():
+        for skills_dir in project_root.rglob("skills"):
+            if (
+                skills_dir.is_dir()
+                and skills_dir.parent.name == ".claude"
+                and skills_dir.name == "skills"
+            ):
+                roots.add(skills_dir.resolve())
+    return sorted(roots)
+
+
 def discover_skills(base_dir: Path, source: str) -> list[SkillInfo]:
-    """Find all SKILL.md files under `base_dir` and return one SkillInfo each."""
+    """Find all SKILL.md files under every `.claude/skills` root reachable
+    from `base_dir`. Returns one SkillInfo per discovered SKILL.md."""
     skills = []
-    for skill_file in sorted(base_dir.rglob("[Ss][Kk][Ii][Ll][Ll].[Mm][Dd]")):
-        text = skill_file.read_text(encoding="utf-8", errors="replace")
-        fm = parse_frontmatter(text)
-        name = fm.get("name", "")
-        if not name:
-            continue
-        skills.append(SkillInfo(name=name, path=skill_file, source=source))
+    seen: set[Path] = set()
+    for root in find_project_skill_roots(base_dir):
+        for skill_file in sorted(
+            root.rglob("[Ss][Kk][Ii][Ll][Ll].[Mm][Dd]")
+        ):
+            resolved = skill_file.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            text = skill_file.read_text(encoding="utf-8", errors="replace")
+            fm = parse_frontmatter(text)
+            name = fm.get("name", "")
+            if not name:
+                continue
+            skills.append(SkillInfo(name=name, path=skill_file, source=source))
     return skills
 
 
@@ -251,10 +289,14 @@ def collect_skill_dirs(
     """Return every directory that directly contains a SKILL.md across all
     scan roots. Used to classify non-SKILL .md files as 'reference' kind."""
     skill_dirs: set[Path] = set()
-    for base_dir in (project_dir, user_dir):
-        if base_dir and base_dir.exists():
-            for sm in base_dir.rglob("[Ss][Kk][Ii][Ll][Ll].[Mm][Dd]"):
-                skill_dirs.add(sm.parent)
+    project_roots: list[Path] = []
+    if project_dir:
+        project_roots.extend(find_project_skill_roots(project_dir))
+    if user_dir:
+        project_roots.extend(find_project_skill_roots(user_dir))
+    for root in project_roots:
+        for sm in root.rglob("[Ss][Kk][Ii][Ll][Ll].[Mm][Dd]"):
+            skill_dirs.add(sm.parent)
     if plugins_dir and plugins_dir.exists():
         manifest = plugins_dir / "installed_plugins.json"
         if manifest.exists():
@@ -486,9 +528,11 @@ def analyze(
     else:
         base_dirs: list[tuple[Path, str]] = []
         if project_dir.exists():
-            base_dirs.append((project_dir, "project"))
+            for root in find_project_skill_roots(project_dir):
+                base_dirs.append((root, "project"))
         if user_dir and user_dir.exists():
-            base_dirs.append((user_dir, "user"))
+            for root in find_project_skill_roots(user_dir):
+                base_dirs.append((root, "user"))
         if plugins_dir and plugins_dir.exists():
             manifest = plugins_dir / "installed_plugins.json"
             if manifest.exists():
@@ -573,13 +617,26 @@ def analyze(
 
     # Name/directory mismatch on the skill identities (project/user only;
     # plugin install paths are version-pinned cache dirs).
+    project_roots = find_project_skill_roots(project_dir) if project_dir else []
+    user_roots = find_project_skill_roots(user_dir) if user_dir else []
     for s in all_skills:
         if s.source.startswith("plugin:"):
             continue
-        base = project_dir if s.source == "project" else user_dir
-        if base:
+        candidate_roots = project_roots if s.source == "project" else user_roots
+        expected = None
+        for base in candidate_roots:
+            try:
+                s.path.resolve().relative_to(base)
+            except ValueError:
+                continue
             expected = expected_name_from_path(s.path, base)
-            if expected and expected != s.name:
+            if expected is not None:
+                break
+        if expected is not None and expected != s.name:
+            _emit_name_mismatch = True
+        else:
+            _emit_name_mismatch = False
+        if _emit_name_mismatch:
                 add_finding(
                     "WARNING", "name-mismatch",
                     f"WARNING: {s.name} ({s.source}) -- directory "
