@@ -64,6 +64,8 @@ BUILTIN_COMMANDS = {
     "status", "memory", "compact", "cost", "doctor", "fast",
     "review", "bug", "terminal-setup", "vim", "model",
     "add-dir", "mcp", "config", "permissions", "listen",
+    "reload-plugins", "agents", "hooks", "output-style",
+    "statusline", "resume", "release-notes",
 }
 
 # Skills that exist at runtime via plugins/extensions but have no SKILL.md
@@ -130,7 +132,7 @@ def find_soft_refs(body: str) -> list[tuple[str, int]]:
     yields multiple findings so callers can target precise edit positions."""
     name_part = r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*"
     pattern = (
-        r"(?<![a-zA-Z0-9_.:/\\>])/("
+        r"(?<![a-zA-Z0-9_.:/\\>+*])/("
         + name_part
         + r"(?::"
         + name_part
