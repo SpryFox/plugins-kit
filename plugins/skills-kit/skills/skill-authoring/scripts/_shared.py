@@ -17,6 +17,7 @@ CANONICAL_TYPES = {
     "discipline-skill",
     "domain-skill",
     "capability-skill",
+    "audit-skill",
 }
 
 

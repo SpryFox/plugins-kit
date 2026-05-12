@@ -443,6 +443,149 @@ CAPABILITY_SKILL_SCHEMA = {
 }
 
 
+# Audit-skill: a container type for evaluation operations over a corpus
+# (or namespace, or stream). An audit-skill composes existing primitives:
+# - criteria: the rules being checked (reference-skill flavor).
+# - taxonomy: how findings classify, with per-category detection signal and
+#   default remediation (pattern-skill flavor).
+# - procedures: scan + classify + dispatch (technique-skill flavor). At
+#   least one procedure must exercise the audit's taxonomy + remediation
+#   dispatch machinery; additional procedures over the same subject (e.g.
+#   inventory reports, browsing views) are permitted.
+# - remediations: routing of categories to AUTO (mechanical), DISCUSS
+#   (user-judgment), and SPECIAL (escape hatch) buckets.
+# - enforcement: optional, declares when audit findings become gating rules.
+#
+# Audit-skill's distinctive shape is the deterministic finding-classification
+# step: every finding produced by the audit procedure routes to a taxonomy
+# category, and each category has a default remediation bucket. This enables
+# parallel execution of background remediation (AUTO) and foreground
+# user-judgment (DISCUSS) without per-finding reclassification.
+#
+# Validation -- "check one artifact against criteria, emit verdict" -- is a
+# composition primitive inside audit-skills (the per-artifact criterion-check
+# loop inside a scan procedure), not a separate top-level skill type.
+AUDIT_SKILL_SCHEMA = {
+    "root": "audit_skill",
+    "keys": {
+        "_schema_version": {"type": "string", "required": False},
+        "identity": IDENTITY_RULE,
+        "scope": SCOPE_RULE,
+        "subject": {"type": "dict", "required": True, "keys": {
+            "what": {"type": "string", "required": True,
+                     "note": "what is being audited, in user-facing terms"},
+            "subject_type": {"type": "string", "required": True,
+                             "note": "single-file | corpus | namespace | stream"},
+        }},
+        "criteria": {
+            "type": "list",
+            "required": True,
+            "min_len": 1,
+            "items": {"keys": {
+                "id": {"type": "string", "required": True},
+                "name": {"type": "string", "required": True},
+                "keywords": KEYWORDS_RULE,
+                "summary": {"type": "string", "required": True},
+                "severity": {"type": "string", "required": True,
+                             "note": "FAIL | INFO | JUDGMENT"},
+                "detail": {"required": True},
+                "gotchas": {"type": "list", "required": False, "min_len": 1},
+            }},
+            "note": "the rules being checked; one record per auditable criterion",
+        },
+        "taxonomy": {
+            "type": "list",
+            "required": True,
+            "min_len": 1,
+            "items": {"keys": {
+                "id": {"type": "string", "required": True},
+                "name": {"type": "string", "required": True},
+                "keywords": KEYWORDS_RULE,
+                "detection_signal": {"type": "string", "required": True,
+                                     "note": "how the procedure detects this category from criterion findings"},
+                "default_remediation": {"type": "string", "required": True,
+                                        "note": "the default fix for findings in this category"},
+                "bucket": {"type": "string", "required": True,
+                           "note": "AUTO | DISCUSS | SPECIAL"},
+                "examples": {"type": "list", "required": False, "items": {"keys": {
+                    "before": {"type": "string", "required": True},
+                    "after": {"type": "string", "required": True},
+                }}},
+            }},
+            "note": "finding categories with detection signals and default remediations; how findings classify",
+        },
+        "procedures": {
+            "type": "list",
+            "required": True,
+            "min_len": 1,
+            "items": {"keys": {
+                "id": {"type": "string", "required": True},
+                "name": {"type": "string", "required": True},
+                "keywords": KEYWORDS_RULE,
+                "goal": {"type": "string", "required": True},
+                "preconditions": {"type": "list", "required": False},
+                "steps": {"type": "list", "required": True, "min_len": 1, "items": _TECHNIQUE_STEP,
+                          "note": "ordered procedure body"},
+                "output_template": {"type": "string", "required": False,
+                                    "note": "optional output-shape contract for this procedure"},
+                "gotchas": {"type": "list", "required": True, "min_len": 1},
+            }},
+            "note": "at least one procedure must exercise the taxonomy + remediation dispatch; additional procedures over the same subject (inventory reports, browsing views) are permitted",
+        },
+        "remediations": {
+            "type": "dict",
+            "required": True,
+            "keys": {
+                "auto": {"type": "list", "required": True, "items": {"keys": {
+                    "category": {"type": "string", "required": True,
+                                 "note": "id of a taxonomy category"},
+                    "procedure": {"type": "string", "required": True,
+                                  "note": "mechanical fix performed without user judgment"},
+                    "agent_template": {"type": "string", "required": False,
+                                       "note": "optional brief for background-agent dispatch"},
+                }}, "note": "mechanical fixes; empty list permitted when the audit has no AUTO-fixable categories"},
+                "discuss": {"type": "list", "required": True, "items": {"keys": {
+                    "category": {"type": "string", "required": True},
+                    "procedure": {"type": "string", "required": True,
+                                  "note": "user-judgment fix; agent surfaces options and waits"},
+                }}, "note": "user-judgment fixes; empty list permitted when the audit has no DISCUSS categories"},
+                "special": {"type": "dict", "required": True, "keys": {
+                    "procedure": {"type": "string", "required": True,
+                                  "note": "escape hatch for findings that don't fit any taxonomy category"},
+                }, "note": "the SPECIAL bucket is always declared; it is the escape hatch for findings the taxonomy didn't anticipate"},
+            },
+            "note": "AUTO (mechanical) / DISCUSS (user judgment) / SPECIAL (escape hatch). All three buckets must be declared. AUTO and DISCUSS may be empty lists; SPECIAL is always a single procedure.",
+        },
+        "enforcement": {
+            "type": "dict",
+            "required": False,
+            "keys": {
+                "gate_kind": {"type": "string", "required": True,
+                              "note": "audit-finding | merge-gate | ci-gate | submit-gate"},
+                "gating_rule": {"type": "string", "required": True,
+                                "note": "which findings block forward progress"},
+                "appeal_process": {"type": "string", "required": False,
+                                   "note": "when and how to override the gate"},
+            },
+            "note": "optional: when audit findings become gating rules in a downstream process",
+        },
+        "gotchas": {"type": "list", "required": True, "min_len": 1,
+                    "note": "audit-skill-level gotchas (subject-specific failure modes, taxonomy limits, false-positive patterns)"},
+        "anti_patterns": ANTI_PATTERNS_RULE,
+    },
+    "forbidden_keys": ["techniques", "rules", "patterns", "apply_when",
+                       "do_not_apply_when", "facts", "index", "members"],
+    # techniques: forbidden because procedures: subsumes it inside the audit-skill
+    # rules: forbidden because criteria: is the audit-skill's equivalent (rules:
+    #   is discipline-skill territory; criteria are evaluated, not enforced)
+    # patterns: forbidden because taxonomy: is the audit-skill's pattern-shape
+    #   (pattern-skill territory; audit-skill embeds its own classifications)
+    # facts: forbidden because criteria: subsumes the reference-flavor content
+    # index/members: forbidden because audit-skill is not a container for
+    #   member skills (that's domain-skill territory)
+}
+
+
 CLAUDE_MD_SCHEMA = {
     "root": "claude_md",
     "keys": {
@@ -480,6 +623,7 @@ SCHEMAS_BY_ROOT = {
     "discipline_skill": DISCIPLINE_SKILL_SCHEMA,
     "domain_skill": DOMAIN_SKILL_SCHEMA,
     "capability_skill": CAPABILITY_SKILL_SCHEMA,
+    "audit_skill": AUDIT_SKILL_SCHEMA,
     "claude_md": CLAUDE_MD_SCHEMA,
     # technique_skill is dispatched by trigger_model; see resolve_technique_schema.
 }
@@ -513,7 +657,8 @@ def detect_mixed_type_yaml(yaml_data: dict) -> list[str]:
     if not isinstance(yaml_data, dict):
         return []
     canonical_roots = ["reference_skill", "pattern_skill", "technique_skill",
-                       "discipline_skill", "domain_skill", "capability_skill"]
+                       "discipline_skill", "domain_skill", "capability_skill",
+                       "audit_skill"]
     return [root for root in canonical_roots if root in yaml_data]
 
 
