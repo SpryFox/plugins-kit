@@ -3,8 +3,8 @@
 Single source of truth for "what skills exist in this session's universe?",
 consumed by both renderers in this plugin:
 
-    skills/skill-report/scripts/report.py            (markdown roster)
-    skills/skill-authoring/scripts/skill_hierarchy_report.py  (HTML)
+    skills/skill-audit/scripts/report.py              (dispatch + roster)
+    skills/skill-audit/scripts/skill_hierarchy_report.py  (HTML hierarchy)
 
 The corpus has three tiers:
 

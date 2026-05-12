@@ -110,4 +110,4 @@ domain_skill:
       description: Idempotent frontmatter tagger; refuses to invent or overwrite without --force.
 ```
 
-The corpus-wide hierarchy report lives in the sibling `/skill-report` skill: invoke `/skill-report --format html` for the interactive HTML browser, `/skill-report` for the markdown roster.
+The corpus-wide hierarchy report lives in the sibling `/skill-audit` skill: invoke `/skill-audit hierarchy` for the interactive HTML browser, `/skill-audit roster` for the markdown roster.

@@ -1,28 +1,26 @@
 #!/usr/bin/env python3
-"""report.py -- generate a roster of SKILL.md files in markdown or HTML.
+"""report.py -- dispatch entry point for /skill-audit.
 
-Walks three sets of roots:
-  - User skills    ~/.claude/skills/
-  - Project skills <cwd>/.claude/skills/
-  - Plugin skills  per ~/.claude/plugins/installed_plugins.json (active install per plugin)
+Two reports are available; the user picks one by positional argument:
 
-For each SKILL.md, parses the YAML frontmatter and the first fenced YAML block in
-the body (the type contract).
+  /skill-audit roster      Markdown roster grouped by location -> type. Per-type
+                            implied frontmatter declared once so per-skill rows
+                            don't repeat it. Default: <project-root>/tmp/skill-roster.md.
 
-Two output formats:
-  --format markdown (default) -- location-then-type grouped markdown; per-type
-    implied frontmatter declared once so per-skill rows don't repeat it.
-  --format html               -- interactive HTML hierarchy with one column per
-    frontmatter key (delegated to sibling skill_hierarchy_report.py).
+  /skill-audit hierarchy   Interactive HTML hierarchy. Collapsible <details>
+                            sections, one column per frontmatter key, skill-type
+                            hover tooltips. Default: <project-root>/tmp/skill-hierarchy.html.
 
-Default output paths:
-  markdown: <project-root>/tmp/skill-report.md
-  html:     <project-root>/tmp/skill-report.html
-The resolved path is always echoed to stdout. Pass `--out -` to write to stdout.
+With no arguments, prints this usage block and exits.
 
-Stdlib + PyYAML (a skills-kit dependency). Discovery is delegated to the
-plugin-level `_corpus.py` shared module so both formats enumerate the corpus
-the same way.
+A trailing path or `-` selects the output destination:
+
+  /skill-audit roster                       -> default tmp/ path
+  /skill-audit roster path/to/file.md       -> that path
+  /skill-audit roster -                     -> stdout
+
+Discovery is shared via the plugin-level `_corpus.py` module so both reports
+enumerate the corpus the same way.
 """
 
 from __future__ import annotations
@@ -35,7 +33,7 @@ from datetime import datetime
 from pathlib import Path
 
 # Plugin-level scripts/ dir holds the shared corpus module. From this script
-# (.../skills/skill-report/scripts/report.py) walk three parents up to land in
+# (.../skills/skill-audit/scripts/report.py) walk three parents up to land in
 # .../skills-kit/, then into scripts/.
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(_PLUGIN_ROOT / "scripts"))
@@ -46,6 +44,18 @@ from _corpus import (  # type: ignore  # noqa: E402
     detect_skill_type,
     discover_corpus,
 )
+
+
+REPORT_TYPES = ("roster", "hierarchy")
+DEFAULT_FILENAME = {
+    "roster": "skill-roster.md",
+    "hierarchy": "skill-hierarchy.html",
+}
+
+
+# ----------------------------------------------------------------------------
+# Roster (markdown) renderer
+# ----------------------------------------------------------------------------
 
 
 def implied_flags(skill_type: str, variant: str) -> dict:
@@ -99,7 +109,7 @@ def render_skill_row(rec: SkillRecord, implied: dict) -> list[str]:
     return rows
 
 
-def render(corpus: SkillCorpus) -> str:
+def render_roster(corpus: SkillCorpus) -> str:
     sections: OrderedDict[str, OrderedDict] = OrderedDict()
     sections["User (~/.claude/skills)"] = group_by_type(corpus.user)
     if corpus.project_skills_root is not None:
@@ -112,7 +122,7 @@ def render(corpus: SkillCorpus) -> str:
         label = f"Plugin: {plugin.name} ({plugin.marketplace}, v{plugin.version})"
         sections[label] = group_by_type(plugin.skills)
 
-    lines: list[str] = ["# Skill Report", ""]
+    lines: list[str] = ["# Skill Roster", ""]
     lines.append(f"Generated {datetime.now().isoformat(timespec='seconds')}")
     lines.append("")
 
@@ -139,6 +149,33 @@ def render(corpus: SkillCorpus) -> str:
     return "\n".join(lines)
 
 
+# ----------------------------------------------------------------------------
+# Entry point
+# ----------------------------------------------------------------------------
+
+
+USAGE = """\
+report.py -- corpus-wide report dispatcher for /skill-audit. Pick a subcommand:
+
+  roster [path|-]      Markdown roster grouped by location and type.
+                       Per-type implied frontmatter is declared once
+                       so per-skill rows don't repeat it.
+                       Default output: <project-root>/tmp/skill-roster.md
+
+  hierarchy [path|-]   Interactive HTML hierarchy with collapsible
+                       sections, one column per frontmatter key,
+                       and skill-type hover tooltips.
+                       Default output: <project-root>/tmp/skill-hierarchy.html
+
+Trailing `-` writes the report body to stdout instead of a file.
+
+This script is normally invoked by the /skill-audit slash command. For
+single-skill contract audits, see the audit_skill_md technique in the
+/skill-audit SKILL.md (different code path: scripts/discover.py + the
+skill-authoring/audit.py validator).
+"""
+
+
 def _force_utf8_stdout() -> None:
     """Reconfigure stdout to UTF-8 so descriptions containing em-dashes / smart
     quotes / etc. don't mojibake on Windows consoles (default cp1252)."""
@@ -148,25 +185,28 @@ def _force_utf8_stdout() -> None:
         pass
 
 
-DEFAULT_FILENAME = {"markdown": "skill-report.md", "html": "skill-report.html"}
-
-
 def main() -> int:
     _force_utf8_stdout()
-    parser = argparse.ArgumentParser(description="Generate a skill inventory report.")
-    parser.add_argument(
-        "--format",
-        choices=("markdown", "html"),
-        default="markdown",
-        help="Output format (default: markdown).",
+
+    # No-args case: print the usage block and exit 0 (informational).
+    if len(sys.argv) == 1:
+        sys.stdout.write(USAGE)
+        return 0
+
+    parser = argparse.ArgumentParser(
+        description="Generate a skill inventory report.",
+        usage="report.py {roster|hierarchy} [out] [--cwd DIR]",
     )
     parser.add_argument(
-        "--out",
-        help=(
-            "Write report to this path. "
-            "Default: <project-root>/tmp/skill-report.<md|html>. "
-            "Pass '-' to write to stdout instead."
-        ),
+        "report_type",
+        choices=REPORT_TYPES,
+        help="Which report to produce.",
+    )
+    parser.add_argument(
+        "out",
+        nargs="?",
+        default=None,
+        help="Output path, or '-' for stdout. Default: <project-root>/tmp/skill-<type>.{md,html}.",
     )
     parser.add_argument("--cwd", default=os.getcwd(), help="Project root (default: cwd).")
     args = parser.parse_args()
@@ -174,20 +214,20 @@ def main() -> int:
     project_root = Path(args.cwd).resolve()
     corpus = discover_corpus(project_root=project_root)
 
-    if args.format == "html":
-        # Sibling module under skills-kit/skills/skill-report/scripts/.
+    if args.report_type == "hierarchy":
+        # Sibling module under skills-kit/skills/skill-audit/scripts/.
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         from skill_hierarchy_report import render_html  # type: ignore  # noqa: E402
         text = render_html(corpus)
     else:
-        text = render(corpus)
+        text = render_roster(corpus)
 
     if args.out == "-":
         sys.stdout.write(text)
         sys.stdout.write("\n")
         return 0
 
-    default_path = project_root / "tmp" / DEFAULT_FILENAME[args.format]
+    default_path = project_root / "tmp" / DEFAULT_FILENAME[args.report_type]
     out_path = Path(args.out).resolve() if args.out else default_path
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(text, encoding="utf-8")

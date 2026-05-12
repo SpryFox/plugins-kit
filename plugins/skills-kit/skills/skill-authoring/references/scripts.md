@@ -81,10 +81,15 @@ python scripts/tag.py <path-to-SKILL.md> <skill-type> --force
 
 ## HTML hierarchy report
 
-The interactive HTML hierarchy report no longer lives in `skill-authoring`. Since v0.6.5 it ships with the sibling `/skill-report` skill, as the backend behind `/skill-report --format html`. The renderer (`render_html(corpus)`) sits in `skills-kit/skills/skill-report/scripts/skill_hierarchy_report.py` and is also runnable as a standalone script. See `/skill-report`'s `references/usage.md` for the full flag set; the short version:
+The interactive HTML hierarchy report ships with the `/skill-audit` skill (the umbrella for skill analysis, reports, and fixes). Since v0.7.0 the renderer (`render_html(corpus)`) sits in `skills-kit/skills/skill-audit/scripts/skill_hierarchy_report.py` and is invoked via the `hierarchy` subcommand:
 
-- `/skill-report --format html` -- write `<project-root>/tmp/skill-report.html` and echo the path.
-- `python skills/skill-report/scripts/skill_hierarchy_report.py [...flags]` -- direct invocation for dev iteration (default output `<project-root>/tmp/skill-hierarchy.html`).
+- `/skill-audit hierarchy` -- write `<project-root>/tmp/skill-hierarchy.html` and echo the path.
+- `/skill-audit hierarchy <path>` / `/skill-audit hierarchy -` -- explicit path / stdout.
+- `python skills/skill-audit/scripts/skill_hierarchy_report.py [...flags]` -- direct invocation for dev iteration (default output `<project-root>/tmp/skill-hierarchy.html`).
+
+See `/skill-audit`'s `references/usage.md` for the full reference, including the companion `roster` subcommand for the markdown view.
+
+The `/skill-report` slash command from 0.6.x has been retired -- both reports moved under `/skill-audit` because the namespace covers analysis broadly (single-skill audits, corpus-wide reports, future auto-fixes), matching the precedent set by `/audit-references` and `/cl`.
 
 The hierarchy is three levels deep:
 
@@ -106,7 +111,7 @@ Corpus discovery is delegated to `skills-kit/scripts/_corpus.py` (see the "Share
 
 ## Shared discovery: scripts/_corpus.py
 
-The plugin-level `skills-kit/scripts/_corpus.py` module is the single source of truth for "what skills exist in this session's universe?" Both `skill_hierarchy_report.py` (HTML) and `skill-report/scripts/report.py` (markdown roster) consume it, so their corpora cannot diverge.
+The plugin-level `skills-kit/scripts/_corpus.py` module is the single source of truth for "what skills exist in this session's universe?" Both `skill_hierarchy_report.py` (HTML) and `skill-audit/scripts/report.py` (markdown roster dispatcher) consume it, so their corpora cannot diverge.
 
 What `_corpus.discover_corpus()` returns:
 

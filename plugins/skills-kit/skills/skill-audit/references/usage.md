@@ -1,66 +1,68 @@
-# skill-report usage
+# skill-audit usage: report subcommands
 
-Full usage reference for `/skill-report` and its underlying script
-`scripts/report.py`. Loaded when the agent needs the precise flag set,
-location semantics, output-shape contract, or implication rules.
+Full usage reference for the `roster` and `hierarchy` subcommands of `/skill-audit`, and their underlying script `scripts/report.py`. Loaded when the agent needs the precise argument set, location semantics, output-shape contract, or implied-frontmatter rules.
+
+For the single-file audit operation (the namesake `/skill-audit <path>` / `list` / `<numbers>` flows), see the audit_skill_md technique in SKILL.md and the placement framework at `content-allocation.md (in skills-kit:skill-authoring)`.
 
 ## Invocation
 
-User-only slash command:
+User-only slash command. The first positional after `/skill-audit` selects which operation to run; the two report subcommands are:
 
 ```
-/skill-report                          # markdown to <project-root>/tmp/skill-report.md (default)
-/skill-report tmp/skills.md            # markdown to that path
-/skill-report -                        # markdown body printed to stdout (rendered in chat)
-/skill-report --format html            # interactive HTML to <project-root>/tmp/skill-report.html
-/skill-report --format html tmp/x.html # HTML to that path
-/skill-report --format html -          # HTML printed to stdout
+/skill-audit roster                     # markdown to <project-root>/tmp/skill-roster.md (default)
+/skill-audit roster tmp/skills.md       # markdown to that path
+/skill-audit roster -                   # markdown body printed to stdout (rendered in chat)
+/skill-audit hierarchy                  # interactive HTML to <project-root>/tmp/skill-hierarchy.html
+/skill-audit hierarchy tmp/x.html       # HTML to that path
+/skill-audit hierarchy -                # HTML printed to stdout
 ```
 
 Direct script invocation (under the plugin's uv venv):
 
 ```
-uv run python "${CLAUDE_PLUGIN_ROOT}/skills/skill-report/scripts/report.py" \
-    [--format markdown|html] [--out <path>|-] [--cwd <dir>]
+uv run python "${CLAUDE_PLUGIN_ROOT}/skills/skill-audit/scripts/report.py" \
+    [roster|hierarchy] [out|-] [--cwd <dir>]
 ```
 
-The HTML backend (also runnable directly for dev iteration):
+The HTML renderer (also runnable directly for dev iteration; supplies the backend for `/skill-audit hierarchy`):
 
 ```
-uv run python "${CLAUDE_PLUGIN_ROOT}/skills/skill-report/scripts/skill_hierarchy_report.py" \
+uv run python "${CLAUDE_PLUGIN_ROOT}/skills/skill-audit/scripts/skill_hierarchy_report.py" \
     [--project-root PATH] [--out PATH] [--installed-plugins PATH] [--user-skills PATH]
 ```
 
-### Flags
+### Positional and flag reference
 
-- `--format markdown|html` -- output format. Default: `markdown`. HTML mode produces an interactive collapsible hierarchy with one column per frontmatter key and skill-type hover tooltips; markdown produces the location-then-type grouped roster described below.
-- `--out <path>` -- write the report to `<path>`. Default: `<project-root>/tmp/skill-report.md` for markdown, `<project-root>/tmp/skill-report.html` for HTML. Pass `-` to write the body to stdout instead of a file.
+- `report_type` (positional) -- `roster` (markdown) or `hierarchy` (HTML). Omit to print the usage block and exit.
+- `out` (positional, optional) -- write the report to `<out>`. Default: `<project-root>/tmp/skill-roster.md` for `roster`, `<project-root>/tmp/skill-hierarchy.html` for `hierarchy`. Pass `-` to write the body to stdout instead.
 - `--cwd <dir>` -- treat `<dir>` as the project root for the Project tier (default: process cwd). The `tmp/` default path is computed relative to this.
 
 On every file-write invocation the script echoes the resolved absolute path so callers can relay it to the user.
 
-Exit codes: `0` on success; non-zero on argument-parse errors. The script does not fail on per-file parse problems -- it skips unreadable or malformed SKILL.md files silently and reports what it could parse.
+Exit codes: `0` on success (including the no-args usage block); non-zero on argument-parse errors (e.g. an unrecognized `report_type`). The script does not fail on per-file parse problems -- it skips unreadable or malformed SKILL.md files silently and reports what it could parse.
 
-## HTML mode
+## Hierarchy report
 
-`--format html` delegates to the `render_html(corpus)` function in the sibling `skill_hierarchy_report.py` module. Output is a single self-contained HTML file (no external assets, no JavaScript):
+`/skill-audit hierarchy` delegates to the `render_html(corpus)` function in the sibling `skill_hierarchy_report.py` module. Output is a single self-contained HTML file (no external assets, no JavaScript):
 
 - A three-level `<details>`/`<summary>` hierarchy: All -> User/Project/Plugins -> per-marketplace plugin tables. The top-level `All` is open by default; everything below collapses.
 - Each table's columns are the union of every frontmatter key in that section's skills, with `name` first and `description` last; ultra-wide-monitor friendly (no width cap).
 - The `skill-type` cell carries a hover tooltip describing the type's purpose, audit criterion, prohibited patterns, required frontmatter, and required contract-block fields.
 - Plugins with no skills are dropped; marketplaces with no skill-bearing plugins are dropped.
 
+The hierarchy report does NOT use the per-type implied-frontmatter convention described below -- that is a roster-only feature, intentional because the hierarchy already shows every frontmatter key as its own column.
+
 ## Locations resolved
 
-The report enumerates three sets of roots, in this fixed order:
+Both subcommands enumerate three sets of roots, in this fixed order:
 
 1. **User**: `~/.claude/skills/**/SKILL.md`. Personal global skills installed under the user's home directory.
 2. **Project**: `<cwd>/.claude/skills/**/SKILL.md`. Skills checked into the current project. Resolved against `--cwd` (default: process cwd). When invoked from outside a project tree this section is empty.
-3. **Plugin: \<name\>** (one per active install). Source of truth: `~/.claude/plugins/installed_plugins.json`. For each plugin entry the script reads the active install's `installPath/skills/**/SKILL.md`. Multiple-version cache directories under `~/.claude/plugins/cache/` are NOT scanned directly; only the version listed as installed is reported, so stale on-disk versions do not pollute the roster.
+3. **Plugin: \<name\>** (one per active install). Source of truth: `~/.claude/plugins/installed_plugins.json`. For each plugin entry the script reads the active install's `installPath/skills/**/SKILL.md`. Multiple-version cache directories under `~/.claude/plugins/cache/` are NOT scanned directly; only the version listed as installed is reported, so stale on-disk versions do not pollute the report.
 
 The plugin section header is `Plugin: <plugin_name> (<marketplace>, v<version>)`. `<marketplace>` is taken from the manifest key suffix (`<plugin>@<marketplace>`).
 
-## Grouping
+## Roster grouping
 
 Within each location:
 
@@ -79,7 +81,7 @@ The skill type is taken from frontmatter `skill-type:` if present; otherwise inf
 
 If neither source declares a type, the type is reported as `(unknown)`.
 
-## Implied frontmatter -- the no-duplication contract
+## Implied frontmatter -- the no-duplication contract (roster only)
 
 Each `(skill-type, variant)` group declares the frontmatter values implied by the contract once at the top of the group. Per-skill rows then suppress any flag whose actual value matches the implied value, and surface only flags that DIFFER.
 
@@ -105,9 +107,9 @@ _Implied frontmatter: `disable-model-invocation: true`, `user-invocable: true`_
 
 A skill row in that group will list `disable-model-invocation` only when it is set to false (overriding the contract), and likewise for `user-invocable`. A skill in a non-user-only group will list either flag only when it is set to true.
 
-This is the "don't duplicate information" rule: the contract states the default; the per-skill row states only what departs from it.
+This is the "don't duplicate information" rule: the contract states the default; the per-skill row states only what departs from it. The hierarchy view does not apply this rule -- it shows every frontmatter key as a column instead.
 
-## Per-skill row format
+## Per-skill row format (roster)
 
 ```
 - **<name>** [author: <author>] -- <description>
@@ -118,9 +120,9 @@ This is the "don't duplicate information" rule: the contract states the default;
 - The trailing `-- <description>` is omitted when frontmatter has no `description:` field.
 - The flag-line beneath the row is omitted when no flags differ from the implied set.
 
-## Worked example
+## Worked example (roster)
 
-A user-only technique-skill with a clean contract:
+A user-only technique-skill group with a clean contract:
 
 ```
 ### technique-skill (user-only)
@@ -128,7 +130,7 @@ A user-only technique-skill with a clean contract:
 _Implied frontmatter: `disable-model-invocation: true`, `user-invocable: true`_
 
 - **skill-audit** [author: christina] -- Use when the user invokes /skill-audit ...
-- **skill-report** [author: christina] -- Use when the user invokes /skill-report ...
+- **claude-md-audit** [author: christina] -- Use when the user invokes /claude-md-audit ...
 ```
 
 Same group with one skill that is unusually NOT user-invocable:
@@ -143,6 +145,6 @@ The flag is surfaced because it differs from the implied `user-invocable: true`.
 ## Gotchas
 
 - The script reports based on `installed_plugins.json`. If a plugin was just edited on disk but the manifest has not been refreshed, the new version's SKILL.md may not appear under the Plugin tier. The plugin-version banner echoed before the report is the authoritative signal of which skills-kit version actually ran.
-- `(unknown)` skill-type usually means the SKILL.md is missing both a frontmatter `skill-type:` line and a recognized contract root in its body YAML. Treat it as a hint to inspect the file with `/skill-audit`.
+- `(unknown)` skill-type usually means the SKILL.md is missing both a frontmatter `skill-type:` line and a recognized contract root in its body YAML. Treat it as a hint to inspect the file with `/skill-audit <path>`.
 - Project tier honours `--cwd`. When this skill is invoked from a different working directory the report will reflect that directory's `.claude/skills/`, not the directory the agent typically runs in.
-- The script reads files only. It does not edit SKILL.md frontmatter, does not call P4 or git, and does not write outside `--out` (when supplied).
+- The scripts read files only. They do not edit SKILL.md frontmatter, do not call P4 or git, and do not write outside the resolved `out` path.

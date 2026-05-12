@@ -4,11 +4,11 @@ discoverable under user, project, and installed-plugin roots.
 
 Preferred entry point:
 
-    /skill-report --format html
+    /skill-audit hierarchy
 
 This script is the backend for that command and also remains directly
 runnable for dev iteration or scripting. The `render_html(corpus)` function
-is imported by `report.py` when `--format html` is set.
+is imported by `report.py` when the `hierarchy` subcommand is selected.
 
 Hierarchy:
 
@@ -40,7 +40,8 @@ layout. When run without --out the report goes to:
 The resolved output path is always echoed to stdout.
 
 Discovery is delegated to the plugin-level `_corpus.py` shared module so this
-script and the markdown skill-report enumerate the corpus the same way.
+script and the markdown roster (also under /skill-audit) enumerate the same
+corpus.
 """
 
 import argparse
@@ -52,7 +53,7 @@ from collections import OrderedDict
 from pathlib import Path
 
 # Plugin-level scripts/ dir holds the shared corpus module. From this script
-# (.../skills/skill-report/scripts/skill_hierarchy_report.py) walk three
+# (.../skills/skill-audit/scripts/skill_hierarchy_report.py) walk three
 # parents up to land in .../skills-kit/, then into scripts/.
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(_PLUGIN_ROOT / "scripts"))
