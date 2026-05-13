@@ -55,8 +55,8 @@ capability_skill:
     - id: run_script
       keywords: [run script, execute, commandlet, remote, ue_runner, run python, send to editor]
       user_objective: Execute a Python script against the Unreal Editor, with the Editor either open (remote mode) or closed (commandlet mode).
-      operation: python ${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/ue_runner.py <script>.py [--copy-output <dir>]
-      tool: bin/ue_runner.py
+      operation: python ${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/scripts/ue_runner.py <script>.py [--copy-output <dir>]
+      tool: scripts/ue_runner.py
       scope_axes: [editor-open, editor-closed]
       reference_section: architecture.md (execution modes)
       gotchas:
@@ -129,7 +129,7 @@ capability_skill:
 
 ## Vocabulary
 
-- **ue_runner.py** -- The host-side runner shipped at `bin/ue_runner.py`. Auto-detects Editor presence; falls back to commandlet when the Editor is closed.
+- **ue_runner.py** -- The host-side runner shipped at `scripts/ue_runner.py`. Auto-detects Editor presence; falls back to commandlet when the Editor is closed.
 - **commandlet mode** -- Headless UE process that loads the project and runs the script without opening the Editor UI. Asset loading, registry queries, property R/W, reference graph walks, and saves all work in commandlet mode.
 - **remote mode** -- Sends the script over UDP multicast to a running Editor's upyrc listener.
 - **stubs** -- Searchable API stubs at `stubs/unreal.py` for grep/IDE introspection.

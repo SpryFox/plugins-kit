@@ -23,7 +23,7 @@ The bootstrap engine (`bootstrap.json`) handles:
 If bootstrap can't auto-discover your project (e.g., CWD is not inside a UE project tree), use the interactive setup:
 
 ```bash
-<skill-dir>/bin/ue-runner.cmd --setup
+<skill-dir>/scripts/ue-runner.cmd --setup
 ```
 
 This prompts for the `.uproject` path and configures everything interactively.
@@ -40,7 +40,7 @@ This prompts for the `.uproject` path and configures everything interactively.
 
 ### `.uproject` Not Found
 
-The autodetect walks up from CWD looking for `.uproject` files. If Claude Code was not launched from inside a UE project tree, autodetect can't discover the project. Use `ue-runner.cmd --setup` to configure manually.
+The autodetect walks up from CWD looking for `.uproject` files. If Claude Code was not launched from inside a UE project tree, autodetect can't discover the project. Use `scripts/ue-runner.cmd --setup` to configure manually.
 
 ### Stubs Download Failed
 

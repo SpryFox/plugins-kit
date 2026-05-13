@@ -31,7 +31,7 @@ What the skill sees today:
 
 - **Hard refs in other `.uasset` files** -- caught by phase-1 discovery via the UE asset registry. The redirector's own referencer list comes from here. Reliable for assets that import each other through standard UE serialization.
 - **Soft object paths in other `.uasset` files** -- also caught by phase-1 discovery (the asset registry tracks soft refs). Phase 4's `rename_referencing_soft_object_paths` handles the rewrite.
-- **Literal asset-path strings in source files** -- caught by `bin/scan_code_references.py` (engine in `lib/code_refs.py`). Default extensions: `.cpp`, `.h`, `.hpp`, `.c`, `.cc`, `.cxx`, `.inl`, `.cs`, `.py`, `.ini`, `.uplugin`, `.uproject`. Pattern: regex match for `/Mount/...`-shaped strings, narrowed by (a) mount must be a real `.uproject`/`.uplugin`/`/Engine` mount discovered on disk, (b) the path must resolve to a real `.uasset` or `.umap`. The double filter is what gives the cache its signal-to-noise -- without it, false positives (test fixtures, `/Script/...` class paths, doc URLs, include paths) flood the cache.
+- **Literal asset-path strings in source files** -- caught by `scripts/scan_code_references.py` (engine in `lib/code_refs.py`). Default extensions: `.cpp`, `.h`, `.hpp`, `.c`, `.cc`, `.cxx`, `.inl`, `.cs`, `.py`, `.ini`, `.uplugin`, `.uproject`. Pattern: regex match for `/Mount/...`-shaped strings, narrowed by (a) mount must be a real `.uproject`/`.uplugin`/`/Engine` mount discovered on disk, (b) the path must resolve to a real `.uasset` or `.umap`. The double filter is what gives the cache its signal-to-noise -- without it, false positives (test fixtures, `/Script/...` class paths, doc URLs, include paths) flood the cache.
 - **Level-redirector `.umap` siblings** -- the apply script's delete-only mode pairs a redirector `.uasset` with its `.umap` sibling so the depot never ends up with one half of the pair.
 
 What the skill does NOT see (each one is a real channel that has bitten projects):
@@ -74,7 +74,7 @@ When a regression escapes the heuristic -- a missing-asset error, a broken Bluep
    - New mount source (e.g. a non-standard plugin layout) -> extend `discover_mount_points`.
    - Channels that aren't text-pattern-matchable (dynamic construction, registry blind spots) -> document the gap in this section instead of pretending the scanner covers it; the honest "we don't see this" is more useful than a false sense of safety.
 3. **Invalidate the cache.** This is the easy step to forget. The cache lives at `./.local-data/code_references.yaml` and the filter reuses it for 24 hours by default. After extending coverage, either delete the cache file or pass `--max-age-hours 0` to `filter_safe_by_code_refs.py` so the next run regenerates it. Without this, the filter still reads the pre-fix scan and the regression repeats.
-4. **Re-run the filter** (`bin/filter_safe_by_code_refs.py`) and confirm the previously-missed reference now drops the affected redirector(s) from the safe set.
+4. **Re-run the filter** (`scripts/filter_safe_by_code_refs.py`) and confirm the previously-missed reference now drops the affected redirector(s) from the safe set.
 5. **Update this section.** Move the new channel from "does NOT see" to "what the skill sees today" and note any new extension/flag the user has to pass.
 
 The skill's value is the explicit map of what's covered and what isn't. Every regression that prompts a coverage extension should also prompt an edit to this section so future Claude knows whether the channel is in scope before promising a clean fix.
@@ -159,7 +159,7 @@ Use the reducer on either the fix-up safe set or the orphaned safe set; the inpu
 
 ```bash
 ~/.claude/plugins/data/plugins-kit/unreal-kit/.venv/Scripts/python.exe \
-  "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/bin/pick_one_per_dir.py" \
+  "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/scripts/pick_one_per_dir.py" \
   --in tmp/redirectors/safe_filtered.json \
   --out tmp/redirectors/safe_per_dir.json
 ```
@@ -173,8 +173,8 @@ Run discovery via the plugin's `ue-runner`. Pass scope via `SCOPE` env var.
 ```bash
 mkdir -p tmp/redirectors
 MSYS_NO_PATHCONV=1 SCOPE="${1:-/Game}" \
-  "${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/ue-runner.cmd" \
-  "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/bin/discover_redirectors.py" \
+  "${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/scripts/ue-runner.cmd" \
+  "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/scripts/discover_redirectors.py" \
   --copy-output tmp/redirectors/
 ```
 
@@ -188,7 +188,7 @@ The classifier is a host-side script (no Unreal needed). Run it from the project
 
 ```bash
 ~/.claude/plugins/data/plugins-kit/unreal-kit/.venv/Scripts/python.exe \
-  "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/bin/classify_safety.py" \
+  "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/scripts/classify_safety.py" \
   --discovery tmp/redirectors/redirectors_discovery.yaml \
   --out-safe tmp/redirectors/safe.json \
   --out-orphaned tmp/redirectors/orphaned.json \
@@ -249,7 +249,7 @@ The cache lives at `./.local-data/code_references.yaml` (per-project, not checke
 
 ```bash
 ~/.claude/plugins/data/plugins-kit/unreal-kit/.venv/Scripts/python.exe \
-  "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/bin/filter_safe_by_code_refs.py" \
+  "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/scripts/filter_safe_by_code_refs.py" \
   --safe-in tmp/redirectors/safe.json \
   --safe-out tmp/redirectors/safe_filtered.json \
   --report-out tmp/redirectors/code_refs_report.json \
@@ -268,7 +268,7 @@ To force a fresh scan ahead of time (e.g. you just renamed a bunch of assets in 
 
 ```bash
 ~/.claude/plugins/data/plugins-kit/unreal-kit/.venv/Scripts/python.exe \
-  "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/bin/scan_code_references.py"
+  "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/scripts/scan_code_references.py"
 ```
 
 ## Phase 4 - Apply fixups (UE Python, after approval)
@@ -279,24 +279,24 @@ For the fix-up safe set, use `safe_filtered.json` from Phase 3.5, NOT the raw `s
 
 ```bash
 SAFE_JSON="$PWD/tmp/redirectors/safe_filtered.json" \
-  "${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/ue-runner.cmd" \
-  "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/bin/apply_fixups.py"
+  "${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/scripts/ue-runner.cmd" \
+  "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/scripts/apply_fixups.py"
 ```
 
 For the orphaned safe set (delete-only), point `SAFE_JSON` at `orphaned.json` from Phase 2. The script auto-detects the input shape and switches to delete-only mode (no referencer load/save, no code-ref filter required because orphans have no referencers):
 
 ```bash
 SAFE_JSON="$PWD/tmp/redirectors/orphaned.json" \
-  "${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/ue-runner.cmd" \
-  "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/bin/apply_fixups.py"
+  "${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/scripts/ue-runner.cmd" \
+  "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/scripts/apply_fixups.py"
 ```
 
 To prepend a project-specific CL tag (e.g. for naming conventions like `[Mix, Tool]`), pass it via env:
 
 ```bash
 CL_DESC_SUFFIX="[Mix, Tool]" SAFE_JSON="$PWD/tmp/redirectors/safe_filtered.json" \
-  "${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/bin/ue-runner.cmd" \
-  "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/bin/apply_fixups.py"
+  "${CLAUDE_PLUGIN_ROOT}/skills/ue-python-api/scripts/ue-runner.cmd" \
+  "${CLAUDE_PLUGIN_ROOT}/skills/fix-up-redirectors/scripts/apply_fixups.py"
 ```
 
 The apply script does (fix-up mode):
@@ -355,7 +355,7 @@ If there are blocked redirectors, suggest: **"Tell the blocked users to run `/fi
 
 The skill follows a facade-over-libs structure:
 
-- `bin/` are thin facades that orchestrate one phase each
+- `scripts/` are thin facades that orchestrate one phase each
   - `discover_redirectors.py` — Phase 1
   - `classify_safety.py` — Phase 2 (emits fix-up safe set + optional orphaned safe set + report)
   - `filter_safe_by_code_refs.py` / `scan_code_references.py` — Phase 3.5

@@ -60,6 +60,12 @@ class RunnerConfig:
             return ""
         return os.path.join(self.engine_dir, "Binaries", "Win64", "UnrealEditor-Cmd.exe")
 
+    @property
+    def editor_exe(self) -> str:
+        if not self.engine_dir:
+            return ""
+        return os.path.join(self.engine_dir, "Binaries", "Win64", "UnrealEditor.exe")
+
     def validate(self) -> list[str]:
         """Return list of validation errors (empty = valid)."""
         errors = []

@@ -43,7 +43,7 @@ with upyre.PythonRemoteConnection(config) as conn:
 
 ## Integration with ue_runner.py
 
-The terminal runner (`bin/ue_runner.py`) uses upyrc as its primary execution path.
+The terminal runner (`scripts/ue_runner.py`) uses upyrc as its primary execution path.
 If the editor isn't responding, it falls back to the headless commandlet.
 
 Install host-side: `pip install -r host-requirements.txt`
