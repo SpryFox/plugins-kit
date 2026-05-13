@@ -34,7 +34,7 @@ from path_repair import repair_path  # noqa: E402
 
 repair_path()
 
-from ue_launcher import (  # noqa: E402
+from ue_launch import (  # noqa: E402
     DEFAULT_MCP_HOST,
     DEFAULT_MCP_PORT,
     DEFAULT_READINESS_TIMEOUT_S,
