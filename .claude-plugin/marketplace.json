@@ -86,6 +86,16 @@
       },
       "source": "./plugins/claude-ui-kit",
       "category": "development"
+    },
+    {
+      "name": "awesome",
+      "description": "Christina's favorite cross-domain skills: knowledge-encoding (turn session insights into persistent project knowledge) and update-documentation (end-of-session documentation review)",
+      "version": "0.1.0",
+      "author": {
+        "name": "Christina"
+      },
+      "source": "./plugins/awesome",
+      "category": "development"
     }
   ]
 }
