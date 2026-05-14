@@ -1,12 +1,12 @@
 """
-UE Editor launcher -- spawn the GUI editor and probe the MCP Automation Bridge.
+UE host-environment scaffolding -- detect and launch the Unreal Editor.
 
 Pure functions. The CLI entry point lives at
-``plugins/unreal-kit/scripts/ue_launcher.py`` -- this module contains the
-process-spawn, process-scan, and readiness-probe helpers used both by that
+``plugins/unreal-kit/scripts/ue_env.py`` -- this module contains the
+process-scan, process-spawn, and bridge-readiness helpers used both by that
 CLI and by other consumers (hooks, project-side facades).
 
-Three operations:
+Operations:
 
 - ``is_mcp_ready(host, port)`` -- best-effort handshake against the bridge.
   Uses ``ue_mcp_client.McpClient`` when the host venv has it installed;
@@ -14,17 +14,37 @@ Three operations:
   but not that the bridge is functional).
 
 - ``find_editor_processes(editor_exe=None)`` -- enumerate running
-  UnrealEditor.exe processes via ``tasklist``. Windows-only; returns ``[]``
-  on other platforms.
+  UnrealEditor.exe processes. Returns a list of dicts ``{pid, has_window,
+  exe_path}``. ``has_window`` is True only when the process's
+  MainWindowHandle is non-zero (i.e. an interactive editor window has
+  appeared; not a still-loading splash, a hung post-crash process, or a
+  headless commandlet). If ``editor_exe`` is provided, results are filtered
+  to processes whose ExecutablePath matches it (case-insensitive on
+  Windows). Windows-only; returns ``[]`` on other platforms.
 
 - ``launch_editor(editor_exe, uproject, map_arg, extra_args)`` -- Popen the
   editor fully detached (no inherited stdio, new process group) and return
   the child PID.
 
-``wait_for_mcp_ready`` is a thin polling wrapper around ``is_mcp_ready``
-for callers that want to block until the bridge comes up after a launch.
+- ``wait_for_mcp_ready`` -- thin polling wrapper around ``is_mcp_ready``
+  for callers that want to block until the bridge comes up after a launch.
+
+Why ``has_window`` and not just "process exists":
+``tasklist`` / ``Get-Process`` match by image name, which collapses three
+distinct states into one signal:
+  1. Fully-loaded interactive editor (MainWindowHandle != 0).
+  2. Still-loading editor (splash up, main window not yet shown).
+  3. Hung or zombie editor (process alive, window gone, often after a
+     crash; high RSS, idle CPU, no UI).
+State (1) is what the user means by "editor is up"; (2) and (3) look
+identical to image-name matching but are not interactively usable. Callers
+that need "should I spawn another?" should AND together "any process" with
+"no interactive process"; callers that need "can I drive the editor right
+now?" should look at ``has_window`` (and probably ``is_mcp_ready``).
 """
 
+import csv
+import io
 import os
 import socket
 import subprocess
@@ -104,37 +124,72 @@ def wait_for_mcp_ready(
         time.sleep(min(poll_interval_s, remaining))
 
 
-def find_editor_processes(editor_exe: Optional[str] = None) -> list[int]:
-    """Return PIDs of running UnrealEditor.exe processes (Windows-only).
+_PS_ENUMERATE_EDITORS = (
+    "$ErrorActionPreference='SilentlyContinue';"
+    "Get-Process -Name UnrealEditor | "
+    "ForEach-Object { "
+    "[PSCustomObject]@{"
+    "Id=$_.Id;"
+    "HasWindow=($_.MainWindowHandle.ToInt64() -ne 0);"
+    "Path=$_.Path"
+    "} } | ConvertTo-Csv -NoTypeInformation"
+)
 
-    On non-Windows or if tasklist is unavailable, returns []. The optional
-    ``editor_exe`` argument is currently advisory -- tasklist surfaces the
-    image name only, so this function returns every UnrealEditor.exe match.
-    Callers that need exact-exe matching should resolve PIDs to image paths
-    via a separate query (out of scope here).
+
+def find_editor_processes(
+    editor_exe: Optional[str] = None,
+) -> list[dict]:
+    """Enumerate running UnrealEditor.exe processes (Windows-only).
+
+    Returns a list of dicts: ``{"pid": int, "has_window": bool,
+    "exe_path": str}``. ``has_window`` is True iff the process's
+    MainWindowHandle is non-zero -- the discriminator between a usable
+    interactive editor and a still-loading, hung, or headless one (see
+    module docstring).
+
+    If ``editor_exe`` is supplied, results are filtered to processes whose
+    ExecutablePath matches (case-insensitive on Windows). Empty
+    ``editor_exe`` means no filtering.
+
+    On non-Windows platforms or if PowerShell is unavailable, returns ``[]``.
     """
     if sys.platform != "win32":
         return []
     try:
         proc = subprocess.run(
-            ["tasklist", "/FI", "IMAGENAME eq UnrealEditor.exe", "/FO", "CSV", "/NH"],
+            ["powershell", "-NoProfile", "-Command", _PS_ENUMERATE_EDITORS],
             capture_output=True,
             text=True,
             timeout=10,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return []
-    if proc.returncode != 0:
+    if proc.returncode != 0 or not proc.stdout.strip():
         return []
-    pids: list[int] = []
-    for line in proc.stdout.splitlines():
-        parts = [p.strip().strip('"') for p in line.split(",")]
-        if len(parts) >= 2 and parts[0].lower() == "unrealeditor.exe":
-            try:
-                pids.append(int(parts[1]))
-            except ValueError:
-                pass
-    return pids
+
+    results: list[dict] = []
+    reader = csv.DictReader(io.StringIO(proc.stdout))
+    target_norm = _normalize_path(editor_exe) if editor_exe else None
+    for row in reader:
+        pid_s = row.get("Id", "").strip()
+        if not pid_s:
+            continue
+        try:
+            pid = int(pid_s)
+        except ValueError:
+            continue
+        has_window = row.get("HasWindow", "").strip().lower() == "true"
+        path = row.get("Path", "").strip()
+        if target_norm is not None and _normalize_path(path) != target_norm:
+            continue
+        results.append({"pid": pid, "has_window": has_window, "exe_path": path})
+    return results
+
+
+def _normalize_path(p: Optional[str]) -> str:
+    if not p:
+        return ""
+    return os.path.normcase(os.path.normpath(p))
 
 
 def launch_editor(

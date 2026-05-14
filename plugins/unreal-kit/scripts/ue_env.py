@@ -1,18 +1,25 @@
 """
-UE Editor launcher CLI -- spawn the editor and optionally wait for the
-MCP Automation Bridge to accept a handshake.
+UE host-environment CLI -- describe and drive the Unreal Editor host.
 
-Plugin-level script (not skill-scoped): the launch primitive is needed by
-multiple skills (ue-mcp-server for live driving, ue-python-api when a
-remote-mode call wants the editor up, project-side facades like dialog
-playtesting).
+Plugin-level script (not skill-scoped): the launch + detect primitives are
+needed by multiple skills (ue-mcp-server for live driving, ue-python-api
+when a remote-mode call wants the editor up, project-side facades like
+dialog playtesting).
+
+Subcommands:
+    status         Snapshot of editor / MCP-bridge state. Distinguishes
+                   interactive (window-up) editors from hung/zombie
+                   processes that match the image name but have no window.
+    launch-editor  Spawn the editor if no interactive instance is up. With
+                   --wait-for-mcp, blocks until the MCP Automation Bridge
+                   accepts a handshake.
 
 Usage:
-    python ue_launcher.py status
-    python ue_launcher.py launch-editor
-    python ue_launcher.py launch-editor --map /Game/Maps/Foo
-    python ue_launcher.py launch-editor --wait-for-mcp --timeout 180
-    python ue_launcher.py launch-editor --force        # spawn even if one is running
+    python ue_env.py status
+    python ue_env.py launch-editor
+    python ue_env.py launch-editor --map /Game/Maps/Foo
+    python ue_env.py launch-editor --wait-for-mcp --timeout 180
+    python ue_env.py launch-editor --force   # spawn even if one is running
 
 The script reads the same per-project config as ue_runner.py
 (<project_root>/.local-data/unreal-kit/config.yaml) for engine_dir and
@@ -34,7 +41,7 @@ from path_repair import repair_path  # noqa: E402
 
 repair_path()
 
-from ue_launch import (  # noqa: E402
+from ue_env import (  # noqa: E402
     DEFAULT_MCP_HOST,
     DEFAULT_MCP_PORT,
     DEFAULT_READINESS_TIMEOUT_S,
@@ -47,22 +54,50 @@ from ue_runner_config import load_config  # noqa: E402
 
 
 def _info(msg: str) -> None:
-    print(f"[ue_launcher] {msg}", file=sys.stderr)
+    print(f"[ue_env] {msg}", file=sys.stderr)
 
 
 def _err(msg: str) -> None:
-    print(f"[ue_launcher] ERROR: {msg}", file=sys.stderr)
+    print(f"[ue_env] ERROR: {msg}", file=sys.stderr)
+
+
+def _summarize_processes(procs: list[dict]) -> str:
+    if not procs:
+        return "none"
+    parts: list[str] = []
+    for p in procs:
+        marker = "interactive" if p["has_window"] else "no-window"
+        parts.append(f"pid={p['pid']} ({marker})")
+    return ", ".join(parts)
+
+
+def _interactive(procs: list[dict]) -> list[dict]:
+    return [p for p in procs if p["has_window"]]
+
+
+def _zombies(procs: list[dict]) -> list[dict]:
+    return [p for p in procs if not p["has_window"]]
 
 
 def cmd_status(args: argparse.Namespace) -> int:
     config = load_config(args.config)
     editor_exe = config.editor_exe
     uproject = config.uproject
-    pids = find_editor_processes(editor_exe)
+    procs = find_editor_processes(editor_exe)
+    interactive = _interactive(procs)
+    zombies = _zombies(procs)
     ready = is_mcp_ready(args.host, args.port)
     print(f"editor_exe:  {editor_exe or '(not configured)'}")
     print(f"uproject:    {uproject or '(not configured)'}")
-    print(f"processes:   {pids if pids else 'none'}")
+    print(f"processes:   {_summarize_processes(procs)}")
+    print(f"interactive: {'yes' if interactive else 'no'}")
+    if zombies:
+        zpids = [str(z["pid"]) for z in zombies]
+        print(
+            f"zombies:     {', '.join(zpids)} "
+            f"(UnrealEditor.exe processes with no main window -- likely "
+            f"crashed or stuck in init; consider killing before relaunching)"
+        )
     print(f"mcp_ready:   {ready}")
     print(f"mcp_target:  {args.host}:{args.port}")
     return 0
@@ -93,17 +128,29 @@ def cmd_launch_editor(args: argparse.Namespace) -> int:
         _info("MCP bridge already reachable -- editor is up.")
         return 0
 
-    if not args.force:
-        pids = find_editor_processes(editor_exe)
-        if pids:
-            _info(
-                f"Editor process already running (pid={pids[0]}) but MCP bridge "
-                f"is not reachable. Check the McpAutomationBridge plugin is enabled, "
-                f"or pass --force to spawn another editor anyway."
-            )
-            if args.wait_for_mcp:
-                return _do_wait(args)
-            return 0
+    procs = find_editor_processes(editor_exe)
+    interactive = _interactive(procs)
+    zombies = _zombies(procs)
+
+    if zombies and not args.force:
+        zpids = ", ".join(str(z["pid"]) for z in zombies)
+        _err(
+            f"UnrealEditor.exe process(es) running with no main window "
+            f"(pid={zpids}) -- likely crashed or stuck in init. Kill them "
+            f"before relaunching, or pass --force to spawn on top."
+        )
+        return 5
+
+    if interactive and not args.force:
+        ipid = interactive[0]["pid"]
+        _info(
+            f"Interactive editor already up (pid={ipid}) but MCP bridge is "
+            f"not reachable. Check the McpAutomationBridge plugin is "
+            f"enabled, or pass --force to spawn another editor anyway."
+        )
+        if args.wait_for_mcp:
+            return _do_wait(args)
+        return 0
 
     _info(
         f"Launching editor: {editor_exe} {uproject}"
@@ -146,10 +193,11 @@ def _do_wait(args: argparse.Namespace) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        prog="ue_launcher",
+        prog="ue_env",
         description=(
-            "Launch the Unreal Editor and optionally wait for the MCP "
-            "Automation Bridge to come up."
+            "Describe and drive the Unreal Editor host environment: detect "
+            "running editors (interactive vs zombie), spawn one if needed, "
+            "and wait for the MCP Automation Bridge to come up."
         ),
     )
     parser.add_argument("--config", help="Path to per-project config YAML.")
@@ -174,7 +222,7 @@ def main() -> None:
 
     l = sub.add_parser(
         "launch-editor",
-        help="Spawn the editor if it isn't already running.",
+        help="Spawn the editor if no interactive instance is running.",
     )
     l.add_argument(
         "--map",
@@ -197,7 +245,10 @@ def main() -> None:
     l.add_argument(
         "--force",
         action="store_true",
-        help="Spawn a new editor even if one appears to be running.",
+        help=(
+            "Spawn a new editor even if one (interactive or zombie) is "
+            "already running."
+        ),
     )
     l.set_defaults(func=cmd_launch_editor)
 
