@@ -1,9 +1,9 @@
 {
   "name": "awesome",
-  "version": "0.1.0",
-  "description": "Christina's favorite cross-domain skills: knowledge-encoding (turn session insights into persistent project knowledge) and update-documentation (end-of-session documentation review)",
+  "version": "0.2.0",
+  "description": "Christina's cross-domain skills: a shared communication framework (hand-off + verbose-updates) plus the meta-skills that evolve it (knowledge-encoding, update-documentation). hand-off/references/communication-framework.md is the canonical glossary both communication skills reference.",
   "author": {
     "name": "Christina"
   },
-  "keywords": ["knowledge", "documentation", "session", "encoding"]
+  "keywords": ["knowledge", "documentation", "session", "encoding", "communication", "hand-off", "verbose-updates"]
 }
