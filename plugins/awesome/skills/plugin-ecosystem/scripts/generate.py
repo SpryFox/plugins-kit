@@ -135,7 +135,7 @@ def collect_skills(plugin_root: Path) -> list[dict]:
         fm = parse_skill_frontmatter(md)
         skills.append({
             "name": fm.get("name", child.name),
-            "description": fm.get("description", ""),
+            "description": fm.get("display_description") or fm.get("description", ""),
             "type": fm.get("skill-type", ""),
             "author": fm.get("author", ""),
         })

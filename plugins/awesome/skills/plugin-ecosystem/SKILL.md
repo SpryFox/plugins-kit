@@ -3,6 +3,7 @@ _schema_version: 1
 name: plugin-ecosystem
 author: christina
 description: Use when generating, refreshing, or customizing the Claude Code plugin ecosystem poster (an interactive 16:9 HTML browser of installed marketplaces and plugins, with a click-to-expand skill-list panel). Do NOT use for skill authoring or single-plugin inspection.
+display_description: "Generates the html page you're reading right now!"
 ---
 
 ## Skill Purpose
@@ -53,7 +54,7 @@ The poster pulls from four sources, each owned by a different party:
 |-------|-------|----------------|
 | Marketplace column subtitle + opt-in | Marketplace maintainer | `<marketplace-repo>/.claude-plugin/poster.yaml`, read locally from `~/.claude/plugins/marketplaces/<name>/.claude-plugin/poster.yaml` |
 | Plugin name / description / razor | Plugin author | `<plugin>/.claude-plugin/plugin.json` (the optional `razor` field is the side-panel blurb) |
-| Skill name / description / author | Skill author | `<skill>/SKILL.md` YAML frontmatter (`author:` renders as "by {author}" beside the skill name) |
+| Skill name / description / author | Skill author | `<skill>/SKILL.md` YAML frontmatter. The side panel prefers `display_description:` over `description:` -- author a `display_description:` to give a friendly poster-only blurb without changing the activation trigger. `author:` renders as "by {author}" beside the skill name. |
 | Title / tagline / per-plugin state overrides | Poster author | `~/.claude/.local-data/awesome/plugin-ecosystem-poster.yaml` |
 | Live on/off state | Project / user | `enabledPlugins` merged across project + user `settings.json`, falling back to project `bootstrap.json` |
 
