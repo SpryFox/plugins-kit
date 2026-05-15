@@ -1,0 +1,9 @@
+{
+  "name": "openrouter-kit",
+  "version": "0.1.0",
+  "description": "OpenRouter API key management and account validation: shared library, CLI, and bootstrap-time credential check that other plugins/projects depend on for OpenRouter access",
+  "author": {
+    "name": "Christina"
+  },
+  "keywords": ["openrouter", "llm", "api-key", "credentials", "bootstrap"]
+}

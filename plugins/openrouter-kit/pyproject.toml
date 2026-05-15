@@ -1,0 +1,18 @@
+[project]
+name = "openrouter-kit"
+version = "0.1.0"
+description = "OpenRouter API key resolution and account validation for Claude Code plugins"
+requires-python = ">=3.10"
+
+dependencies = []
+
+[project.optional-dependencies]
+sdk = ["openai>=1.0.0"]
+dev = ["pytest>=7.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["lib"]

@@ -1,0 +1,6 @@
+{
+  "script": {
+    "path": "custom_bootstrap.py",
+    "entry_point": "bootstrap"
+  }
+}

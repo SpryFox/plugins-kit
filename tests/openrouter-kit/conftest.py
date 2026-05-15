@@ -1,0 +1,26 @@
+"""Fixtures for openrouter-kit tests."""
+
+import os
+import sys
+
+import pytest
+
+PLUGIN_ROOT = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, "plugins", "openrouter-kit")
+)
+
+# Make `lib/` importable as `openrouter_kit.*` and the plugin root importable
+# for `custom_bootstrap`.
+# lib/ for `openrouter_kit.*` package imports; PLUGIN_ROOT for `custom_bootstrap`.
+# Do NOT add `scripts/` -- the CLI file shadows the `openrouter_kit` package
+# name during test collection.
+lib_path = os.path.join(PLUGIN_ROOT, "lib")
+for p in (lib_path, PLUGIN_ROOT):
+    if p not in sys.path:
+        sys.path.insert(0, p)
+
+
+@pytest.fixture
+def plugin_root():
+    """Path to the openrouter-kit plugin."""
+    return PLUGIN_ROOT

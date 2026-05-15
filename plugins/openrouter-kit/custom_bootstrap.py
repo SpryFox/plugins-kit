@@ -1,0 +1,197 @@
+"""Bootstrap script for openrouter-kit.
+
+Single entry point ``bootstrap(ctx)`` runs at session start and:
+
+1. Resolves the OpenRouter API key from env var, per-project .env, or the
+   user-scoped credential file under ``ctx.data_dir``.
+2. If the key is missing, autodetects it from legacy locations (the env var
+   itself, and loc-ops's ``<project>/.local-data/loc/.env``). When a legacy
+   key is found, it is migrated into the canonical user-scoped .env.
+3. If still missing, registers a fix-all failure so Claude prompts the user
+   to obtain a key from openrouter.ai/keys and run ``openrouter-kit set-key``.
+4. If present, validates the key against ``GET /auth/key``. Failures (401,
+   402) become fix-all entries with specific remediation. Successful checks
+   are content-hashed into ``last_validated.sha256`` so subsequent sessions
+   skip the network round-trip when the key has not changed.
+
+The script is stdlib-only -- it imports ``openrouter_kit`` from ``lib/``
+beside this file. No venv required.
+"""
+
+import hashlib
+import os
+import sys
+from pathlib import Path
+from typing import Any, Optional
+
+# Make the bundled lib/ importable. Mirrors the unreal-kit and p4-kit pattern.
+_LIB_DIR = os.path.join(os.path.dirname(__file__), "lib")
+if _LIB_DIR not in sys.path:
+    sys.path.insert(0, _LIB_DIR)
+
+from openrouter_kit.api_key import get_api_key  # noqa: E402
+from openrouter_kit.account import AccountCheckError, check_account  # noqa: E402
+from openrouter_kit.constants import API_KEY_ENV, USER_ENV_FILE  # noqa: E402
+from openrouter_kit.env_file import read_env_file, write_env_file  # noqa: E402
+
+
+# Where loc-ops historically stored the key on this project. Honored once,
+# at autodetect time, so existing developers do not have to re-enter the key
+# after installing openrouter-kit.
+_LEGACY_LOC_OPS_RELATIVE = Path(".local-data") / "loc" / ".env"
+
+
+def bootstrap(ctx: Any) -> None:
+    """Validate or initialize the OpenRouter credential."""
+
+    project_root = _resolve_project_root(ctx)
+
+    # 1. Try the canonical resolution path (env -> project .env -> user .env).
+    lookup = get_api_key(project_root)
+
+    # 2. If missing, scan legacy locations and migrate if found.
+    if lookup.key is None:
+        migrated = _try_legacy_migration(ctx, project_root)
+        if migrated:
+            lookup = get_api_key(project_root)
+
+    # 3. Still missing -> fix-all entry.
+    if lookup.key is None:
+        ctx.add_failure(
+            "openrouter_credential",
+            field=API_KEY_ENV,
+            user_msg=(
+                "openrouter-kit needs an OpenRouter API key. "
+                "Get one at https://openrouter.ai/keys, then run "
+                "`openrouter-kit set-key` to store it."
+            ),
+            agent_msg=(
+                f"Ask the user for their OpenRouter API key (from "
+                f"https://openrouter.ai/keys). Run `openrouter-kit set-key` "
+                f"to write it to {USER_ENV_FILE}, OR write a .env file at "
+                f"that path containing `{API_KEY_ENV}=<key>`. The key starts "
+                f"with `sk-or-v1-`."
+            ),
+        )
+        ctx.log("openrouter: no API key found")
+        return
+
+    # 4. Have a key. Validate against /auth/key, with content-hash caching.
+    cache_file = Path(ctx.data_dir) / "last_validated.sha256"
+    key_hash = hashlib.sha256(lookup.key.encode("utf-8")).hexdigest()
+    cached = _read_cache(cache_file)
+
+    if cached == key_hash:
+        ctx.log_ok(f"openrouter: key validated (cached, source={lookup.source})")
+        return
+
+    try:
+        status = check_account(lookup.key)
+    except AccountCheckError as e:
+        # Network failure / unexpected status. Don't block bootstrap on
+        # transient connectivity issues -- log and continue. The next
+        # session-start retry validates again because no cache was written.
+        ctx.log(f"openrouter: validation skipped ({e})")
+        return
+
+    if status.ok:
+        _write_cache(cache_file, key_hash)
+        label = status.label or "<unlabeled>"
+        ctx.log(f"openrouter: key validated ({label}, source={lookup.source})")
+        return
+
+    if status.failure_reason == "auth":
+        ctx.add_failure(
+            "openrouter_credential",
+            field=API_KEY_ENV,
+            user_msg=(
+                "Your OpenRouter API key was rejected (HTTP 401). "
+                "Generate a new one at https://openrouter.ai/keys and run "
+                "`openrouter-kit set-key`."
+            ),
+            agent_msg=(
+                f"OpenRouter rejected the API key currently in {lookup.source_path or USER_ENV_FILE} "
+                f"with HTTP 401. Ask the user to generate a fresh key at "
+                f"https://openrouter.ai/keys and run `openrouter-kit set-key`."
+            ),
+        )
+        ctx.log("openrouter: key REJECTED (HTTP 401)")
+        return
+
+    if status.failure_reason == "no_credit":
+        ctx.add_failure(
+            "openrouter_credential",
+            field=API_KEY_ENV,
+            user_msg=(
+                "Your OpenRouter account is out of credit (HTTP 402). "
+                "Add credit at https://openrouter.ai/credits."
+            ),
+            agent_msg=(
+                "OpenRouter returned HTTP 402 (insufficient credit). The key "
+                "is valid but the account has no balance. Ask the user to "
+                "add credit at https://openrouter.ai/credits."
+            ),
+        )
+        ctx.log("openrouter: account OUT OF CREDIT (HTTP 402)")
+        return
+
+
+def _resolve_project_root(ctx: Any) -> Path:
+    """Project root for per-project .env lookup.
+
+    ``ctx.project_dir`` is the canonical Claude Code launch CWD (may be None
+    for non-project sessions). When None, falls back to the actual CWD.
+    """
+    if getattr(ctx, "project_dir", None):
+        return Path(ctx.project_dir)
+    return Path.cwd()
+
+
+def _try_legacy_migration(ctx: Any, project_root: Path) -> bool:
+    """Scan known legacy locations and migrate the key if found.
+
+    Returns True if a key was migrated into USER_ENV_FILE.
+    """
+    legacy_path = project_root / _LEGACY_LOC_OPS_RELATIVE
+    if not legacy_path.is_file():
+        return False
+
+    try:
+        legacy_values = read_env_file(legacy_path)
+    except ValueError:
+        # Malformed legacy file -- don't silently corrupt the migration.
+        return False
+
+    legacy_key = legacy_values.get(API_KEY_ENV)
+    if not legacy_key:
+        return False
+
+    # Don't overwrite an existing canonical .env. The canonical lookup
+    # already confirmed the user file lacks the key (we got here via
+    # lookup.key is None and env var unset), but be defensive.
+    existing = read_env_file(USER_ENV_FILE)
+    if API_KEY_ENV in existing:
+        return False
+
+    write_env_file(USER_ENV_FILE, {API_KEY_ENV: legacy_key})
+    ctx.log(
+        f"openrouter: migrated key from {legacy_path} -> {USER_ENV_FILE}"
+    )
+    return True
+
+
+def _read_cache(path: Path) -> Optional[str]:
+    try:
+        return path.read_text(encoding="utf-8").strip() or None
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return None
+
+
+def _write_cache(path: Path, value: str) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(value + "\n", encoding="utf-8")
+    except OSError:
+        pass
