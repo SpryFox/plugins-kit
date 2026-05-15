@@ -55,11 +55,19 @@ technique_skill:
           action: Read every CLAUDE.md path in unique_claude_mds. Subagents do not need to re-read.
           tool: Read
         - n: 5
-          action: Launch three reviewer subagents in parallel via a single message with three Agent tool calls.
+          action: |
+            Select one profile from `review_profiles` using its `selection.guidance` -- this is
+            an inference call, not regex. Read each profile's guidance, weigh the actual contents
+            of `bundle.changed_files`, and pick the most appropriate profile. Default to `code`
+            when uncertain. Then launch every reviewer in that profile's `reviewers` list in
+            parallel via a single message with N Agent calls, using the model named in each
+            reviewer entry. Reviewers not listed in the selected profile are NOT launched.
           tool: Agent
-          expected: Three JSON arrays of candidate issues from reviewers A, B, C.
+          expected: JSON arrays of candidate issues from each launched reviewer.
         - n: 6
-          action: Launch one validator subagent per candidate issue, all in parallel via a single message.
+          action: |
+            Launch one validator subagent per candidate issue, all in parallel via a single message.
+            Use the selected profile's `validator_models[reason]` to pick the model per issue.
           tool: Agent
           expected: CONFIRMED or REJECTED per issue.
         - n: 7
@@ -71,13 +79,14 @@ technique_skill:
         - Context bundled via prepare_review.py
         - Unreconciled files surfaced (and either folded in via `p4 reconcile -c <CL>` with a re-run, or explicitly declined)
         - All CLAUDE.md files read
-        - Reviewers launched in parallel (single message, three Agent calls)
-        - Validators launched in parallel (single message, N Agent calls)
+        - Review profile selected from review_profiles (first match)
+        - Reviewers launched in parallel (single message, one Agent call per reviewer in the selected profile)
+        - Validators launched in parallel (single message, N Agent calls), models picked from the profile's validator_models
         - Filtered to confirmed-only
         - Markdown rendered to chat
       gotchas:
         - Always quote the exact CLAUDE.md rule text when flagging a claude_md issue. If you cannot quote it verbatim, do not flag it.
-        - Sequential reviewer or validator calls waste time. Reviewers run in one message with three concurrent Agent calls. Validators run in one message with N concurrent Agent calls.
+        - Sequential reviewer or validator calls waste time. Reviewers run in one message with one concurrent Agent call per reviewer in the selected profile (2 for data_only, 3 for code). Validators run in one message with N concurrent Agent calls.
         - Render only -- this skill outputs in chat. There is no Swarm comment, PR comment, or disk write step.
         - If prepare_review.py fails, report the error and stop. No retry.
         - Validators are independent of reviewers. The validator does not see who flagged the issue.
@@ -101,7 +110,7 @@ technique_skill:
       - when: "After step 3, before step 5 (M = 0)"
         template: "Got <N> changed file(s); no CLAUDE.md scopes apply. Skipping to reviewers."
       - when: "Before step 5"
-        template: "Launching 3 reviewers in parallel: sonnet CLAUDE.md compliance, opus diff-only bugs, opus introduced-code."
+        template: "Selected review profile: <P>. Launching <R> reviewer(s) in parallel: <reviewer_summary>."
       - when: "After step 5, before step 6 (X >= 1)"
         template: "Reviewers returned <X> candidate issue(s) (<B> bug, <C> CLAUDE.md). Launching <X> validator(s) in parallel."
       - when: "After step 5 (X = 0)"
@@ -114,28 +123,82 @@ technique_skill:
       "<M>": "len(bundle.unique_claude_mds)"
       "<U>": "len(bundle.unreconciled)"
       "<U_added>": "count of files the user chose to fold into the CL"
-      "<X>": "total candidate issues from all three reviewers combined"
+      "<X>": "total candidate issues from all launched reviewers combined"
       "<B>": "count where reason == 'bug'"
       "<C>": "count where reason == 'claude_md'"
       "<Y>": "count of validators returning CONFIRMED"
+      "<P>": "selected review profile id (e.g. code, data_only)"
+      "<R>": "count of reviewers in the selected profile"
+      "<reviewer_summary>": "comma-separated '<model> <reviewer short name>' for each launched reviewer (e.g. 'sonnet CLAUDE.md compliance, opus diff-only bugs, opus introduced-code')"
+  review_profiles:
+    description: |
+      Routing table for selecting reviewers and models based on CL content. Exactly one
+      profile is selected per review. Selection is an inference call -- read each profile's
+      `selection.guidance` and pick the most appropriate one based on the actual contents
+      of `bundle.changed_files`. Default to `code` when uncertain.
+    profiles:
+      - id: data_only
+        selection:
+          data_only_extensions: [".csv", ".yaml", ".yml", ".json", ".tsv", ".md"]
+          guidance: |
+            Select this profile when every changed file is either:
+              (a) in `data_only_extensions` (flat data / docs), OR
+              (b) an inert binary asset -- images, audio, video, fonts, compiled binaries,
+                  3D/animation assets -- whose presence wouldn't change what a code-grade
+                  review would find. These files aren't reviewable for logic anyway, so
+                  including them in a CL shouldn't force the heavier `code` profile.
+            Use judgment: the question is "is there any file in this CL that needs Opus-level
+            semantic reasoning to review?" -- not "is every extension on a fixed list?"
+
+            Pick `code` instead the moment any changed file contains executable logic
+            (source code, scripts, build configuration that runs code, templated configs
+            that are interpreted as code, etc.).
+        rationale: |
+          Flat data and doc files don't exhibit the failure modes Opus is uniquely good at
+          (concurrency, lifetime, deep semantic reasoning). Bugs in these files are
+          surface-level: malformed syntax, duplicate keys, column-count mismatches, broken
+          cross-file references, schema violations -- pattern-matching tasks where Sonnet is
+          at near-parity with Opus. `reviewer_c_introduced_code`'s scope is essentially empty
+          for data/doc files; running it just burns tokens and generates hallucinations the
+          validator must reject.
+        reviewers:
+          - { name: reviewer_a_claude_md_compliance, model: sonnet }
+          - { name: reviewer_b_diff_only_bugs,       model: sonnet }
+        validator_models:
+          bug: sonnet
+          claude_md: sonnet
+      - id: code
+        selection:
+          guidance: |
+            Default profile. Use whenever any changed file contains executable logic
+            (source code, scripts, build configuration that runs code) -- i.e. anytime
+            `data_only` doesn't clearly apply.
+        rationale: "Full reviewer set with Opus where deep semantic reasoning pays off."
+        reviewers:
+          - { name: reviewer_a_claude_md_compliance, model: sonnet }
+          - { name: reviewer_b_diff_only_bugs,       model: opus }
+          - { name: reviewer_c_introduced_code,      model: opus }
+        validator_models:
+          bug: opus
+          claude_md: sonnet
+  # subagents: reviewer/validator definitions (scope, input, restrictions).
+  # Models are NOT set here -- they are bound by the selected `review_profiles` entry.
   subagents:
     - name: reviewer_a_claude_md_compliance
-      model: sonnet
       subagent_type: general-purpose
       scope: CLAUDE.md compliance only
       input: "full diff + per-file CLAUDE.md mapping with full text of each CLAUDE.md (read in step 3)"
       restrictions:
         - "Only consider CLAUDE.md files that share a path with the file being reviewed (use the per-file mapping; do not cross-apply)."
     - name: reviewer_b_diff_only_bugs
-      model: opus
       subagent_type: general-purpose
       scope: obvious bugs visible in the diff alone
       input: "diff and CL description only"
       restrictions:
         - "MUST NOT use Read or any other tool to look beyond the diff."
         - "Only flag won't-compile, syntax/type errors, missing imports, unresolved references, definitely-wrong logic regardless of inputs."
+        - "For data/doc files (data_only profile): focus on malformed syntax, duplicate keys, schema or column-count violations, and broken cross-file references."
     - name: reviewer_c_introduced_code
-      model: opus
       subagent_type: general-purpose
       scope: bugs/security/logic problems in the introduced code that need broader context
       input: "diff, CL description, list of local file paths"
@@ -143,9 +206,6 @@ technique_skill:
         - "MAY use Read to look at surrounding context in the changed files when needed."
         - "Examples: concurrency issues, lifetime bugs, security holes."
     - name: validator
-      model_per_issue:
-        bug: opus
-        claude_md: sonnet
       subagent_type: general-purpose
       scope: confirm or reject one candidate issue with high confidence
       input: "the issue (JSON), the full diff, [if claude_md: relevant CLAUDE.md contents]"
