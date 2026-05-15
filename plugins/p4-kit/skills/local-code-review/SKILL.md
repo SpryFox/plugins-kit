@@ -8,7 +8,7 @@ description: Use when reviewing a pending Perforce changelist, or before asking 
 
 # Local Code Review
 
-Run a multi-agent code review of a Perforce changelist directly in conversation. Three Claude subagents review the diff in parallel; each flagged issue is then validated by an independent subagent to suppress false positives. Results are rendered as markdown -- no persistence to disk.
+Run a multi-agent code review of a Perforce changelist directly in conversation. Reviewer subagents (set by the selected review profile) examine the diff in parallel; each flagged issue is then validated by an independent subagent to suppress false positives. Path-scoped pre-submit reminders (submit gates) authored in ancestor CLAUDE.md files are surfaced alongside the review for author confirmation. Results are rendered as markdown -- no persistence to disk.
 
 ```yaml
 technique_skill:
@@ -20,10 +20,12 @@ technique_skill:
       - reviewing pending Perforce changelists by CL number
       - CLAUDE.md compliance audits in a P4 workspace
       - bug audits scoped to introduced code
+      - surfacing path-scoped pre-submit reminders (submit gates) from CLAUDE.md
     excludes:
       - git diffs and non-Perforce review workflows
       - persisting review output to disk or Swarm
       - reviewing previously-submitted changelists
+      - enforcing submit gates (advisory only; enforcement belongs in a pre-shelve/pre-submit hook)
   techniques:
     - id: full_review
       name: Full multi-agent review
@@ -38,10 +40,10 @@ technique_skill:
           input: "p4 -ztag changes -s pending -u $(p4 set -q P4USER | cut -d= -f2) -m 20"
           expected: A single integer CL number confirmed by the user.
         - n: 2
-          action: Run prepare_review.py to fetch the diff (with shelved fallback), map ancestor CLAUDE.md files for each changed file, and detect unreconciled files in the directories the CL touches.
+          action: Run prepare_review.py to fetch the diff (with shelved fallback), map ancestor CLAUDE.md files for each changed file, detect unreconciled files in the directories the CL touches, and scan ancestor CLAUDE.md files for submit-gate reminders that apply to this CL.
           tool: ${CLAUDE_PLUGIN_ROOT}/scripts/prepare_review.py
           input: "<CL>"
-          expected: JSON with cl, description, diff, changed_files, unique_claude_mds, unreconciled.
+          expected: JSON with cl, description, diff, changed_files, unique_claude_mds, unreconciled, submit_gates.
           on_failure: Surface the stderr message to the user and stop. No retry.
         - n: 3
           action: |
@@ -56,6 +58,20 @@ technique_skill:
           tool: Read
         - n: 5
           action: |
+            If bundle.submit_gates is non-empty, surface each gate as a checklist item the
+            author must confirm BEFORE the review renders. Issue ONE AskUserQuestion call
+            with `multiSelect: true`, one option per gate, labeled with the gate's summary
+            and (in the description) the source CLAUDE.md path and the triggering files.
+            Phrase the question as: "Confirm each pre-submit obligation you've already
+            completed for CL <CL>."
+            - Selected options become CONFIRMED gates.
+            - Unselected options become UNCONFIRMED gates -- still rendered, just marked.
+            Do NOT skip a gate, do NOT collapse multiple gates into one option, do NOT
+            re-prompt. The author's answer (or lack thereof) is final.
+            Skip this step entirely if bundle.submit_gates is empty.
+          tool: AskUserQuestion
+        - n: 6
+          action: |
             Select one profile from `review_profiles` using its `selection.guidance` -- this is
             an inference call, not regex. Read each profile's guidance, weigh the actual contents
             of `bundle.changed_files`, and pick the most appropriate profile. Default to `code`
@@ -64,26 +80,27 @@ technique_skill:
             reviewer entry. Reviewers not listed in the selected profile are NOT launched.
           tool: Agent
           expected: JSON arrays of candidate issues from each launched reviewer.
-        - n: 6
+        - n: 7
           action: |
             Launch one validator subagent per candidate issue, all in parallel via a single message.
             Use the selected profile's `validator_models[reason]` to pick the model per issue.
           tool: Agent
           expected: CONFIRMED or REJECTED per issue.
-        - n: 7
-          action: Drop rejected issues silently (do not report rejected issues to the user).
         - n: 8
-          action: Render the markdown review grouped by file.
+          action: Drop rejected issues silently (do not report rejected issues to the user).
+        - n: 9
+          action: Render the markdown review. Prepend a `## Submit checklist` section when any submit gates applied to this CL (confirmed and unconfirmed both rendered). Group the review body by file.
       checklist:
         - CL number resolved
         - Context bundled via prepare_review.py
         - Unreconciled files surfaced (and either folded in via `p4 reconcile -c <CL>` with a re-run, or explicitly declined)
         - All CLAUDE.md files read
+        - Submit gates surfaced (if any) and author confirmation collected via a single AskUserQuestion
         - Review profile selected from review_profiles (first match)
         - Reviewers launched in parallel (single message, one Agent call per reviewer in the selected profile)
         - Validators launched in parallel (single message, N Agent calls), models picked from the profile's validator_models
         - Filtered to confirmed-only
-        - Markdown rendered to chat
+        - Markdown rendered to chat (Submit checklist section prepended when gates applied)
       gotchas:
         - Always quote the exact CLAUDE.md rule text when flagging a claude_md issue. If you cannot quote it verbatim, do not flag it.
         - Sequential reviewer or validator calls waste time. Reviewers run in one message with one concurrent Agent call per reviewer in the selected profile (2 for data_only, 3 for code). Validators run in one message with N concurrent Agent calls.
@@ -92,6 +109,9 @@ technique_skill:
         - Validators are independent of reviewers. The validator does not see who flagged the issue.
         - The unreconciled check must happen BEFORE reviewers spawn. Folding in forgotten files after agents have already reviewed the diff wastes their work and produces a stale review.
         - On the post-reconcile re-run, do NOT prompt again about unreconciled files. The user already chose. Re-prompting on the same list is annoying; re-prompting on a smaller list (because they only added some) implies the rest were forgotten when they were declined.
+        - Submit gates are reminders, not findings -- they do NOT go through reviewer or validator subagents. They are parsed deterministically by prepare_review.py and rendered verbatim in a separate output section. Do not try to validate, score, or filter them.
+        - The submit-gates AskUserQuestion fires once, regardless of gate count. multiSelect bundles all gates into one prompt. Re-prompting per gate is rude and adds no value -- the author's response is final either way.
+        - Unconfirmed submit gates are NOT errors. Render them with ✗ so they're visible, but do not block the review or refuse to render the rest.
   narration:
     note: Reviews involve long silent stretches (batched file reads, parallel subagents that take 30s+). Post one short status line per step using these templates verbatim, filling in the bracketed counts. Do not paraphrase, omit, or add extras.
     templates:
@@ -107,15 +127,17 @@ technique_skill:
         template: "Continuing with CL <CL> as-is."
       - when: "After step 3, before step 4 (M >= 1)"
         template: "Got <N> changed file(s) and <M> unique CLAUDE.md scope(s). Reading them now."
-      - when: "After step 3, before step 5 (M = 0)"
-        template: "Got <N> changed file(s); no CLAUDE.md scopes apply. Skipping to reviewers."
-      - when: "Before step 5"
+      - when: "After step 3, before step 4 (M = 0)"
+        template: "Got <N> changed file(s); no CLAUDE.md scopes apply."
+      - when: "Before step 5 (G >= 1)"
+        template: "Found <G> submit-gate reminder(s) applying to this CL. Asking the author to confirm."
+      - when: "Before step 6"
         template: "Selected review profile: <P>. Launching <R> reviewer(s) in parallel: <reviewer_summary>."
-      - when: "After step 5, before step 6 (X >= 1)"
+      - when: "After step 6, before step 7 (X >= 1)"
         template: "Reviewers returned <X> candidate issue(s) (<B> bug, <C> CLAUDE.md). Launching <X> validator(s) in parallel."
-      - when: "After step 5 (X = 0)"
+      - when: "After step 6 (X = 0)"
         template: "Reviewers found no issues. Skipping validation."
-      - when: "After step 6, before step 8"
+      - when: "After step 7, before step 9"
         template: "Validators confirmed <Y> of <X>. Rendering review."
     variables:
       "<CL>": "the changelist number"
@@ -130,6 +152,7 @@ technique_skill:
       "<P>": "selected review profile id (e.g. code, data_only)"
       "<R>": "count of reviewers in the selected profile"
       "<reviewer_summary>": "comma-separated '<model> <reviewer short name>' for each launched reviewer (e.g. 'sonnet CLAUDE.md compliance, opus diff-only bugs, opus introduced-code')"
+      "<G>": "len(bundle.submit_gates)"
   review_profiles:
     description: |
       Routing table for selecting reviewers and models based on CL content. Exactly one
@@ -238,9 +261,52 @@ technique_skill:
         "description": "<one-sentence explanation>",
         "citation": "<exact rule quote, only for claude_md issues>"
       }]
+  submit_gates:
+    description: |
+      Path-scoped pre-submit reminders authored in CLAUDE.md files. Surfaced verbatim at
+      review time when at least one file in the CL falls within the gate's scope. Reminders
+      are not findings -- they don't go through reviewer or validator subagents. Detection
+      is deterministic, performed by prepare_review.py.
+    authoring_format: |
+      Add this block to any CLAUDE.md (root, subdirectory, or both):
+
+        **Submit gate:** <imperative -- what the author must do>.
+        Applies to:
+        - <path prefix or glob>
+        - <path prefix or glob>
+
+        <optional rationale paragraph, rendered verbatim with the gate>
+
+      Scope path semantics:
+        - No glob characters (`*`, `?`, `[`): prefix match. `Foo/Bar/` matches every file
+          under Foo/Bar/. `Foo/Bar` (no trailing slash) is equivalent and does NOT
+          accidentally match `Foo/BarBaz/`.
+        - Contains glob characters: fnmatch-style glob, anchored to the workspace root.
+          `*` matches anything including `/`; `?` matches one character.
+        - Case-insensitive on Windows, case-sensitive elsewhere.
+
+      Multiple gates per CLAUDE.md allowed; blocks must be separated by a blank line.
+      Malformed blocks (missing `Applies to:`, empty scope list) are skipped with a
+      one-line stderr warning -- never silently dropped.
+    rendering: |
+      When bundle.submit_gates is non-empty, the rendered review prepends a
+      `## Submit checklist` section ABOVE the per-file review body. Each gate renders as:
+
+        - **[✓|✗] <summary>** -- per `<source>`, triggered by `<file>` (+N more if many).
+          > <rationale, indented as blockquote, omitted if empty>
+
+      ✓ = author confirmed in the step-5 AskUserQuestion.
+      ✗ = author did not confirm. NOT an error; the review still renders.
+
+      Always show the section when gates applied -- including in the "no issues" path.
   output_format:
-    description: "Final markdown rendered to chat, grouped by file."
+    description: "Final markdown rendered to chat. Submit checklist (when applicable) above the per-file review body."
     template: |
+      ## Submit checklist
+      - **[✓] ./build.sh configbinaries must pass before submit** -- per `<path>/CLAUDE.md`, triggered by `GameConfigs/Real/x.csv`.
+      - **[✗] Regenerate the asset index** -- per `<path>/CLAUDE.md`, triggered by `Content/Assets/y.uasset`.
+        > <rationale if any, as a blockquote>
+
       ## Review: CL <CL> -- <description>
 
       Found N issues (M filtered as false positives).
@@ -249,7 +315,14 @@ technique_skill:
       - **[bug]** L42: Buffer overflow risk -- `items[i]` accessed without bounds check.
       - **[claude_md]** L78: Violates `src/CLAUDE.md` rule "Use absl::Status not bool returns".
     empty_template: |
+      ## Submit checklist
+      - **[✓] ./build.sh configbinaries must pass before submit** -- per `<path>/CLAUDE.md`, triggered by `GameConfigs/Real/x.csv`.
+
       ## Review: CL <CL> -- <description>
 
       No issues found. Reviewed for bugs and CLAUDE.md compliance.
+    notes:
+      - "Omit the Submit checklist section entirely when bundle.submit_gates is empty."
+      - "When matched_files has >3 entries, render the first 3 then '(+N more)'."
+      - "Rationale renders as a markdown blockquote (`> `) indented one level below the bullet, only if non-empty."
 ```
