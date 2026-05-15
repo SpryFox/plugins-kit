@@ -705,6 +705,10 @@ def main(argv: list[str]) -> int:
                     help="Output HTML path (default: ~/.claude/plugin-ecosystem.html)")
     ap.add_argument("--title", default=None, help="Override page title from config")
     ap.add_argument("--no-open", action="store_true", help="Do not open the file in the browser")
+    ap.add_argument("--defaults", action="store_true",
+                    help="Source on/off state from project bootstrap.json declarations only, "
+                         "ignoring the user's live settings.json enabledPlugins. Use to depict "
+                         "'how this project ships' regardless of the operator's local toggles.")
     args = ap.parse_args(argv)
 
     project_root = (args.project or Path.cwd()).resolve()
@@ -722,7 +726,7 @@ def main(argv: list[str]) -> int:
 
     bootstrap = load_json(project_root / ".claude" / "bootstrap.json")
     bs_index = index_bootstrap_plugins(bootstrap)
-    settings_enabled = merged_enabled_plugins(project_root)
+    settings_enabled = {} if args.defaults else merged_enabled_plugins(project_root)
 
     installed = load_installed()
     plugins = collect_plugins(installed, marketplaces, settings_enabled, bs_index, overrides)

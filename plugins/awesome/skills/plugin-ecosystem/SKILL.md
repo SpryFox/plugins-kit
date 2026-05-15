@@ -13,9 +13,21 @@ Generate `~/.claude/plugin-ecosystem.html` -- a self-contained 16:9 poster that 
 
 - "Show me the plugin ecosystem"
 - "Regenerate / refresh the plugin poster"
+- "Show the project defaults" / "what would a fresh user see" -> pass `--defaults` (see Invocation Keywords)
 - "Make the poster reflect SpryFox defaults" (use the `states:` override block in the user config)
 - "Set the poster title to X" / "set the tagline to Y" (edit the user config)
 - "Add `<marketplace>` to the poster" (author a `.claude-plugin/poster.yaml` in that marketplace's repo)
+
+## Invocation Keywords
+
+When the user invokes the skill with an argument, map the keyword to the right CLI flag:
+
+| User says... | Pass to script |
+|--------------|---------------|
+| `default`, `defaults`, "project defaults", "as a new user would see it", "ignore my settings" | `--defaults` |
+| `no-open`, "don't open" | `--no-open` |
+
+`--defaults` sources the on/off badge straight from project `bootstrap.json` declarations and ignores the operator's live `settings.json` toggles. Use it to depict "how this project ships" regardless of who's running the skill.
 
 ## How to Invoke
 
