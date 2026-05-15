@@ -1,6 +1,7 @@
 ---
 _schema_version: 1
 name: update-documentation
+author: christina
 description: End-of-session documentation review - evaluates session work and recommends documentation updates
 activation_contexts:
   - "update documentation based on session"

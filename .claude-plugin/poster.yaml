@@ -1,0 +1,7 @@
+# Marketplace metadata for the plugin-ecosystem-poster skill
+# (plugins-kit:awesome plugin-ecosystem-poster).
+#
+# Presence of this file opts the marketplace into the poster.
+# All fields are optional; omit any you do not want shown.
+
+subtitle: "Christina's open source plugin repository"

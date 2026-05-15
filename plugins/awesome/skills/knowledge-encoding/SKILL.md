@@ -2,6 +2,7 @@
 _schema_version: 1
 required_skills: ['md-read', 'skill-write']
 name: knowledge-encoding
+author: christina
 description: Encode conversation insights into persistent project locations
 ---
 

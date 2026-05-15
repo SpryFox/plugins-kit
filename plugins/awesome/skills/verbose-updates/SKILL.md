@@ -1,5 +1,6 @@
 ---
 name: verbose-updates
+author: christina
 skill-type: technique-skill
 description: Use when detailed context tracking is needed (context-switching, background work). Do NOT use for standard reporting.
 disable-model-invocation: true

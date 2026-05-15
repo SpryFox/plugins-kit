@@ -89,8 +89,8 @@
     },
     {
       "name": "awesome",
-      "description": "Christina's cross-domain skills: a shared communication framework (hand-off + verbose-updates) plus the meta-skills that evolve it (knowledge-encoding, update-documentation). hand-off/references/communication-framework.md is the canonical glossary both communication skills reference.",
-      "version": "0.2.0",
+      "description": "Christina's cross-domain skills: a shared communication framework (hand-off + verbose-updates), meta-skills that evolve it (knowledge-encoding, update-documentation), and /plugin-ecosystem (interactive 16:9 HTML poster of installed marketplaces and plugins).",
+      "version": "0.3.0",
       "author": {
         "name": "Christina"
       },
