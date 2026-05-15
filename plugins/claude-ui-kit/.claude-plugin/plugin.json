@@ -1,7 +1,7 @@
 {
   "name": "claude-ui-kit",
-  "version": "0.3.3",
-  "description": "Opinionated defaults and customization skills for Claude Code's UI. Currently ships the statusline (threshold colors + /statusline skill); future home for other UI surfaces.",
+  "version": "0.3.4",
+  "description": "Claude Code status line with context-window and rate-limit threshold colors, plus the /statusline skill to inspect and customize it.",
   "author": {
     "name": "Christina"
   },
