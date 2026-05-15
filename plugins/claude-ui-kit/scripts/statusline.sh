@@ -79,31 +79,30 @@ if [ -n "$WEEK" ] && [ "$WEEK" -eq "$WEEK" ] 2>/dev/null; then
     fi
 fi
 
-# Format seconds-until-reset as: #d (>=1 day), XhXXm (>=1 hour), or XXm.
-# Returns empty for missing/past timestamps.
+# Format seconds-until-reset as: #d (>=1 day), Xh rounded to nearest hour
+# (>=1 hour), or XXm (under 1 hour). Returns empty for missing timestamps.
 fmt_reset() {
     local epoch="$1" now secs days hours mins
     [ -z "$epoch" ] && return
     now=$(date +%s)
     secs=$((epoch - now))
     [ "$secs" -le 0 ] && { printf "0m"; return; }
-    days=$((secs / 86400))
-    hours=$(((secs % 86400) / 3600))
-    mins=$(((secs % 3600) / 60))
-    if   [ "$days" -ge 1 ];  then printf "%dd" "$days"
-    elif [ "$hours" -ge 1 ]; then printf "%dh%02dm" "$hours" "$mins"
-    else                          printf "%dm" "$mins"
+    if [ "$secs" -ge 86400 ]; then
+        days=$((secs / 86400))
+        printf "%dd" "$days"
+    elif [ "$secs" -ge 3600 ]; then
+        hours=$(((secs + 1800) / 3600))
+        if [ "$hours" -ge 24 ]; then printf "1d"
+        else                         printf "%dh" "$hours"
+        fi
+    else
+        mins=$(((secs + 30) / 60))
+        printf "%dm" "$mins"
     fi
 }
 
-SESS_RESET_STR=""
-if [ -n "$SESS" ] && [ "$SESS" -eq "$SESS" ] 2>/dev/null && [ "$SESS" -le "$SESS_ORANGE_AT" ]; then
-    SESS_RESET_STR=$(fmt_reset "$SESS_RESET")
-fi
-WEEK_RESET_STR=""
-if [ -n "$WEEK" ] && [ "$WEEK" -eq "$WEEK" ] 2>/dev/null && [ "$WEEK" -le "$WEEK_ORANGE_AT" ]; then
-    WEEK_RESET_STR=$(fmt_reset "$WEEK_RESET")
-fi
+SESS_RESET_STR=$(fmt_reset "$SESS_RESET")
+WEEK_RESET_STR=$(fmt_reset "$WEEK_RESET")
 
 OUT="\033[38;5;250m📁 $DIR\033[0m\033[2m\033[38;5;238m │ \033[0m${CTX_CLR}🧠 $PCT%\033[0m"
 if [ -n "$SESS" ]; then
