@@ -559,6 +559,20 @@ def _activate_bootstrap_venv(data_dir):
                 sys.path.insert(0, sp)
 
 
+def _join_items(items):
+    """Format items as 'name [detail], name [detail]' or 'name, name'.
+
+    items: list of (name, detail) tuples. Empty detail -> bare name.
+    """
+    parts = []
+    for name, detail in items:
+        if detail:
+            parts.append(f"{name} [{detail}]")
+        else:
+            parts.append(name)
+    return ", ".join(parts)
+
+
 def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_entries, ok_entries, plugin_name="bootstrap"):
     """Process engine self-setup: tools, path_entries, venv.
 
@@ -573,7 +587,8 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
     failures = []
     p = "[bootstrap-setup] "
 
-    # Check tools
+    # Check tools (consolidate installs into one line; failures stay per-line)
+    tools_installed = []
     for tool_def in self_setup.get("tools", []):
         name = tool_def["name"]
         install_cmds = tool_def.get("install", {})
@@ -585,13 +600,12 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
             continue
 
         if result.install_cmd:
-            action_entries.append(f"{p}{result.name}: not found, attempting install")
             from .tool_check import run_install
             ok, _output = run_install(result.install_cmd)
             if ok:
                 recheck = check_tool(name, install_cmds, current_os, install_path=tool_install_path)
                 if recheck.passed:
-                    action_entries.append(f"{p}{result.name}: installed - ran `{result.install_cmd}`, now {recheck.message}")
+                    tools_installed.append((result.name, f"via `{result.install_cmd}`"))
                     continue
             action_entries.append(f"{p}{result.name}: FAILED - install attempted but still not found")
         else:
@@ -605,7 +619,11 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
             "plugin": "bootstrap",
         })
 
-    # Check path entries
+    if tools_installed:
+        action_entries.append(f"{p}tools installed: {_join_items(tools_installed)}")
+
+    # Check path entries (consolidate adds into one line)
+    paths_added = []
     for path_entry in self_setup.get("path_entries", []):
         expanded = os.path.expanduser(path_entry)
         result = check_path_entry(path_entry)
@@ -614,10 +632,13 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
         else:
             from .path_check import add_path_to_shell_config
             ok, msg = add_path_to_shell_config(path_entry)
-            action_entries.append(f"{p}PATH {result.path}: not in PATH, added to shell config - {msg}")
+            paths_added.append((result.path, msg))
         current_path = os.environ.get("PATH", "")
         if os.path.normpath(expanded) not in [os.path.normpath(d) for d in current_path.split(os.pathsep)]:
             os.environ["PATH"] = expanded + os.pathsep + current_path
+
+    if paths_added:
+        action_entries.append(f"{p}PATH added: {_join_items(paths_added)}")
 
     # Check for Python stubs shadowing the standalone python (Windows-only check)
     stub_def = self_setup.get("python_stub_check")
@@ -1176,7 +1197,8 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
     failures = []
     prefix = ""
 
-    # Check tools
+    # Check tools (consolidate installs into one line; failures stay per-line)
+    tools_installed = []
     for tool_def in manifest.get("tools", []):
         name = tool_def["name"]
         install_cmds = tool_def.get("install", {})
@@ -1189,13 +1211,12 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
 
         # Tool not found — attempt remediation if install command available
         if result.install_cmd:
-            action_entries.append(f"{prefix}{result.name}: not found, attempting install")
             from .tool_check import run_install
             ok, _output = run_install(result.install_cmd)
             if ok:
                 recheck = check_tool(name, install_cmds, current_os, install_path=tool_install_path)
                 if recheck.passed:
-                    action_entries.append(f"{prefix}{result.name}: installed - ran `{result.install_cmd}`, now {recheck.message}")
+                    tools_installed.append((result.name, f"via `{result.install_cmd}`"))
                     continue  # no failure to record
             # Install failed or tool still missing after install
             action_entries.append(f"{prefix}{result.name}: FAILED - install attempted but still not found")
@@ -1210,7 +1231,11 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
             "plugin": plugin_name,
         })
 
-    # Check path entries
+    if tools_installed:
+        action_entries.append(f"{prefix}tools installed: {_join_items(tools_installed)}")
+
+    # Check path entries (consolidate adds into one line)
+    paths_added = []
     for path_entry in manifest.get("path_entries", []):
         expanded = os.path.expanduser(path_entry)
         result = check_path_entry(path_entry)
@@ -1220,11 +1245,14 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
             # Attempt persistent remediation: add to shell RC files
             from .path_check import add_path_to_shell_config
             ok, msg = add_path_to_shell_config(path_entry)
-            action_entries.append(f"{prefix}PATH {result.path}: not in PATH, added to shell config - {msg}")
+            paths_added.append((result.path, msg))
         # Add to current process PATH so subsequent phases can find tools there
         current_path = os.environ.get("PATH", "")
         if os.path.normpath(expanded) not in [os.path.normpath(d) for d in current_path.split(os.pathsep)]:
             os.environ["PATH"] = expanded + os.pathsep + current_path
+
+    if paths_added:
+        action_entries.append(f"{prefix}PATH added: {_join_items(paths_added)}")
 
     # Check venv
     venv_def = manifest.get("venv")
@@ -1289,7 +1317,10 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                 "plugin": plugin_name,
             })
 
-    # Check git deps
+    # Check git deps (consolidate by verb: cloned/pulled/checked-out; failures per-line)
+    git_cloned = []
+    git_pulled = []
+    git_checked_out = []
     for dep_def in manifest.get("git_deps", []):
         result = check_git_dep(
             data_dir,
@@ -1300,44 +1331,58 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
         )
         if result.passed:
             ok_entries.append(f"{prefix}git {result.repo_name}: ok - {result.message}")
-        else:
-            from .git_dep_check import clone_git_dep, pull_git_dep
-            import os as _os
-            target_path = result.target_path
-            pinned_commit = dep_def.get("commit")
-            if not _os.path.isdir(target_path):
-                # Not cloned — clone it
-                action_entries.append(f"{prefix}git {result.repo_name}: not cloned, cloning from {dep_def['url']}")
-                ok, msg = clone_git_dep(dep_def["url"], dep_def["branch"], target_path, dep_def.get("sparse_paths"), pinned_commit)
-            elif pinned_commit:
-                # Exists but wrong commit — fetch and checkout
-                action_entries.append(f"{prefix}git {result.repo_name}: {result.message}, checking out {pinned_commit[:7]}")
-                try:
-                    import subprocess as _sp2
-                    from .git_dep_check import _git_exe
-                    _git = _git_exe()
-                    _sp2.run([_git, "-C", target_path, "fetch"], capture_output=True, timeout=60)
-                    r = _sp2.run([_git, "-C", target_path, "checkout", pinned_commit], capture_output=True, text=True, timeout=30)
-                    ok = r.returncode == 0
-                    msg = f"checked out {pinned_commit[:7]}" if ok else (r.stderr.strip() or "checkout failed")
-                except (_sp2.SubprocessError, OSError) as e:
-                    ok, msg = False, str(e)
-            else:
-                # Exists but wrong branch or broken — pull
-                action_entries.append(f"{prefix}git {result.repo_name}: {result.message}, pulling")
-                ok, msg = pull_git_dep(target_path)
+            continue
 
-            if ok:
-                action_entries.append(f"{prefix}git {result.repo_name}: {msg}")
+        from .git_dep_check import clone_git_dep, pull_git_dep
+        import os as _os
+        target_path = result.target_path
+        pinned_commit = dep_def.get("commit")
+        verb = ""
+        if not _os.path.isdir(target_path):
+            ok, msg = clone_git_dep(dep_def["url"], dep_def["branch"], target_path, dep_def.get("sparse_paths"), pinned_commit)
+            verb = "cloned"
+            detail = dep_def["url"]
+        elif pinned_commit:
+            try:
+                import subprocess as _sp2
+                from .git_dep_check import _git_exe
+                _git = _git_exe()
+                _sp2.run([_git, "-C", target_path, "fetch"], capture_output=True, timeout=60)
+                r = _sp2.run([_git, "-C", target_path, "checkout", pinned_commit], capture_output=True, text=True, timeout=30)
+                ok = r.returncode == 0
+                msg = f"checked out {pinned_commit[:7]}" if ok else (r.stderr.strip() or "checkout failed")
+            except (_sp2.SubprocessError, OSError) as e:
+                ok, msg = False, str(e)
+            verb = "checked out"
+            detail = pinned_commit[:7]
+        else:
+            ok, msg = pull_git_dep(target_path)
+            verb = "pulled"
+            detail = ""
+
+        if ok:
+            if verb == "cloned":
+                git_cloned.append((result.repo_name, detail))
+            elif verb == "pulled":
+                git_pulled.append((result.repo_name, detail))
             else:
-                action_entries.append(f"{prefix}git {result.repo_name}: FAILED - {msg}")
-                failures.append({
-                    "type": "git_dep",
-                    "name": result.repo_name,
-                    "message": msg,
-                    "remediation_cmd": result.remediation_cmd,
-                    "plugin": plugin_name,
-                })
+                git_checked_out.append((result.repo_name, detail))
+        else:
+            action_entries.append(f"{prefix}git {result.repo_name}: FAILED - {msg}")
+            failures.append({
+                "type": "git_dep",
+                "name": result.repo_name,
+                "message": msg,
+                "remediation_cmd": result.remediation_cmd,
+                "plugin": plugin_name,
+            })
+
+    if git_cloned:
+        action_entries.append(f"{prefix}git cloned: {_join_items(git_cloned)}")
+    if git_pulled:
+        action_entries.append(f"{prefix}git pulled: {_join_items(git_pulled)}")
+    if git_checked_out:
+        action_entries.append(f"{prefix}git checked out: {_join_items(git_checked_out)}")
 
     # Sync files to data directory
     # Rule: successful outcomes -> ok_entries (verbose-only); failures/actions -> action_entries (always shown)
@@ -1381,7 +1426,10 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                 else:
                     upd_result = update_marketplace(mkt_name)
                     if upd_result.passed:
-                        action_entries.append(f"{prefix}marketplace {mkt_name}: updated (alwaysUpdate)")
+                        # Marketplace refresh is the *mechanism* by which plugin
+                        # updates happen; the plugin updates themselves are the
+                        # user-visible outcome. Demote to verbose-only.
+                        ok_entries.append(f"{prefix}marketplace {mkt_name}: updated (alwaysUpdate)")
                     else:
                         action_entries.append(f"{prefix}marketplace {mkt_name}: update failed - {upd_result.message}")
                         failures.append({
@@ -1406,7 +1454,20 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                     "plugin": plugin_name,
                 })
 
-    # Check plugin entries
+    # Check plugin entries.
+    # Successful actions are accumulated per (marketplace, verb) and emitted as
+    # consolidated lines after the loop: "<mkt>: updated <name> [old -> new], ...".
+    # Failures and one-off warnings stay per-line to preserve detail.
+    plugins_installed = {}      # mkt -> [(name, detail)]
+    plugins_re_installed = {}   # mkt -> [(name, detail)]
+    plugins_updated = {}        # mkt -> [(name, detail)]
+    plugins_enabled = {}        # mkt -> [(name, detail)]
+    plugins_disabled = {}       # mkt -> [(name, detail)]
+
+    def _bucket(d, plugin_ref, detail):
+        mkt, name = (plugin_ref.split(":", 1) if ":" in plugin_ref else ("", plugin_ref))
+        d.setdefault(mkt, []).append((name, detail))
+
     for plugin_def in manifest.get("plugins", []):
         plugin_ref = plugin_def.get("ref", "")
         enabled = plugin_def.get("enabled", True)
@@ -1435,7 +1496,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
             # Auto-install via CLI
             inst = install_plugin(plugin_ref, scope=desired_scope)
             if inst.passed:
-                action_entries.append(f"{prefix}plugin {plugin_ref}: installed at {desired_scope} scope")
+                _bucket(plugins_installed, plugin_ref, f"at {desired_scope} scope")
             else:
                 action_entries.append(f"{prefix}plugin {plugin_ref}: install failed - {inst.message}")
                 failures.append({
@@ -1455,11 +1516,14 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
         if install_result.passed and install_mode != "manual":
             scope_check = check_plugin_enabled_at_scope(plugin_ref, desired_scope, project_dir)
             if not scope_check.passed:
+                # Keep the scope-mismatch note as its own line so the user sees
+                # *why* the re-install happened; consolidate the action.
+                action_entries.append(f"{prefix}plugin {plugin_ref}: {scope_check.message}")
                 reinst = install_plugin(plugin_ref, scope=desired_scope)
                 if reinst.passed:
-                    action_entries.append(f"{prefix}plugin {plugin_ref}: re-installed at {desired_scope} scope ({scope_check.message})")
+                    _bucket(plugins_re_installed, plugin_ref, f"at {desired_scope} scope")
                 else:
-                    action_entries.append(f"{prefix}plugin {plugin_ref}: scope install failed ({scope_check.message}) - {reinst.message}")
+                    action_entries.append(f"{prefix}plugin {plugin_ref}: scope install failed - {reinst.message}")
                     failures.append({
                         "type": "plugin",
                         "ref": plugin_ref,
@@ -1481,7 +1545,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                 if not ver_result.up_to_date:
                     upd_result = update_plugin(plugin_ref, scope=desired_scope)
                     if upd_result.passed:
-                        action_entries.append(f"{prefix}plugin {plugin_ref}: updated {ver_result.installed_version} -> {ver_result.latest_version} (install: manual)")
+                        _bucket(plugins_updated, plugin_ref, f"{ver_result.installed_version} -> {ver_result.latest_version}, manual")
                     else:
                         action_entries.append(f"{prefix}plugin {plugin_ref}: update failed ({ver_result.message}) - {upd_result.message}")
                 else:
@@ -1493,7 +1557,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                 if not ver_result.up_to_date:
                     upd_result = update_plugin(plugin_ref, scope=desired_scope)
                     if upd_result.passed:
-                        action_entries.append(f"{prefix}plugin {plugin_ref}: updated {ver_result.installed_version} -> {ver_result.latest_version}")
+                        _bucket(plugins_updated, plugin_ref, f"{ver_result.installed_version} -> {ver_result.latest_version}")
                     else:
                         action_entries.append(f"{prefix}plugin {plugin_ref}: update failed ({ver_result.message}) - {upd_result.message}")
 
@@ -1506,7 +1570,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                     if upd_result.passed:
                         recheck = check_plugin_min_version(plugin_ref, min_version)
                         if recheck.up_to_date:
-                            action_entries.append(f"{prefix}plugin {plugin_ref}: updated {min_result.installed_version} -> {recheck.installed_version} (satisfies >= {min_version})")
+                            _bucket(plugins_updated, plugin_ref, f"{min_result.installed_version} -> {recheck.installed_version}, satisfies >= {min_version}")
                         else:
                             action_entries.append(f"{prefix}plugin {plugin_ref}: installed {recheck.installed_version} < required {min_version}, update failed to satisfy constraint")
                             failures.append({
@@ -1531,7 +1595,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
             else:
                 en_result = enable_plugin_in_claude(plugin_ref)
                 if en_result.passed:
-                    action_entries.append(f"{prefix}plugin {plugin_ref}: enabled at {desired_scope} scope")
+                    _bucket(plugins_enabled, plugin_ref, f"at {desired_scope} scope")
                 else:
                     action_entries.append(f"{prefix}plugin {plugin_ref}: enable failed - {en_result.message}")
                     failures.append({
@@ -1548,7 +1612,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
             else:
                 dis_result = disable_plugin_in_claude(plugin_ref)
                 if dis_result.passed:
-                    action_entries.append(f"{prefix}plugin {plugin_ref}: disabled via `claude plugin disable {cli_ref}` (removed '{cli_ref}' from settings.json enabledPlugins)")
+                    _bucket(plugins_disabled, plugin_ref, "")
                 else:
                     action_entries.append(f"{prefix}plugin {plugin_ref}: disable failed - {dis_result.message}")
                     failures.append({
@@ -1557,6 +1621,21 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                         "message": dis_result.message,
                         "plugin": plugin_name,
                     })
+
+    # Flush plugin-action accumulators as consolidated per-marketplace lines.
+    def _emit_plugin_verb(verb, buckets):
+        for mkt, items in buckets.items():
+            if not items:
+                continue
+            if mkt:
+                action_entries.append(f"{prefix}{mkt}: {verb} {_join_items(items)}")
+            else:
+                action_entries.append(f"{prefix}{verb}: {_join_items(items)}")
+    _emit_plugin_verb("installed", plugins_installed)
+    _emit_plugin_verb("re-installed", plugins_re_installed)
+    _emit_plugin_verb("updated", plugins_updated)
+    _emit_plugin_verb("enabled", plugins_enabled)
+    _emit_plugin_verb("disabled", plugins_disabled)
 
     # Variable resolution for subsequent phases
     from .var_resolve import build_variables, resolve_vars
@@ -1629,7 +1708,8 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                     "plugin": plugin_name,
                 })
 
-    # Check PyPI packages
+    # Check PyPI packages (consolidate successful installs; failures per-line)
+    pypi_installed = []
     for pypi_def in manifest.get("pypi_packages", []):
         extract_to = resolve_vars(pypi_def["extract_to"], variables)
         if extract_to is None:
@@ -1644,7 +1724,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
             extract_pattern = pypi_def.get("extract_pattern")
             result = download_and_extract(pypi_def["package"], extract_to, extract_pattern)
             if result.passed:
-                action_entries.append(f"{prefix}pypi {result.package}: {result.message}")
+                pypi_installed.append((result.package, result.message))
             else:
                 action_entries.append(f"{prefix}pypi {result.package}: FAILED - {result.message}")
                 failures.append({
@@ -1653,6 +1733,9 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                     "message": result.message,
                     "plugin": plugin_name,
                 })
+
+    if pypi_installed:
+        action_entries.append(f"{prefix}pypi: {_join_items(pypi_installed)}")
 
     # Script phase
     script_def = manifest.get("script")

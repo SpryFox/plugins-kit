@@ -261,7 +261,9 @@ class TestMarketplaceAlwaysUpdate:
             )
             mock_update.assert_called_once_with("my-market")
 
-        assert any("updated (alwaysUpdate)" in e for e in action_entries)
+        # Marketplace refresh is verbose-only (plumbing, not user-visible outcome).
+        assert any("updated (alwaysUpdate)" in e for e in ok_entries)
+        assert not any("updated (alwaysUpdate)" in e for e in action_entries)
 
     def test_always_update_silent_when_current(self, tmp_path, monkeypatch):
         """When alwaysUpdate is true but marketplace is current, result is silent (ok_entries)."""
@@ -595,8 +597,9 @@ class TestScopeRemediation:
             # Install at desired scope, no uninstall
             mock_inst.assert_called_once_with("plugins-kit:bootstrap", scope="user")
 
+        # Scope-mismatch note kept as its own line; re-install action consolidated.
         assert any("not enabled at user scope" in e for e in action_entries)
-        assert any("installed at user scope" in e for e in action_entries)
+        assert any("re-installed bootstrap [at user scope]" in e for e in action_entries)
 
     def test_stale_registry_scope_no_uninstall(self, tmp_path, monkeypatch):
         """Registry says 'project' but plugin is enabled at user scope → no action.
@@ -949,7 +952,7 @@ class TestEngineMinVersionFlow:
                 action_entries, ok_entries, plugin_name="test",
             )
 
-        assert any("updated 0.8.3 -> 0.9.1 (satisfies >= 0.9.1)" in e for e in action_entries)
+        assert any("updated bootstrap [0.8.3 -> 0.9.1, satisfies >= 0.9.1]" in e for e in action_entries)
         assert not any(f["type"] == "plugin" and "min_version" in f.get("message", "") for f in failures)
 
     def test_should_record_failure_when_update_fails(self, tmp_path, monkeypatch):
