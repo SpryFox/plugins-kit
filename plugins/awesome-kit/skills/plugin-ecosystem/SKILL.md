@@ -26,19 +26,27 @@ When the user invokes the skill with an argument, map the keyword to the right C
 |--------------|---------------|
 | `default`, `defaults`, "project defaults", "as a new user would see it", "ignore my settings" | `--defaults` |
 | `no-open`, "don't open" | `--no-open` |
+| `<name> marketplace`, "just the X marketplace", "only spryfox-plugins", "filter to plugins-kit", "for marketplace X" | `--marketplace <name>` (repeat or comma-separate for multiple) |
 
 `--defaults` sources the on/off badge straight from project `bootstrap.json` declarations and ignores the operator's live `settings.json` toggles. Use it to depict "how this project ships" regardless of who's running the skill.
+
+`--marketplace NAME` restricts the poster to one (or several) opted-in marketplaces. When exactly one marketplace remains, the column grid collapses to a single centered column -- ideal for generating a per-marketplace `index.html` landing page. Combine with `--title`, `--output`, and `--no-open` for headless index-page builds:
+
+```bash
+generate.py --marketplace plugins-kit --title "plugins-kit marketplace" \
+            --output ./index.html --no-open
+```
 
 ## How to Invoke
 
 ```bash
 powershell -NoProfile -Command "& SpiritCrossing\Scripts\python.bat \
-  D:/dev/plugins-kit/plugins/awesome/skills/plugin-ecosystem/scripts/generate.py"
+  D:/dev/plugins-kit/plugins/awesome-kit/skills/plugin-ecosystem/scripts/generate.py"
 ```
 
 Optional flags:
 - `--project PATH` -- project root (defaults to cwd). Determines which `bootstrap.json` and `settings.json` are read for live state.
-- `--config PATH` -- user-level config YAML (default: `~/.claude/.local-data/awesome/plugin-ecosystem-poster.yaml`).
+- `--config PATH` -- user-level config YAML (default: `~/.claude/.local-data/awesome-kit/plugin-ecosystem-poster.yaml`).
 - `--output PATH` -- HTML output path (default: `~/.claude/plugin-ecosystem.html`).
 - `--title TEXT` -- one-shot title override (the config YAML is the persistent home).
 - `--no-open` -- write the file without opening it in the browser.
@@ -55,7 +63,7 @@ The poster pulls from four sources, each owned by a different party:
 | Plugin name / description / razor | Plugin author | `<plugin>/.claude-plugin/plugin.json` (the optional `razor` field is the side-panel blurb) |
 | Plugin display overrides (card description, razor, per-skill blurbs) | Plugin author | `<plugin>/.claude-plugin/poster.yaml` (alongside plugin.json). All fields optional. Lets the plugin author write poster-facing copy without changing each skill's activation `description:`. |
 | Skill name / description / author | Skill author | `<skill>/SKILL.md` YAML frontmatter. The poster falls back to `description:` when the plugin's `poster.yaml` doesn't override it. `author:` renders as "by {author}" beside the skill name. |
-| Title / tagline / per-plugin state overrides | Poster author | `~/.claude/.local-data/awesome/plugin-ecosystem-poster.yaml` |
+| Title / tagline / per-plugin state overrides | Poster author | `~/.claude/.local-data/awesome-kit/plugin-ecosystem-poster.yaml` |
 | Live on/off state | Project / user | `enabledPlugins` merged across project + user `settings.json`, falling back to project `bootstrap.json` |
 
 ### Marketplace opt-in (the gate)
@@ -66,7 +74,12 @@ The `poster.yaml` schema (all fields optional):
 
 ```yaml
 subtitle: "Christina's open source plugin repository"
+url: "https://github.com/example/marketplace"
+states:
+  bootstrap: required   # marketplace-author declaration; see "State precedence" below
 ```
+
+`states:` is keyed by short plugin name (no `<marketplace>:` prefix -- it is already scoped to this marketplace). Values: `on`, `off`, `opt-in`, `required`. Use `required` for plugins that are structurally non-optional (other plugins in the marketplace won't work without them). `required` renders with a distinct purple badge and sorts above `on` within the column.
 
 To add a marketplace: create that file in the marketplace repo, commit + push, then on the user's machine the next bootstrap pull syncs it into `~/.claude/plugins/marketplaces/`.
 
@@ -74,16 +87,17 @@ To add a marketplace: create that file in the marketplace repo, commit + push, t
 
 For each plugin, the badge is computed in this order (first match wins):
 
-1. `states:` map in the user config YAML, keyed by `<marketplace>:<plugin>` or just `<plugin>`. Values: `on`, `off`, `opt-in`.
-2. `enabledPlugins` in project `<cwd>/.claude/settings.local.json`, then `<cwd>/.claude/settings.json`, then `~/.claude/settings.json`. `true` -> on, `false` -> off.
-3. Project `<cwd>/.claude/bootstrap.json` declaration. `enabled: true` -> on, `install: manual` -> opt-in, anything else declared -> off.
-4. Default -> "unmanaged" (installed but neither enabled nor declared).
+1. `states:` map in the user config YAML (poster author's depiction override), keyed by `<marketplace>:<plugin>` or just `<plugin>`. Values: `on`, `off`, `opt-in`, `required`.
+2. `states:` map in the **marketplace's** `poster.yaml` (marketplace owner's declaration), keyed by short plugin name. This is where `required` normally lives -- the marketplace asserts structural facts about its own plugins.
+3. `enabledPlugins` in project `<cwd>/.claude/settings.local.json`, then `<cwd>/.claude/settings.json`, then `~/.claude/settings.json`. `true` -> on, `false` -> off.
+4. Project `<cwd>/.claude/bootstrap.json` declaration. `enabled: true` -> on, `install: manual` -> opt-in, anything else declared -> off.
+5. Default -> "unmanaged" (installed but neither enabled nor declared).
 
 **SpryFox-defaults poster recipe**: drop a `states:` map into the user config that mirrors what the SpryFox `bootstrap.json` declares. Re-run -- the badges reflect SpryFox defaults regardless of the user's personal overrides.
 
 ### User config YAML
 
-`~/.claude/.local-data/awesome/plugin-ecosystem-poster.yaml`:
+`~/.claude/.local-data/awesome-kit/plugin-ecosystem-poster.yaml`:
 
 ```yaml
 title: "Spirit Crossing Claude Plugin Ecosystem"

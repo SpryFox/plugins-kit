@@ -1,5 +1,5 @@
 # Plugin display overrides for the plugin-ecosystem skill
-# (plugins-kit:awesome /plugin-ecosystem).
+# (plugins-kit:awesome-kit /plugin-ecosystem).
 #
 # Lives alongside plugin.json. All fields optional. Where a field is
 # absent, the source is read directly from plugin.json (plugin-level)

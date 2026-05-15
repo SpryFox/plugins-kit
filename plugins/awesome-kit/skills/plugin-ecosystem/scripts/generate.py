@@ -8,7 +8,7 @@ Reads:
   ~/.claude/plugins/marketplaces/<m>/.claude-plugin/poster.yaml         (per-marketplace opt-in)
   ~/.claude/settings.json + <project>/.claude/settings.json             (live enabledPlugins)
   <project>/.claude/bootstrap.json                                      (declared on/opt-in fallback)
-  ~/.claude/.local-data/awesome/plugin-ecosystem-poster.yaml            (title / tagline / state overrides)
+  ~/.claude/.local-data/awesome-kit/plugin-ecosystem-poster.yaml        (title / tagline / state overrides)
 
 Emits a single self-contained HTML file (default ~/.claude/plugin-ecosystem.html,
 regardless of where the skill is run from) and opens it in the browser unless
@@ -205,16 +205,27 @@ def normalize_state(value: str) -> str:
         return "off"
     if v in ("opt-in", "optin", "manual"):
         return "opt-in"
+    if v in ("required", "mandatory"):
+        return "required"
     return v
 
 
 def compute_state(ref: str, settings_enabled: dict, bs_index: dict, overrides: dict,
-                  defaults_mode: bool = False) -> str:
-    """Resolve a plugin's display state with precedence overrides > settings > bootstrap.
+                  marketplace_states: dict, defaults_mode: bool = False) -> str:
+    """Resolve a plugin's display state.
 
-    In defaults_mode, plugins not declared in bootstrap.json render as 'opt-in' rather than
-    'unmanaged' -- the poster is depicting 'how a fresh user of this project sees things',
-    where any plugin the project doesn't ship with is opt-in territory."""
+    Precedence (first match wins):
+      1. user config `states:` map (poster author's depiction override)
+      2. marketplace `poster.yaml` `states:` (marketplace owner's declaration -- this is
+         where `required` lives; the marketplace is asserting structural facts about its
+         own plugins, e.g. 'bootstrap cannot be turned off')
+      3. settings.json `enabledPlugins` (live operator state)
+      4. project `bootstrap.json` plugin declaration
+      5. defaults_mode -> 'opt-in', otherwise 'unmanaged'
+
+    `marketplace_states` is keyed by marketplace name; each value is a dict of
+    short-plugin-name -> raw state string (pre-normalize).
+    """
     if ref in overrides:
         return normalize_state(str(overrides[ref]))
     short = ref.split(":", 1)[1] if ":" in ref else ref
@@ -223,6 +234,9 @@ def compute_state(ref: str, settings_enabled: dict, bs_index: dict, overrides: d
 
     if ":" in ref:
         marketplace, plugin = ref.split(":", 1)
+        m_states = marketplace_states.get(marketplace) or {}
+        if plugin in m_states:
+            return normalize_state(str(m_states[plugin]))
         settings_key = f"{plugin}@{marketplace}"
         if settings_key in settings_enabled:
             return "on" if settings_enabled[settings_key] else "off"
@@ -238,7 +252,8 @@ def compute_state(ref: str, settings_enabled: dict, bs_index: dict, overrides: d
 
 
 def collect_plugins(installed: dict, marketplaces: dict, settings_enabled: dict,
-                    bs_index: dict, overrides: dict, defaults_mode: bool = False) -> list[dict]:
+                    bs_index: dict, overrides: dict, marketplace_states: dict,
+                    defaults_mode: bool = False) -> list[dict]:
     """Yield one dict per installed plugin from a participating marketplace.
     Filters out phantom installs (no longer present in the marketplace's marketplace.json)."""
     out = []
@@ -257,7 +272,8 @@ def collect_plugins(installed: dict, marketplaces: dict, settings_enabled: dict,
         meta = load_json(install_path / ".claude-plugin" / "plugin.json")
 
         ref = f"{marketplace}:{plugin_name}"
-        state = compute_state(ref, settings_enabled, bs_index, overrides, defaults_mode)
+        state = compute_state(ref, settings_enabled, bs_index, overrides,
+                              marketplace_states, defaults_mode)
 
         poster_overrides = load_yaml(install_path / ".claude-plugin" / "poster.yaml")
 
@@ -291,6 +307,8 @@ CSS = r"""
   --opt-bg: #3a2c0a;
   --off: #6e7681;
   --off-bg: #21262d;
+  --req: #d4a3ff;
+  --req-bg: #3a1f4d;
 }
 * { box-sizing: border-box; }
 html, body {
@@ -420,10 +438,11 @@ header .sub {
   text-transform: uppercase;
   white-space: nowrap;
 }
-.badge.on     { background: var(--on-bg);  color: var(--on); }
-.badge.opt-in { background: var(--opt-bg); color: var(--opt); }
-.badge.off    { background: var(--off-bg); color: var(--off); }
-.badge.unmanaged { background: var(--off-bg); color: var(--fg-dim); }
+.badge.on       { background: var(--on-bg);  color: var(--on); }
+.badge.opt-in   { background: var(--opt-bg); color: var(--opt); }
+.badge.off      { background: var(--off-bg); color: var(--off); }
+.badge.unmanaged{ background: var(--off-bg); color: var(--fg-dim); }
+.badge.required { background: var(--req-bg); color: var(--req); }
 .card-desc {
   color: var(--fg-dim);
   font-size: clamp(10px, 0.95vw, 12px);
@@ -565,7 +584,7 @@ function el(tag, attrs = {}, children = []) {
 }
 
 function badge(state) {
-  const label = { on: "On", "opt-in": "Opt-In", off: "Off", unmanaged: "Installed" }[state] || state;
+  const label = { on: "On", "opt-in": "Opt-In", off: "Off", unmanaged: "Installed", required: "Required" }[state] || state;
   return el("span", { class: `badge ${state}`, text: label });
 }
 
@@ -584,9 +603,10 @@ function renderColumn(marketplace, plugins) {
   if (sub) headChildren.push(el("div", { class: "sub", text: sub }));
   const head = el("div", { class: "col-header" }, headChildren);
   const body = el("div", { class: "col-body" });
+  const rank = s => ({ required: 0, on: 1, "opt-in": 2, unmanaged: 3, off: 4 }[s] ?? 5);
   plugins
     .slice()
-    .sort((a, b) => (b.state === "on") - (a.state === "on") || a.name.localeCompare(b.name))
+    .sort((a, b) => rank(a.state) - rank(b.state) || a.name.localeCompare(b.name))
     .forEach(p => body.appendChild(renderCard(p)));
   return el("div", { class: "col" }, [head, body]);
 }
@@ -678,7 +698,7 @@ HTML_TEMPLATE = """<!doctype html>
     <h1>__TITLE__</h1>
     <div class="sub">__SUB__</div>
   </header>
-  <div class="columns" id="cols"></div>
+  <div class="columns" id="cols" style="__COLS_STYLE__"></div>
 </div>
 <div class="scrim" id="scrim"></div>
 <aside class="panel" id="panel">
@@ -702,16 +722,23 @@ def render_html(title: str, tagline: str, plugins: list[dict],
         "marketplace_urls": marketplace_urls,
     }
     js = JS.replace("__DATA__", json.dumps(data))
+    n = len(marketplace_order)
+    if n <= 1:
+        col_template = "minmax(0, 720px)"
+        cols_style = f"grid-template-columns: {col_template}; justify-content: center;"
+    else:
+        cols_style = f"grid-template-columns: repeat({min(n, 2)}, 1fr);"
     return (HTML_TEMPLATE
             .replace("__TITLE__", html.escape(title))
             .replace("__SUB__", html.escape(tagline))
+            .replace("__COLS_STYLE__", cols_style)
             .replace("__CSS__", CSS)
             .replace("__JS__", js))
 
 
 # ---------- main ----------
 
-DEFAULT_USER_CONFIG = Path.home() / ".claude" / ".local-data" / "awesome" / "plugin-ecosystem-poster.yaml"
+DEFAULT_USER_CONFIG = Path.home() / ".claude" / ".local-data" / "awesome-kit" / "plugin-ecosystem-poster.yaml"
 
 
 def main(argv: list[str]) -> int:
@@ -729,6 +756,10 @@ def main(argv: list[str]) -> int:
                     help="Source on/off state from project bootstrap.json declarations only, "
                          "ignoring the user's live settings.json enabledPlugins. Use to depict "
                          "'how this project ships' regardless of the operator's local toggles.")
+    ap.add_argument("--marketplace", action="append", default=None,
+                    help="Restrict the poster to the named marketplace. Repeatable, or pass a "
+                         "comma-separated list. Unknown names are silently ignored. When exactly "
+                         "one marketplace remains, the column grid collapses to a single column.")
     args = ap.parse_args(argv)
 
     project_root = (args.project or Path.cwd()).resolve()
@@ -744,13 +775,30 @@ def main(argv: list[str]) -> int:
         sys.exit("No marketplaces have opted in (no .claude-plugin/poster.yaml files found "
                  "under ~/.claude/plugins/marketplaces/).")
 
+    if args.marketplace:
+        wanted: set[str] = set()
+        for raw in args.marketplace:
+            for part in raw.split(","):
+                part = part.strip()
+                if part:
+                    wanted.add(part)
+        filtered = {m: meta for m, meta in marketplaces.items() if m in wanted}
+        if not filtered:
+            sys.exit(f"--marketplace {sorted(wanted)} matched none of the opted-in marketplaces: "
+                     f"{sorted(marketplaces.keys())}.")
+        marketplaces = filtered
+
     bootstrap = load_json(project_root / ".claude" / "bootstrap.json")
     bs_index = index_bootstrap_plugins(bootstrap)
     settings_enabled = {} if args.defaults else merged_enabled_plugins(project_root)
 
+    marketplace_states = {
+        m: (meta["poster"].get("states") or {}) for m, meta in marketplaces.items()
+    }
+
     installed = load_installed()
     plugins = collect_plugins(installed, marketplaces, settings_enabled, bs_index, overrides,
-                              defaults_mode=args.defaults)
+                              marketplace_states, defaults_mode=args.defaults)
 
     # column order: declared in bootstrap.json first, then alphabetical
     declared = [m["name"] for m in bootstrap.get("marketplaces", []) or [] if m.get("name") in marketplaces]

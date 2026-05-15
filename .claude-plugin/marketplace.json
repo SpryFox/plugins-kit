@@ -88,13 +88,13 @@
       "category": "development"
     },
     {
-      "name": "awesome",
+      "name": "awesome-kit",
       "description": "Christina's cross-domain skills: a shared communication framework (hand-off + verbose-updates), meta-skills that evolve it (knowledge-encoding, update-documentation), and /plugin-ecosystem (interactive 16:9 HTML poster of installed marketplaces and plugins).",
-      "version": "0.3.4",
+      "version": "0.3.5",
       "author": {
         "name": "Christina"
       },
-      "source": "./plugins/awesome",
+      "source": "./plugins/awesome-kit",
       "category": "development"
     }
   ]
