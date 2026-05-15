@@ -3,7 +3,6 @@ _schema_version: 1
 name: plugin-ecosystem
 author: christina
 description: Use when generating, refreshing, or customizing the Claude Code plugin ecosystem poster (an interactive 16:9 HTML browser of installed marketplaces and plugins, with a click-to-expand skill-list panel). Do NOT use for skill authoring or single-plugin inspection.
-display_description: "Generates the html page you're reading right now!"
 ---
 
 ## Skill Purpose
@@ -54,7 +53,8 @@ The poster pulls from four sources, each owned by a different party:
 |-------|-------|----------------|
 | Marketplace column subtitle + opt-in | Marketplace maintainer | `<marketplace-repo>/.claude-plugin/poster.yaml`, read locally from `~/.claude/plugins/marketplaces/<name>/.claude-plugin/poster.yaml` |
 | Plugin name / description / razor | Plugin author | `<plugin>/.claude-plugin/plugin.json` (the optional `razor` field is the side-panel blurb) |
-| Skill name / description / author | Skill author | `<skill>/SKILL.md` YAML frontmatter. The side panel prefers `display_description:` over `description:` -- author a `display_description:` to give a friendly poster-only blurb without changing the activation trigger. `author:` renders as "by {author}" beside the skill name. |
+| Plugin display overrides (card description, razor, per-skill blurbs) | Plugin author | `<plugin>/.claude-plugin/poster.yaml` (alongside plugin.json). All fields optional. Lets the plugin author write poster-facing copy without changing each skill's activation `description:`. |
+| Skill name / description / author | Skill author | `<skill>/SKILL.md` YAML frontmatter. The poster falls back to `description:` when the plugin's `poster.yaml` doesn't override it. `author:` renders as "by {author}" beside the skill name. |
 | Title / tagline / per-plugin state overrides | Poster author | `~/.claude/.local-data/awesome/plugin-ecosystem-poster.yaml` |
 | Live on/off state | Project / user | `enabledPlugins` merged across project + user `settings.json`, falling back to project `bootstrap.json` |
 
@@ -106,7 +106,17 @@ All keys optional. Defaults: title = "Claude Plugin Ecosystem", tagline = "" (no
 | "Change the subtitle for `<marketplace>`" | Edit `.claude-plugin/poster.yaml` in that marketplace's repo (NOT the user config) |
 | "Make the poster reflect SpryFox defaults" | Populate `states:` in the user config to match what SpryFox `bootstrap.json` declares for each plugin |
 
-User config = poster author's knobs. Marketplace `poster.yaml` = marketplace maintainer's knobs. Don't conflate.
+User config = poster author's knobs. Marketplace `poster.yaml` = marketplace maintainer's knobs. Plugin `poster.yaml` = plugin author's knobs. Don't conflate.
+
+### Per-plugin poster.yaml schema
+
+```yaml
+# Lives at <plugin>/.claude-plugin/poster.yaml. All fields optional.
+description: "card-line override (falls back to plugin.json description)"
+razor: "side-panel razor override (falls back to plugin.json razor)"
+skills:
+  <skill-name>: "side-panel description override (falls back to SKILL.md description)"
+```
 
 ## Anti-Patterns
 

@@ -3,7 +3,6 @@ name: verbose-updates
 author: christina
 skill-type: technique-skill
 description: Use when detailed context tracking is needed (context-switching, background work). Do NOT use for standard reporting.
-display_description: "Ideal when claude is doing a lot of work, and you aren't paying a lot of attention. Makes claude give thorough updates at end of turn."
 disable-model-invocation: true
 ---
 

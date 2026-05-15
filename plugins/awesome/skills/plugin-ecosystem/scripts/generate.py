@@ -121,10 +121,11 @@ def parse_skill_frontmatter(skill_md: Path) -> dict:
     return out
 
 
-def collect_skills(plugin_root: Path) -> list[dict]:
+def collect_skills(plugin_root: Path, poster_overrides: dict) -> list[dict]:
     skills_dir = plugin_root / "skills"
     if not skills_dir.is_dir():
         return []
+    skill_overrides = poster_overrides.get("skills") or {}
     skills = []
     for child in sorted(skills_dir.iterdir()):
         if not child.is_dir():
@@ -133,9 +134,10 @@ def collect_skills(plugin_root: Path) -> list[dict]:
         if not md.exists():
             continue
         fm = parse_skill_frontmatter(md)
+        name = fm.get("name", child.name)
         skills.append({
-            "name": fm.get("name", child.name),
-            "description": fm.get("display_description") or fm.get("description", ""),
+            "name": name,
+            "description": skill_overrides.get(name) or fm.get("description", ""),
             "type": fm.get("skill-type", ""),
             "author": fm.get("author", ""),
         })
@@ -257,14 +259,16 @@ def collect_plugins(installed: dict, marketplaces: dict, settings_enabled: dict,
         ref = f"{marketplace}:{plugin_name}"
         state = compute_state(ref, settings_enabled, bs_index, overrides, defaults_mode)
 
+        poster_overrides = load_yaml(install_path / ".claude-plugin" / "poster.yaml")
+
         out.append({
             "marketplace": marketplace,
             "name": meta.get("name", plugin_name),
             "version": entry.get("version", ""),
-            "description": meta.get("description", ""),
-            "razor": meta.get("razor", ""),
+            "description": poster_overrides.get("description") or meta.get("description", ""),
+            "razor": poster_overrides.get("razor") or meta.get("razor", ""),
             "state": state,
-            "skills": collect_skills(install_path),
+            "skills": collect_skills(install_path, poster_overrides),
         })
     return out
 

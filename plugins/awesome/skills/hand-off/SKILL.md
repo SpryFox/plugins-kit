@@ -4,7 +4,6 @@ name: hand-off
 author: christina
 skill-type: technique-skill
 description: Use when /hand-off is invoked to package session work for a fresh agent via a folder that manages next-session context. Do NOT use for ad-hoc summaries.
-display_description: "continue your work with a fresh agent in a context-efficient manner. Ideal for multi-phase projects."
 disable-model-invocation: true
 user-invocable: true
 argument-hint: "[optional notes about the hand-off]"
