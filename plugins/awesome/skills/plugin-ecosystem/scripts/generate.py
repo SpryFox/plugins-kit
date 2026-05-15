@@ -206,16 +206,19 @@ def normalize_state(value: str) -> str:
     return v
 
 
-def compute_state(ref: str, settings_enabled: dict, bs_index: dict, overrides: dict) -> str:
-    """Resolve a plugin's display state with precedence overrides > settings > bootstrap."""
+def compute_state(ref: str, settings_enabled: dict, bs_index: dict, overrides: dict,
+                  defaults_mode: bool = False) -> str:
+    """Resolve a plugin's display state with precedence overrides > settings > bootstrap.
+
+    In defaults_mode, plugins not declared in bootstrap.json render as 'opt-in' rather than
+    'unmanaged' -- the poster is depicting 'how a fresh user of this project sees things',
+    where any plugin the project doesn't ship with is opt-in territory."""
     if ref in overrides:
         return normalize_state(str(overrides[ref]))
-    # legacy alias accepted in user YAML
     short = ref.split(":", 1)[1] if ":" in ref else ref
     if short in overrides:
         return normalize_state(str(overrides[short]))
 
-    # settings.json uses "<plugin>@<marketplace>" keys
     if ":" in ref:
         marketplace, plugin = ref.split(":", 1)
         settings_key = f"{plugin}@{marketplace}"
@@ -229,11 +232,11 @@ def compute_state(ref: str, settings_enabled: dict, bs_index: dict, overrides: d
         return "on"
     if bs:
         return "off"
-    return "unmanaged"
+    return "opt-in" if defaults_mode else "unmanaged"
 
 
 def collect_plugins(installed: dict, marketplaces: dict, settings_enabled: dict,
-                    bs_index: dict, overrides: dict) -> list[dict]:
+                    bs_index: dict, overrides: dict, defaults_mode: bool = False) -> list[dict]:
     """Yield one dict per installed plugin from a participating marketplace.
     Filters out phantom installs (no longer present in the marketplace's marketplace.json)."""
     out = []
@@ -252,7 +255,7 @@ def collect_plugins(installed: dict, marketplaces: dict, settings_enabled: dict,
         meta = load_json(install_path / ".claude-plugin" / "plugin.json")
 
         ref = f"{marketplace}:{plugin_name}"
-        state = compute_state(ref, settings_enabled, bs_index, overrides)
+        state = compute_state(ref, settings_enabled, bs_index, overrides, defaults_mode)
 
         out.append({
             "marketplace": marketplace,
@@ -350,6 +353,12 @@ header .sub {
   font-weight: 700;
   font-size: clamp(14px, 1.4vw, 18px);
   letter-spacing: 0.02em;
+  color: inherit;
+  text-decoration: none;
+}
+.col-header a.name:hover {
+  color: var(--accent);
+  text-decoration: underline;
 }
 .col-header .count {
   color: var(--fg-dim);
@@ -557,8 +566,13 @@ function badge(state) {
 }
 
 function renderColumn(marketplace, plugins) {
+  const displayName = `${marketplace} marketplace`;
+  const url = (data.marketplace_urls || {})[marketplace];
+  const nameEl = url
+    ? el("a", { class: "name", href: url, target: "_blank", rel: "noopener", text: displayName })
+    : el("span", { class: "name", text: displayName });
   const nameRow = el("div", { class: "name-row" }, [
-    el("span", { class: "name", text: marketplace }),
+    nameEl,
     el("span", { class: "count", text: `${plugins.length} plugin${plugins.length === 1 ? "" : "s"}` }),
   ]);
   const headChildren = [nameRow];
@@ -675,11 +689,13 @@ HTML_TEMPLATE = """<!doctype html>
 
 
 def render_html(title: str, tagline: str, plugins: list[dict],
-                marketplace_order: list[str], marketplace_subtitles: dict) -> str:
+                marketplace_order: list[str], marketplace_subtitles: dict,
+                marketplace_urls: dict) -> str:
     data = {
         "plugins": plugins,
         "marketplace_order": marketplace_order,
         "marketplace_subtitles": marketplace_subtitles,
+        "marketplace_urls": marketplace_urls,
     }
     js = JS.replace("__DATA__", json.dumps(data))
     return (HTML_TEMPLATE
@@ -729,7 +745,8 @@ def main(argv: list[str]) -> int:
     settings_enabled = {} if args.defaults else merged_enabled_plugins(project_root)
 
     installed = load_installed()
-    plugins = collect_plugins(installed, marketplaces, settings_enabled, bs_index, overrides)
+    plugins = collect_plugins(installed, marketplaces, settings_enabled, bs_index, overrides,
+                              defaults_mode=args.defaults)
 
     # column order: declared in bootstrap.json first, then alphabetical
     declared = [m["name"] for m in bootstrap.get("marketplaces", []) or [] if m.get("name") in marketplaces]
@@ -740,8 +757,9 @@ def main(argv: list[str]) -> int:
             order.append(m)
 
     subtitles = {m: meta["poster"].get("subtitle", "") for m, meta in marketplaces.items()}
+    urls = {m: meta["poster"].get("url", "") for m, meta in marketplaces.items()}
 
-    out_html = render_html(title, tagline, plugins, order, subtitles)
+    out_html = render_html(title, tagline, plugins, order, subtitles, urls)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(out_html, encoding="utf-8")
     print(f"Wrote {output} ({len(out_html):,} bytes, {len(plugins)} plugins, "
