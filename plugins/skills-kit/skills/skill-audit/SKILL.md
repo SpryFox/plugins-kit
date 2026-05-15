@@ -23,6 +23,20 @@ The first line of your response MUST be the `Running ...` line printed above. Th
 - **Roster** -- corpus-wide markdown inventory grouped by location and type.
 - **Hierarchy** -- corpus-wide interactive HTML browser with frontmatter columns and skill-type hover tooltips.
 
+## Framework
+
+The per-skill audit operationalizes the **skill-md-audit** audit-kind under the shared audit framework. The canonical glossary -- `subject`, `primitive`, `composition`, `discovery`, `audit-kind`, `rule`, `finding`, `severity`, `taxonomy`, `bucket`, `corpus`, `scaffolding` -- lives at `references/audit-framework.md`, with the data model at `references/audit-framework.yaml`. The sibling skill `/references-audit` operationalizes the other audit-kind defined in the same framework. Definitions live in the framework; this file describes only how the audit applies them.
+
+In framework terms, the per-skill audit procedure is:
+
+- **Subject:** a `skill_md` primitive inside a `skill` composition (one `SKILL.md` per pass).
+- **Primitives consumed:** `skill_md` and `yaml` (the embedded contract block).
+- **Scaffolding:** `skill-authoring/scripts/audit.py` for mechanical schema validation; agent judgment for CCP / CRP / ADP placement.
+- **Rules:** canonical definitions live in this skill's own `criteria:` block below (single source of truth per rule). The framework registry at `audit-framework.yaml::audit_kinds.skill_md_audit.rules_per_composition.skill` catalogs the bindings by id only.
+- **Taxonomy + buckets:** the A-K categories below; AUTO / DISCUSS / SPECIAL dispatch in parallel.
+
+The roster and hierarchy procedures share the same corpus subject but do not exercise the findings/remediation machinery -- they are inventory surfaces over the same primitives.
+
 ```yaml
 audit_skill:
   _schema_version: "1"
@@ -363,6 +377,7 @@ Typical workflows:
 
 ## Cross-references
 
+- Canonical audit framework (shared with `/references-audit`): `references/audit-framework.md` and `references/audit-framework.yaml`.
 - Canonical placement framework: `content-allocation.md (in skills-kit:skill-authoring)`.
 - Canonical type contracts: `framework.md (in skills-kit:skill-authoring)` and `plugins/skills-kit/skills/skill-authoring/scripts/schemas.py`.
 - Mechanical validator: `plugins/skills-kit/skills/skill-authoring/scripts/audit.py`.

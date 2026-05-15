@@ -17,6 +17,19 @@ argument-hint: "[--scope skills|references|md|all] [--path FILE] [--ignore-dir G
 
 The first line of your response MUST be the `Running ...` line printed above. This gives the user immediate confirmation of which plugin version actually executed (the slash registry can lag the on-disk cache; this is the only reliable signal).
 
+## Framework
+
+This skill operationalizes the **references-audit** audit-kind under the shared audit framework. The shared glossary -- `subject`, `primitive`, `composition`, `discovery`, `audit-kind`, `rule`, `finding`, `severity`, `taxonomy`, `bucket`, `corpus`, `scaffolding` -- is canonical at `plugins/skills-kit/skills/skill-audit/references/audit-framework.md`, with the data side (primitives + compositions + audit-kind registry) at `audit-framework.yaml` alongside. Definitions live there; this file describes only how the audit applies the framework.
+
+In framework terms, `/references-audit` is:
+
+- **Subject:** a `directory` composition (the default), or one of `skill | plugin | project` when discovery hits that marker, or a single primitive `md` file when `--path` names one.
+- **Primitive consumed:** `md` (today's only scanner input; `script` and `code` are listed as future stubs in `audit-framework.yaml`).
+- **Discovery:** walks the scan tree; activates plugin rules when it hits `.claude-plugin/plugin.json`, skill rules when it hits `SKILL.md`, directory rules otherwise. Rules stack rather than override.
+- **Scaffolding:** `scripts/references_audit.py` -- the one repeatable invocation that replaces what would otherwise be agent inference over every file.
+- **Rules per composition:** the bindings table in `audit-framework.yaml::audit_kinds.references_audit.rules_per_composition`. Canonical rule definitions (id, severity, summary, detail) live in this skill's own `criteria:` block below -- the framework registry only catalogs which rule ids bind to which compositions. Today's implemented set: `hard_dep_missing`, `soft_ref_missing`, `name_mismatch`, `shadowing`. Tracked in `audit-framework.yaml::future_rules`: `references_reachable_from_skill_md`, `manifest_declarations_resolve`, `no_cross_scope_personal_refs`.
+- **Taxonomy + buckets:** the A-K categories below classify findings; AUTO / DISCUSS / SPECIAL dispatch them in parallel (background agent for AUTO, foreground Q&A for the rest).
+
 ```yaml
 audit_skill:
   _schema_version: "1"

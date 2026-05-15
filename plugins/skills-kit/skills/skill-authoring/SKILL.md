@@ -42,6 +42,7 @@ domain_skill:
       - Do not rely on the description to summarize the workflow. The description is a trigger, not a summary.
       - Do not assume Claude needs explanatory prose. Every loaded paragraph justifies its tokens.
       - 'Do not YAML content that does not benefit from structure. YAML is the right shape for records, tables, indexes, contract data; prose is the right shape for identity sentences, orientation paragraphs, and narrative explanations. Test "does this structure aid Claude''s comprehension better than prose would?" If the answer is unclear, prose is the default.'
+      - 'Do not leave multi-tool-call operations or inference-based decision trees unscripted. Skills replace inference with deterministic Python scaffolding wherever the operation is repeatable. A skill whose body says "for each X, check Y, then decide Z" is a script waiting to be written; the body should describe when to run the scaffolding and how to interpret its output, not re-derive the decision tree per session.'
   index:
     references:
       - id: glossary

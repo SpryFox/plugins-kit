@@ -1,9 +1,9 @@
 {
   "name": "awesome-kit",
-  "version": "0.3.5",
-  "description": "Christina's cross-domain skills: a shared communication framework (hand-off + verbose-updates), meta-skills that evolve it (knowledge-encoding, update-documentation), and /plugin-ecosystem (interactive 16:9 HTML poster of installed marketplaces and plugins).",
+  "version": "0.4.0",
+  "description": "Christina's cross-domain skills: a shared communication framework (hand-off + verbose-updates), meta-skills that evolve it (knowledge-encoding, update-documentation), /plugin-ecosystem (interactive 16:9 HTML poster of marketplaces and plugins), and /claude-explorer (browsable HTML view of ~/.claude/ + the current project, Omarchy-style). Depends on plugins-kit:skills-kit for the shared audit framework.",
   "author": {
     "name": "Christina"
   },
-  "keywords": ["knowledge", "documentation", "session", "encoding", "communication", "hand-off", "verbose-updates"]
+  "keywords": ["knowledge", "documentation", "session", "encoding", "communication", "hand-off", "verbose-updates", "claude-explorer", "plugin-ecosystem"]
 }

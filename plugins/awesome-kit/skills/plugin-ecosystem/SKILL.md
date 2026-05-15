@@ -9,6 +9,19 @@ description: Use when generating, refreshing, or customizing the Claude Code plu
 
 Generate `~/.claude/plugin-ecosystem.html` -- a self-contained 16:9 poster that visualizes the user's installed Claude Code plugin ecosystem. Each marketplace gets a column; each plugin a clickable card; clicking opens a side panel with the plugin's value-prop and skill list. The script overwrites the same file on every run and opens it in the browser.
 
+## Framework
+
+This skill operationalizes the **plugin_ecosystem** viewer-kind under the shared audit framework. The shared glossary (`subject`, `primitive`, `composition`, `discovery`, `viewer-kind`, `summary projection`, layered personalization, self-parameterizing overrides) is canonical at `plugins/skills-kit/skills/skill-audit/references/audit-framework.md`. The sibling viewer `awesome-kit:claude-explorer` operationalizes a deeper viewer-kind over the same substrate (drills into each skill instead of stopping at skill-name level, and supports leaf-primitive deep-rendering).
+
+In framework terms, plugin-ecosystem is:
+
+- **Subject:** `marketplace` composition; **subject_type:** corpus (every installed marketplace under `~/.claude/plugins/marketplaces/`).
+- **Compositions traversed:** `marketplace ⊃ plugin ⊃ skill` (stops at skill-name; for deeper drill use `claude-explorer`).
+- **Primitives consumed:** `marketplace_manifest` (gate), `plugin_manifest` (card data), `skill_md` frontmatter (skill list), plus per-level `poster.yaml` overrides.
+- **Discovery gate:** a marketplace participates only if it ships `.claude-plugin/poster.yaml`.
+- **Layered personalization:** four `poster.yaml` layers (operator / marketplace / plugin / skill -- see "Data Model" below).
+- **Viewer scaffolding:** `scripts/generate.py` (stdlib-only, single self-contained HTML).
+
 ## When to Use
 
 - "Show me the plugin ecosystem"
