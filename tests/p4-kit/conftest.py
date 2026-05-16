@@ -19,15 +19,3 @@ for p in (scripts_path, PLUGIN_ROOT):
 def plugin_root():
     """Path to the p4-kit plugin."""
     return PLUGIN_ROOT
-
-
-@pytest.fixture
-def sample_config(tmp_path):
-    """Factory for writing config files with known content."""
-
-    def _write(content: str, filename: str = "config.yaml") -> str:
-        path = tmp_path / filename
-        path.write_text(content)
-        return str(path)
-
-    return _write

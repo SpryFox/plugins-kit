@@ -1,13 +1,14 @@
 """Bootstrap script: install claude-ui-kit's default statusLine into settings.json.
 
 Behavior:
-- If no statusLine is configured in any settings.json layer, install ours.
-  The target is the project's .claude/settings.local.json (per-user,
-  gitignored/p4ignored — safe in source-controlled projects). If there is
-  no project context, fall back to ~/.claude/settings.json.
+- If no statusLine is configured in any settings.json layer, install ours into
+  the user-global `~/.claude/settings.json`. The statusLine is a user-level
+  preference, not a project-level one — installing per-project meant every
+  ephemeral cwd Claude was launched in (eval tmp dirs, etc.) got a stray
+  `.claude/settings.local.json` written into it.
 - If the existing statusLine is already claude-ui-kit's (matches our path
   prefix), refresh it to point at the current installed location. This handles
-  plugin upgrades and reinstalls transparently.
+  plugin upgrades and reinstalls transparently — wherever it was found.
 - If the existing statusLine is something else, leave it alone and surface a
   fix-all message asking the user to type "replace my status line" if they
   want to switch.
@@ -53,21 +54,20 @@ def install(ctx) -> None:
     project_root = Path(project_dir_str).resolve() if project_dir_str else None
 
     # Search layers from highest to lowest precedence so the user-visible
-    # statusLine is the one we compare against.
+    # statusLine is the one we compare against. Per-project layers are checked
+    # so we can refresh an existing claude-ui-kit install in-place, but new
+    # installs always land in the user-global layer.
     candidate_paths = []
     if project_root is not None:
         candidate_paths.append(project_root / ".claude" / "settings.local.json")
         candidate_paths.append(project_root / ".claude" / "settings.json")
+    candidate_paths.append(Path.home() / ".claude" / "settings.local.json")
     candidate_paths.append(Path.home() / ".claude" / "settings.json")
 
     existing = _find_existing_statusline(candidate_paths)
 
     if existing is None:
-        # Target settings.local.json in projects (per-user, not source-controlled);
-        # ~/.claude/settings.json otherwise.
-        target = (project_root / ".claude" / "settings.local.json"
-                  if project_root is not None
-                  else Path.home() / ".claude" / "settings.json")
+        target = Path.home() / ".claude" / "settings.json"
         _write_statusline(target, expected_command)
         ctx.log(f"statusline: installed to {_posix(target)}")
         return

@@ -25,19 +25,8 @@
       }
     }
   ],
-  "project_config": {
-    "file": ".local-data/p4-kit/config.yaml",
-    "legacy_file": ".claude/p4-kit.yaml",
-    "required_fields": {
-      "P4PORT": {
-        "user_msg": "Perforce server address (e.g. ssl:perforce:1666)",
-        "agent_msg": "Ask the user for their Perforce server address. Write it to {config_path} as P4PORT."
-      },
-      "P4USER": {
-        "user_msg": "Perforce username",
-        "agent_msg": "Ask the user for their Perforce username. Write it to {config_path} as P4USER."
-      }
-    },
-    "autodetect": "custom_bootstrap.py autodetect"
+  "script": {
+    "path": "scripts/cleanup_legacy_config.py",
+    "entry_point": "cleanup"
   }
 }
