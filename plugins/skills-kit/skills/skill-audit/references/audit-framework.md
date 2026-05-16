@@ -177,7 +177,7 @@ A viewer-kind is the analogue of an audit-kind:
 Today's viewer-kinds:
 
 - **`plugin_ecosystem`** (in `awesome-kit:plugin-ecosystem`) -- visualizes the installed marketplace corpus. Subject: `marketplace`; traverses `marketplace ⊃ plugin ⊃ skill` (stops at skill name level). Layered ownership via per-composition `poster.yaml` overrides.
-- **`claude_explorer`** (in `awesome-kit:claude-explorer`, designed -- not yet implemented) -- visualizes the user's Claude filesystem (`~/.claude/` + current project) deeply. Subject: multi-root (`claude_user_dir` + `project`); traverses `claude_user_dir ⊃ marketplace ⊃ plugin ⊃ skill ⊃ {references/, scripts/, CLAUDE.md}` plus the project root similarly. Summary projection per container; deep renderer per primitive (markdown rendered inline, scripts shown in `<pre>`, JSON as key/value table). Omarchy-style aesthetic (dark theme, monospace, keyboard-first).
+- **`claude_explorer`** (in `prototypes:claude-explorer`, v1 implemented) -- visualizes the user's Claude filesystem (`~/.claude/` + current project) deeply. Subject: multi-root (`claude_user_dir` + `project`); traverses `claude_user_dir ⊃ marketplace ⊃ plugin ⊃ skill ⊃ {references/, scripts/, CLAUDE.md}` plus the project root similarly. Summary projection per container; deep renderer per primitive (markdown rendered inline, scripts shown in `<pre>`, JSON as key/value table). Omarchy-style aesthetic (dark Catppuccin, monospace, keyboard-first with Walker overlay and mouse-park).
 
 Audit scaffolding produces findings; viewer scaffolding produces representations. The substrate is shared. Adding a viewer-kind is the same as adding an audit-kind from the framework's perspective: a registry entry + a generator script. The framework does not need to change.
 

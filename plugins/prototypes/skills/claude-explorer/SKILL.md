@@ -44,7 +44,7 @@ In framework terms:
 
 ```bash
 ~/.claude/plugins/data/plugins-kit/skills-kit/.venv/Scripts/python.exe \
-  plugins/awesome-kit/skills/claude-explorer/scripts/claude_explorer.py run
+  plugins/prototypes/skills/claude-explorer/scripts/claude_explorer.py run
 ```
 
 Subcommands:
@@ -61,8 +61,8 @@ Flags:
 
 Cache and output paths:
 
-- Index JSON: `~/.claude/.local-data/awesome-kit/claude-explorer/index.json`.
-- Per-source cache (reserved for LLM summaries): `~/.claude/.local-data/awesome-kit/claude-explorer/cache/`.
+- Index JSON: `~/.claude/.local-data/prototypes/claude-explorer/index.json`.
+- Per-source cache (reserved for LLM summaries): `~/.claude/.local-data/prototypes/claude-explorer/cache/`.
 
 ## Security
 

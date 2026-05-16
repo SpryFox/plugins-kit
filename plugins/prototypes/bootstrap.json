@@ -1,0 +1,12 @@
+{
+  "$comment": "prototypes' claude-explorer skill references the audit framework hosted in plugins-kit:skills-kit (skill-audit/references/audit-framework.{md,yaml}) and reuses skills-kit's venv (PyYAML) for the crawl. Auto-install skills-kit when missing.",
+  "plugins": [
+    {
+      "ref": "plugins-kit:skills-kit",
+      "enabled": true,
+      "scope": "user",
+      "min_version": "0.12.0",
+      "install": "auto"
+    }
+  ]
+}

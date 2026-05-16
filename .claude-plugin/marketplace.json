@@ -70,7 +70,7 @@
     {
       "name": "skills-kit",
       "description": "Skill authoring + shared audit framework. Vocabulary, type contracts, single-skill audit (/skill-audit), cross-reference audit/remediation (/references-audit), and the canonical audit-framework (primitives, compositions, audit-kinds, viewer-kinds) that other plugins' audits and viewers ride on.",
-      "version": "0.12.0",
+      "version": "0.12.1",
       "author": {
         "name": "Christina"
       },
@@ -89,12 +89,22 @@
     },
     {
       "name": "awesome-kit",
-      "description": "Christina's cross-domain skills: a shared communication framework (hand-off + verbose-updates), meta-skills that evolve it (knowledge-encoding, update-documentation), /plugin-ecosystem (interactive 16:9 HTML poster of marketplaces and plugins), and /claude-explorer (browsable HTML view of ~/.claude/ + the current project, Omarchy-style). Depends on plugins-kit:skills-kit for the shared audit framework.",
-      "version": "0.4.0",
+      "description": "Christina's cross-domain skills: a shared communication framework (hand-off + verbose-updates), meta-skills that evolve it (knowledge-encoding, update-documentation), and /plugin-ecosystem (interactive 16:9 HTML poster of marketplaces and plugins). Depends on plugins-kit:skills-kit for the shared audit framework. /claude-explorer moved to plugins-kit:prototypes in 0.5.0.",
+      "version": "0.5.0",
       "author": {
         "name": "Christina"
       },
       "source": "./plugins/awesome-kit",
+      "category": "development"
+    },
+    {
+      "name": "prototypes",
+      "description": "Experimental skills that may graduate into their own plugins. Currently hosts /claude-explorer (Omarchy-style HTML browser of ~/.claude/ + the current project). Depends on plugins-kit:skills-kit for the shared audit framework.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Christina"
+      },
+      "source": "./plugins/prototypes",
       "category": "development"
     },
     {

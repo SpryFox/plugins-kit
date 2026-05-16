@@ -15,7 +15,7 @@ Beyond reading, each node carries an **action menu**. Clicks queue an action; th
 The mechanism is constrained by what Claude Code's hook system exposes today. Per the research at `tmp/content-explorer-interactive-research.md`:
 
 - **Hooks cannot inject user-typed slash commands.** A `UserPromptSubmit` hook can only emit `additionalContext` (which Claude sees alongside the prompt) or `block`. There is no "type this as if the user typed it" mechanism.
-- **The file-queue + drain pattern is the supported path.** The browser writes a JSON action to `~/.claude/.local-data/awesome-kit/claude-explorer/queue/*.json`. A `UserPromptSubmit` hook drains the queue, emits an `additionalContext` instruction telling Claude what action to perform, and renames each consumed file to `*.consumed`. Mirrors the bootstrap plugin's pending/displayed handshake (`plugins/bootstrap/hooks/userpromptsubmit/bootstrap-display.sh`) and unreal-kit's `ue-console-cmd.sh:49-51`.
+- **The file-queue + drain pattern is the supported path.** The browser writes a JSON action to `~/.claude/.local-data/prototypes/claude-explorer/queue/*.json`. A `UserPromptSubmit` hook drains the queue, emits an `additionalContext` instruction telling Claude what action to perform, and renames each consumed file to `*.consumed`. Mirrors the bootstrap plugin's pending/displayed handshake (`plugins/bootstrap/hooks/userpromptsubmit/bootstrap-display.sh`) and unreal-kit's `ue-console-cmd.sh:49-51`.
 - **The honest UX:** clicks fire on the next user prompt, not in real time. The browser shows queued actions with a status badge (`queued` -> `consumed` -> `acknowledged` once Claude reports back). For invocations the user wants to literally type into a prompt (e.g. populate a slash-command line they then edit), the click copies the command to the clipboard rather than queueing -- no harness round-trip needed.
 
 This UX gating is a real constraint, not a placeholder. Building real-time button-to-execution would require harness changes that do not exist today. The file-queue path is shippable; the real-time path is not.
@@ -35,7 +35,7 @@ Actions that copy to clipboard execute immediately in the browser (JS `navigator
 
 ## Queue file format
 
-Browser-written JSON action files at `~/.claude/.local-data/awesome-kit/claude-explorer/queue/<timestamp>-<nonce>.json`:
+Browser-written JSON action files at `~/.claude/.local-data/prototypes/claude-explorer/queue/<timestamp>-<nonce>.json`:
 
 ```json
 {

@@ -49,7 +49,7 @@ Each composition supports an optional `claude-explorer.yaml` override file autho
 
 | Override file | Owner | What it overrides |
 |---|---|---|
-| `~/.claude/.local-data/awesome-kit/claude-explorer.yaml` | Viewer operator (you) | Top-level title, tagline, included/excluded roots, default open/closed state per composition kind |
+| `~/.claude/.local-data/prototypes/claude-explorer.yaml` | Viewer operator (you) | Top-level title, tagline, included/excluded roots, default open/closed state per composition kind |
 | `<marketplace>/.claude-plugin/claude-explorer.yaml` | Marketplace maintainer | Marketplace card subtitle, opt-in display copy, per-plugin display overrides |
 | `<plugin>/.claude-plugin/claude-explorer.yaml` | Plugin author | Plugin card razor, per-skill display overrides |
 | `<skill>/claude-explorer.yaml` | Skill author | Per-reference / per-script display blurb overrides |

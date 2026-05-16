@@ -38,7 +38,7 @@ except ImportError:
 
 HOME = pathlib.Path.home()
 CLAUDE_DIR = HOME / ".claude"
-DATA_DIR = CLAUDE_DIR / ".local-data" / "awesome-kit" / "claude-explorer"
+DATA_DIR = CLAUDE_DIR / ".local-data" / "prototypes" / "claude-explorer"
 INDEX_PATH = DATA_DIR / "index.json"
 CACHE_DIR = DATA_DIR / "cache"
 DEFAULT_PORT = 8923
@@ -269,14 +269,14 @@ IGNORE_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", ".pytest_
 MAX_DEPTH = 12
 
 
-def walk(root: pathlib.Path, max_depth: int = MAX_DEPTH) -> dict:
+def walk(root: pathlib.Path, max_depth: int = MAX_DEPTH, context: dict | None = None) -> dict:
     """Walk a root composition tree. Returns a tree node dict."""
     if not root.exists():
         return {"kind": "missing", "path": str(root)}
-    return _walk_dir(root, depth=0, max_depth=max_depth)
+    return _walk_dir(root, depth=0, max_depth=max_depth, context=context or {})
 
 
-def _walk_dir(d: pathlib.Path, depth: int, max_depth: int) -> dict:
+def _walk_dir(d: pathlib.Path, depth: int, max_depth: int, context: dict) -> dict:
     composition = detect_composition(d)
     node: dict[str, Any] = {
         "kind": composition,
@@ -285,16 +285,34 @@ def _walk_dir(d: pathlib.Path, depth: int, max_depth: int) -> dict:
         "children": [],
         "files": [],
     }
-    # composition-level projections
+    # composition-level projections + context tagging
+    new_context = dict(context)
     if composition == "marketplace":
-        node["projection"] = project_marketplace_manifest(d / ".claude-plugin" / "marketplace.json")
+        proj = project_marketplace_manifest(d / ".claude-plugin" / "marketplace.json")
+        mkt_name = proj.get("name") or d.name
+        new_context["marketplace"] = mkt_name
+        node["projection"] = proj
+        node["marketplace_name"] = mkt_name
     elif composition == "plugin":
-        node["projection"] = project_plugin_manifest(d / ".claude-plugin" / "plugin.json")
+        proj = project_plugin_manifest(d / ".claude-plugin" / "plugin.json")
+        plugin_name = proj.get("name") or d.name
+        new_context["plugin"] = plugin_name
+        node["projection"] = proj
+        node["plugin_name"] = plugin_name
+        node["marketplace_name"] = context.get("marketplace")
         bs = d / "bootstrap.json"
         if bs.exists():
             node["bootstrap"] = project_bootstrap_manifest(bs)
     elif composition == "skill":
-        node["projection"] = project_skill_md(d / "SKILL.md")
+        proj = project_skill_md(d / "SKILL.md")
+        node["projection"] = proj
+        skill_name = proj.get("name") or d.name
+        node["plugin_name"] = context.get("plugin")
+        node["marketplace_name"] = context.get("marketplace")
+        if context.get("plugin"):
+            node["slash_command"] = f"/{context['plugin']}:{skill_name}"
+        else:
+            node["slash_command"] = f"/{skill_name}"
     if depth >= max_depth:
         return node
     try:
@@ -307,7 +325,7 @@ def _walk_dir(d: pathlib.Path, depth: int, max_depth: int) -> dict:
         if child.name in IGNORE_DIRS:
             continue
         if child.is_dir():
-            child_node = _walk_dir(child, depth + 1, max_depth)
+            child_node = _walk_dir(child, depth + 1, max_depth, new_context)
             # Skip plain directories with no compositional value at deeper levels
             if child_node["kind"] == "directory" and not child_node["children"] and not child_node["files"]:
                 continue
@@ -525,8 +543,8 @@ HTML = r"""<!doctype html>
 html, body { margin: 0; padding: 0; }
 body {
   font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 12.5px;
+  line-height: 1.45;
   background: var(--base);
   color: var(--text);
   min-height: 100vh;
@@ -534,25 +552,16 @@ body {
 header {
   background: var(--mantle);
   border-bottom: 1px solid var(--surface0);
-  padding: 10px 16px;
+  padding: 6px 12px;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   position: sticky; top: 0; z-index: 10;
+  font-size: 12px;
 }
 header .title { font-weight: 600; color: var(--lavender); }
-header .meta { color: var(--overlay0); margin-left: auto; font-size: 11px; }
-header button {
-  background: var(--surface0);
-  color: var(--text);
-  border: 1px solid var(--surface1);
-  padding: 4px 12px;
-  font-family: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-header button:hover { background: var(--surface1); }
-header button.refreshing { color: var(--yellow); }
+header .hints { color: var(--overlay0); font-size: 10.5px; }
+header .meta { color: var(--overlay0); margin-left: auto; font-size: 10.5px; }
 main {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -570,27 +579,33 @@ main {
   font-weight: 500;
 }
 .node {
-  border-left: 2px solid var(--surface0);
-  padding-left: 8px;
-  margin: 2px 0 2px 4px;
+  border-left: 1px solid var(--surface0);
+  padding-left: 6px;
+  margin: 1px 0 1px 3px;
 }
 .node-row {
   display: flex;
   align-items: baseline;
   cursor: pointer;
-  gap: 6px;
-  padding: 2px 4px;
+  gap: 5px;
+  padding: 1px 3px;
   border-radius: 0;
 }
 .node-row:hover { background: var(--surface0); }
-.node-row.focused { background: var(--surface1); }
+/* .focused is the keyboard cursor -- only paint it when keyboard owns input. */
+body.mouse-off .node-row.focused { background: var(--surface1); outline: 1px solid var(--lavender); outline-offset: -1px; }
 .node-marker {
   display: inline-block;
-  width: 1em;
+  width: 0.9em;
   color: var(--overlay0);
-  font-weight: 600;
   text-align: center;
+  font-size: 10px;
 }
+.node.open > .node-row > .node-marker.has-children::before { content: "▾"; color: var(--blue); }
+.node.open > .node-row > .node-marker.has-action::before { content: "▾"; color: var(--peach); }
+.node-marker.has-children::before { content: "▸"; }
+.node-marker.has-action::before { content: "▸"; color: var(--mauve); }
+.node-marker.is-file::before { content: "·"; }
 .node-kind {
   display: inline-block;
   font-size: 10px;
@@ -616,13 +631,33 @@ main {
 .node-name.is-file { color: var(--subtext1); }
 .node-meta { color: var(--overlay0); font-size: 11px; margin-left: 4px; }
 .node-meta strong { color: var(--subtext0); font-weight: 400; }
-.node-summary { color: var(--subtext0); padding-left: 22px; padding-bottom: 4px; font-size: 12px; }
+.node-summary { color: var(--subtext0); padding-left: 22px; padding-bottom: 2px; font-size: 11.5px; }
 .node-summary .label { color: var(--overlay0); }
-.node-children { margin-left: 8px; display: none; }
+.node-children { margin-left: 6px; display: none; }
 .node.open > .node-children { display: block; }
-.node.open > .node-row .node-marker { color: var(--blue); }
-.deep { display: none; padding: 12px; background: var(--mantle); border: 1px solid var(--surface0); margin: 4px 0 8px 22px; max-height: 60vh; overflow: auto; }
+.deep { display: none; padding: 10px; background: var(--mantle); border-left: 1px solid var(--surface1); margin: 2px 0 4px 22px; max-height: 60vh; overflow: auto; }
 .deep.open { display: block; }
+/* Walker -- summoned launcher overlay (jump + actions modes) */
+#walker { display: none; position: fixed; inset: 0; background: rgba(17,17,27,0.78); z-index: 200; align-items: flex-start; justify-content: center; padding-top: 10vh; }
+#walker.open { display: flex; }
+.walker-box { background: var(--mantle); border: 1px solid var(--lavender); width: 600px; max-width: 90vw; max-height: 70vh; display: flex; flex-direction: column; }
+.walker-title { color: var(--lavender); padding: 6px 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; border-bottom: 1px solid var(--surface0); background: var(--crust); }
+.walker-subtitle { color: var(--subtext1); padding: 6px 12px; font-size: 11.5px; border-bottom: 1px solid var(--surface0); background: var(--mantle); white-space: pre-wrap; }
+.walker-input { background: var(--base); color: var(--text); border: 0; padding: 8px 12px; font-family: inherit; font-size: 13px; outline: none; border-bottom: 1px solid var(--surface0); }
+.walker-list { list-style: none; margin: 0; padding: 0; overflow: auto; flex: 1; }
+.walker-list li { padding: 4px 12px; display: flex; gap: 12px; align-items: baseline; cursor: pointer; }
+/* Walker .focused is the keyboard cursor -- only paint when keyboard owns input. */
+body.mouse-off .walker-list li.focused { background: var(--surface1); border-left: 2px solid var(--peach); padding-left: 10px; }
+.walker-list li:hover { background: var(--surface0); }
+.walker-label { color: var(--text); }
+.walker-meta { color: var(--overlay0); font-size: 11px; margin-left: auto; }
+.walker-desc { color: var(--subtext0); font-size: 11.5px; }
+.walker-foot { color: var(--overlay0); font-size: 10.5px; padding: 4px 12px; border-top: 1px solid var(--surface0); background: var(--crust); }
+
+/* Mako-style toast */
+#toast { position: fixed; bottom: 16px; right: 16px; background: var(--mantle); border-left: 2px solid var(--green); color: var(--text); padding: 8px 14px; font-size: 11.5px; z-index: 300; display: none; max-width: 360px; }
+#toast.show { display: block; animation: toast-in 120ms ease-out; }
+@keyframes toast-in { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 .deep pre { margin: 0; white-space: pre-wrap; word-wrap: break-word; color: var(--subtext1); }
 .deep .md h1, .deep .md h2, .deep .md h3 { color: var(--lavender); margin: 0.8em 0 0.4em 0; }
 .deep .md h1 { font-size: 18px; }
@@ -665,20 +700,84 @@ footer {
   background: var(--surface0);
   margin: 0 2px;
 }
+/* Vim-style: keyboard input parks the mouse until it physically moves.
+ * Hide the cursor (incl. all descendants -- Chromium honors per-element
+ * cursor over the parent's), disable hit-testing on every descendant, and
+ * explicitly neutralize the sticky :hover state that Chromium/Firefox keep
+ * painting until the next real mousemove. Use !important to win against any
+ * existing specific :hover rule. Only keyboard-driven .focused state remains. */
+body.mouse-off, body.mouse-off * { cursor: none !important; }
+body.mouse-off * { pointer-events: none !important; }
+body.mouse-off .node-row:hover,
+body.mouse-off .walker-list li:hover { background: transparent !important; }
+body.mouse-off .walker-list li.focused:hover { background: var(--surface1) !important; }
+body.mouse-off .action-cmd:hover { background: var(--crust) !important; border-color: var(--surface1) !important; }
+/* Visible state badge: lights up when keyboard owns input. */
+.mouse-badge { display: inline-block; width: 7px; height: 7px; background: var(--overlay0); border: 1px solid var(--surface1); margin-right: 6px; vertical-align: middle; }
+body.mouse-off .mouse-badge { background: var(--green); border-color: var(--green); }
+#help-overlay {
+  position: fixed; inset: 0; background: rgba(17,17,27,0.85); z-index: 100;
+  display: none; align-items: center; justify-content: center;
+}
+#help-overlay.open { display: flex; }
+.help-box {
+  background: var(--mantle); border: 1px solid var(--lavender); padding: 16px 20px;
+  max-width: 560px; color: var(--text);
+}
+.help-box h3 { margin: 6px 0 6px 0; color: var(--lavender); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 500; }
+.help-box table { width: 100%; border-collapse: collapse; }
+.help-box td { padding: 2px 8px; vertical-align: top; }
+.help-box td:first-child { color: var(--subtext0); white-space: nowrap; }
+.help-foot { margin-top: 10px; color: var(--overlay0); font-size: 10.5px; text-align: right; }
+.help-box .badge { display: inline-block; min-width: 1.4em; text-align: center; color: var(--peach); }
 </style>
 </head>
 <body>
 <header>
+  <span class="mouse-badge" title="green = keyboard in control (mouse parked); dim = mouse in control"></span>
   <span class="title">claude-explorer</span>
-  <input class="search" id="search" type="text" placeholder="/ to search">
-  <button id="refresh">refresh</button>
+  <span class="hints"><span class="kbd">/</span> jump <span class="kbd">a</span> actions <span class="kbd">r</span> refresh <span class="kbd">?</span> help</span>
   <span class="meta" id="meta">loading...</span>
 </header>
 <main>
   <section class="root-pane" id="left"><h2>Claude user directory</h2><div id="left-body" class="empty">loading...</div></section>
   <section class="root-pane" id="right"><h2>Project</h2><div id="right-body" class="empty">loading...</div></section>
 </main>
-<footer><span class="kbd">j</span>/<span class="kbd">k</span> navigate &nbsp; <span class="kbd">Enter</span> open &nbsp; <span class="kbd">o</span> deep-render &nbsp; <span class="kbd">Esc</span> close &nbsp; <span class="kbd">/</span> search</footer>
+<div id="walker" style="display:none">
+  <div class="walker-box">
+    <div class="walker-title" id="walker-title">jump</div>
+    <div class="walker-subtitle" id="walker-subtitle" style="display:none"></div>
+    <input class="walker-input" id="walker-input" placeholder="type to filter" autocomplete="off">
+    <ul class="walker-list" id="walker-list"></ul>
+    <div class="walker-foot"><span class="kbd">↑↓</span> navigate &nbsp; <span class="kbd">Enter</span> select &nbsp; <span class="kbd">Esc</span> close</div>
+  </div>
+</div>
+<div id="toast"></div>
+<div id="help-overlay" style="display:none">
+  <div class="help-box">
+    <h3>navigation</h3>
+    <table>
+      <tr><td><span class="kbd">j</span> <span class="kbd">↓</span></td><td>focus next</td></tr>
+      <tr><td><span class="kbd">k</span> <span class="kbd">↑</span></td><td>focus previous</td></tr>
+      <tr><td><span class="kbd">Enter</span> <span class="kbd">Space</span></td><td>open / close the focused row</td></tr>
+      <tr><td><span class="kbd">Esc</span></td><td>collapse every open node and deep-render</td></tr>
+    </table>
+    <h3>summoned overlays</h3>
+    <table>
+      <tr><td><span class="kbd">/</span></td><td>jump -- fuzzy-find any node, Enter to scroll-to-and-focus</td></tr>
+      <tr><td><span class="kbd">a</span></td><td>actions -- command palette for the focused node (run / update / path / ...)</td></tr>
+      <tr><td><span class="kbd">r</span></td><td>refresh (re-crawl)</td></tr>
+      <tr><td><span class="kbd">?</span></td><td>toggle this help</td></tr>
+    </table>
+    <h3>markers</h3>
+    <table>
+      <tr><td>▸ blue</td><td>container with children -- click or Enter to expand</td></tr>
+      <tr><td>▸ mauve</td><td>composition with actions -- press a to summon the action palette</td></tr>
+      <tr><td>· dim</td><td>file -- click to deep-render its contents inline</td></tr>
+    </table>
+    <div class="help-foot"><span class="kbd">Esc</span> or <span class="kbd">?</span> closes this overlay</div>
+  </div>
+</div>
 <script>
 // ---------------------------------------------------------------------------
 // State
@@ -686,6 +785,65 @@ footer {
 let INDEX = null;
 let NODES = []; // flat list of visible node DOM elements for j/k nav
 let focused = -1;
+const ACTION_PAYLOADS = {}; // id -> { subtitle, actions }
+
+// Walker (summoned overlay) state -- modes: "jump" | "actions"
+let walkerMode = null;
+let walkerItems = [];      // full unfiltered item list
+let walkerFiltered = [];   // current filtered list
+let walkerCursor = 0;
+
+// Mouse parking -- keyboard input hides the cursor + disables hover/click until
+// the mouse physically moves. Standard Vim / terminal-UI convention.
+let mouseOff = false;
+let lastMx = -1, lastMy = -1;
+// What the mouse was last hovering, so the keyboard can pick up where the mouse left off.
+let hoveredRow = null;        // .node-row element
+let hoveredWalkerIdx = null;  // integer index in walkerFiltered
+
+function setMouseOff(off) {
+  if (off === mouseOff) return;
+  mouseOff = off;
+  document.body.classList.toggle("mouse-off", off);
+  if (!off) return; // mouse re-engaging: just hide the focused outline; keep the index for later
+  // mouse -> keyboard transition: promote whatever the cursor was over to the keyboard cursor.
+  if (walkerMode && hoveredWalkerIdx != null && hoveredWalkerIdx < walkerFiltered.length) {
+    walkerCursor = hoveredWalkerIdx;
+    walkerRender(document.getElementById("walker-input").value);
+  } else if (!walkerMode) {
+    if (hoveredRow) {
+      rebuildNodeList();
+      const i = NODES.indexOf(hoveredRow);
+      if (i >= 0) {
+        if (focused >= 0 && focused < NODES.length && focused !== i) NODES[focused].classList.remove("focused");
+        focused = i;
+        NODES[i].classList.add("focused");
+      }
+    } else if (focused < 0) {
+      // No prior hover and no prior keyboard focus -- start at the top.
+      rebuildNodeList();
+      if (NODES.length) { focused = 0; NODES[0].classList.add("focused"); NODES[0].scrollIntoView({block: "nearest"}); }
+    }
+  }
+}
+window.addEventListener("keydown", () => setMouseOff(true), true);
+window.addEventListener("mousemove", ev => {
+  if (ev.clientX !== lastMx || ev.clientY !== lastMy) {
+    lastMx = ev.clientX; lastMy = ev.clientY;
+    setMouseOff(false);
+  }
+}, true);
+// Track what the cursor is over, for the mouse->keyboard promotion above.
+document.addEventListener("mouseover", ev => {
+  let el = ev.target;
+  // walker item?
+  const wli = el.closest && el.closest("#walker-list li");
+  if (wli) { hoveredWalkerIdx = parseInt(wli.getAttribute("data-i"), 10); return; }
+  // .node-row?
+  const row = el.closest && el.closest(".node-row");
+  if (row) { hoveredRow = row; return; }
+  hoveredRow = null;
+}, true);
 
 // ---------------------------------------------------------------------------
 // Minimal markdown renderer (CommonMark subset)
@@ -768,23 +926,67 @@ function inlineFmt(s) {
 // ---------------------------------------------------------------------------
 // Render tree
 // ---------------------------------------------------------------------------
-function nodeRow(label, kind, meta, summaryLines, hasChildren, filePath, isFile) {
+function nodeInner(label, kind, meta, summaryLines, markerClass, filePath, isFile) {
+  // Returns { id, inner } -- the contents that go INSIDE the <div class="node">.
+  // The caller wraps with the .node open/close and appends .node-children if any.
+  // markerClass is "has-children" / "has-action" / "is-file" / "" -- CSS picks the glyph.
   const id = "node-" + (window._nodeIdSeq = (window._nodeIdSeq || 0) + 1);
-  const marker = hasChildren ? "+" : (isFile ? "•" : " ");
-  let html = '<div class="node kind-' + kind + '" id="' + id + '">';
-  html += '<div class="node-row" data-id="' + id + '"';
-  if (filePath) html += ' data-file="' + esc(filePath) + '" data-kind="' + kind + '"';
-  html += '>';
-  html += '<span class="node-marker">' + marker + '</span>';
-  html += '<span class="node-kind">' + kind + '</span>';
-  html += '<span class="node-name' + (isFile ? " is-file" : "") + '">' + esc(label) + '</span>';
-  if (meta) html += '<span class="node-meta">' + meta + '</span>';
-  html += '</div>';
+  let inner = '<div class="node-row" data-id="' + id + '"';
+  if (filePath) inner += ' data-file="' + esc(filePath) + '" data-kind="' + kind + '"';
+  inner += '>';
+  inner += '<span class="node-marker ' + (markerClass || "") + '"></span>';
+  inner += '<span class="node-kind">' + kind + '</span>';
+  inner += '<span class="node-name' + (isFile ? " is-file" : "") + '">' + esc(label) + '</span>';
+  if (meta) inner += '<span class="node-meta">' + meta + '</span>';
+  inner += '</div>';
   if (summaryLines && summaryLines.length) {
-    html += '<div class="node-summary">' + summaryLines.map(s => '<div>' + s + '</div>').join("") + '</div>';
+    inner += '<div class="node-summary">' + summaryLines.map(s => '<div>' + s + '</div>').join("") + '</div>';
   }
-  if (filePath) html += '<div class="deep" id="' + id + '-deep"></div>';
-  return { html, hasChildren };
+  if (filePath) inner += '<div class="deep" id="' + id + '-deep"></div>';
+  return { id, inner };
+}
+
+function buildActionPayload(n) {
+  // Returns { subtitle, actions: [{label, meta, cmd}] } or null if no actions for this kind.
+  // cmd is the string copied to the clipboard when the action is selected.
+  const kind = n.kind;
+  if (kind === "skill") {
+    const p = n.projection || {};
+    const cmd = n.slash_command || "/" + (p.name || "");
+    const subtitle = (cmd + (p.description ? "\n" + p.description : ""));
+    const actions = [
+      {label: "run",   meta: "copy slash-command", cmd: cmd},
+      {label: "audit", meta: "copy /skill-audit invocation", cmd: "/skill-audit " + (n.path || "")},
+      {label: "path",  meta: "copy file path",     cmd: n.path || ""}
+    ];
+    return { subtitle, actions };
+  }
+  if (kind === "plugin") {
+    const p = n.projection || {};
+    const name = p.name || n.name;
+    const mkt = n.marketplace_name || "";
+    const ref = name + (mkt ? "@" + mkt : "");
+    const subtitle = (ref + (p.razor ? "\n" + p.razor : "") + (p.description ? "\n" + p.description : ""));
+    return { subtitle, actions: [
+      {label: "update",  meta: "copy /plugin update " + ref,  cmd: "/plugin update " + ref},
+      {label: "disable", meta: "copy /plugin disable " + ref, cmd: "/plugin disable " + ref},
+      {label: "path",    meta: "copy plugin path",            cmd: n.path || ""}
+    ]};
+  }
+  if (kind === "marketplace") {
+    const name = n.marketplace_name || n.name;
+    return { subtitle: name, actions: [
+      {label: "update", meta: "copy /plugin marketplace update " + name, cmd: "/plugin marketplace update " + name},
+      {label: "remove", meta: "copy /plugin marketplace remove " + name, cmd: "/plugin marketplace remove " + name},
+      {label: "path",   meta: "copy marketplace path",                    cmd: n.path || ""}
+    ]};
+  }
+  if (kind === "reference_doc" || kind === "claude_md" || kind === "plain_md" || kind === "script" || kind === "json" || kind === "yaml") {
+    return { subtitle: n.path || "", actions: [
+      {label: "path", meta: "copy file path", cmd: n.path || ""}
+    ]};
+  }
+  return null;
 }
 function metaPairs(pairs) {
   return pairs.filter(p => p[1] != null && p[1] !== "").map(p => '<strong>' + esc(p[0]) + '</strong>:' + esc(String(p[1]))).join(" &nbsp; ");
@@ -815,8 +1017,6 @@ function renderNode(n) {
     label = "~/.claude/";
   } else if (kind === "project") {
     label = n.name + " (project)";
-  } else if (kind === "directory") {
-    // skip plain-named uninteresting dirs in summary
   }
   const childrenHtml = [];
   if (n.marketplaces) childrenHtml.push(renderNode({ ...n.marketplaces, name: "marketplaces" }));
@@ -825,12 +1025,17 @@ function renderNode(n) {
   if (n.children) for (const c of n.children) childrenHtml.push(renderNode(c));
   if (n.files) for (const f of n.files) childrenHtml.push(renderFile(f));
   const hasChildren = childrenHtml.length > 0;
-  const row = nodeRow(label, kind, meta, summary, hasChildren, null, false);
-  let html = row.html.replace("</div>", "</div>"); // marker placeholder
-  // inject children
-  html = html.replace(/<\/div>$/, "");
-  if (hasChildren) html += '<div class="node-children">' + childrenHtml.join("") + "</div>";
-  html += "</div>";
+  const payload = buildActionPayload(n);
+  const hasAction = !!payload;
+  let markerClass = "";
+  if (hasChildren) markerClass = "has-children";
+  else if (hasAction) markerClass = "has-action";
+  const { id, inner } = nodeInner(label, kind, meta, summary, markerClass, null, false);
+  // Stash the action payload on the .node so Walker (`a`) can retrieve it for the focused row.
+  ACTION_PAYLOADS[id] = payload;
+  let html = '<div class="node kind-' + kind + '" id="' + id + '">' + inner;
+  if (hasChildren) html += '<div class="node-children">' + childrenHtml.join("") + '</div>';
+  html += '</div>';
   return html;
 }
 
@@ -851,11 +1056,10 @@ function renderFile(f) {
   } else if (k === "script") {
     if (p.leading_doc) summary.push(esc(p.leading_doc));
     meta = metaPairs([["lang", p.language], ["lines", p.lines]]);
-  } else if (k === "json" || k === "yaml") {
-    // no projection yet
   }
-  const row = nodeRow(label, k, meta, summary, false, f.path, true);
-  return row.html;
+  const { id, inner } = nodeInner(label, k, meta, summary, "is-file", f.path, true);
+  ACTION_PAYLOADS[id] = buildActionPayload(f);
+  return '<div class="node kind-' + k + '" id="' + id + '">' + inner + '</div>';
 }
 
 function attachHandlers() {
@@ -921,20 +1125,174 @@ function rebuildNodeList() {
 // Keyboard nav
 // ---------------------------------------------------------------------------
 document.addEventListener("keydown", ev => {
-  if (ev.target.tagName === "INPUT") {
-    if (ev.key === "Escape") { ev.target.value=""; doSearch(""); ev.target.blur(); }
-    return;
+  // Self-heal: if walkerMode somehow drifted from the actual overlay state,
+  // reset it before deciding which keymap owns this keypress.
+  if (walkerMode && !document.getElementById("walker").classList.contains("open")) {
+    walkerMode = null; walkerItems = []; walkerFiltered = []; walkerCursor = 0;
   }
-  if (ev.key === "/") { ev.preventDefault(); document.getElementById("search").focus(); return; }
+  // Walker has its own keymap when open
+  if (walkerMode) {
+    if (ev.key === "Escape") { ev.preventDefault(); closeWalker(); return; }
+    if (ev.key === "ArrowDown" || (ev.ctrlKey && ev.key === "n")) { ev.preventDefault(); walkerMove(1); return; }
+    if (ev.key === "ArrowUp"   || (ev.ctrlKey && ev.key === "p")) { ev.preventDefault(); walkerMove(-1); return; }
+    if (ev.key === "Enter") { ev.preventDefault(); walkerSelect(); return; }
+    return; // let the input field handle the typing
+  }
+  if (ev.target.tagName === "INPUT") return;
+  if (ev.key === "/") { ev.preventDefault(); openJumpWalker(); return; }
+  if (ev.key === "a") { ev.preventDefault(); openActionsWalker(); return; }
+  if (ev.key === "?") { ev.preventDefault(); toggleHelp(); return; }
+  if (ev.key === "r" || ev.key === "R") { ev.preventDefault(); refresh(); return; }
   if (ev.key === "j" || ev.key === "ArrowDown") { ev.preventDefault(); moveFocus(1); }
   else if (ev.key === "k" || ev.key === "ArrowUp") { ev.preventDefault(); moveFocus(-1); }
-  else if (ev.key === "Enter" || ev.key === " ") {
+  else if (ev.key === "Enter" || ev.key === " " || ev.key === "ArrowRight" || ev.key === "ArrowLeft" || ev.key === "h" || ev.key === "l") {
     ev.preventDefault();
     if (focused >= 0 && NODES[focused]) NODES[focused].click();
   } else if (ev.key === "Escape") {
+    if (document.getElementById("help-overlay").classList.contains("open")) { toggleHelp(); return; }
     document.querySelectorAll(".deep.open").forEach(d => { d.classList.remove("open"); d.innerHTML = ""; });
+    document.querySelectorAll(".node.open").forEach(n => n.classList.remove("open"));
   }
 });
+
+function toggleHelp() {
+  document.getElementById("help-overlay").classList.toggle("open");
+}
+
+// ---------------------------------------------------------------------------
+// Toast (Mako-style ephemeral popup)
+// ---------------------------------------------------------------------------
+function toast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(() => el.classList.remove("show"), 1400);
+}
+
+function copyToClipboard(txt) {
+  if (!txt) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(() => toast("copied: " + (txt.length > 60 ? txt.slice(0, 57) + "..." : txt)));
+  } else {
+    const ta = document.createElement("textarea");
+    ta.value = txt;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); toast("copied"); } catch {}
+    document.body.removeChild(ta);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Walker -- summoned launcher (jump + actions)
+// ---------------------------------------------------------------------------
+function openWalker(mode, title, subtitle, items) {
+  walkerMode = mode;
+  walkerItems = items;
+  walkerCursor = 0;
+  hoveredWalkerIdx = null;
+  document.getElementById("walker-title").textContent = title;
+  const sub = document.getElementById("walker-subtitle");
+  if (subtitle) { sub.textContent = subtitle; sub.style.display = "block"; }
+  else { sub.style.display = "none"; }
+  const input = document.getElementById("walker-input");
+  input.value = "";
+  document.getElementById("walker").classList.add("open");
+  input.focus();
+  walkerRender("");
+}
+function closeWalker() {
+  document.getElementById("walker").classList.remove("open");
+  walkerMode = null;
+  walkerItems = [];
+  walkerFiltered = [];
+  walkerCursor = 0;
+  hoveredWalkerIdx = null;
+}
+// Click-outside-to-close on the walker
+document.getElementById("walker").addEventListener("click", ev => {
+  if (ev.target.id === "walker") closeWalker();
+});
+function walkerRender(filter) {
+  filter = (filter || "").toLowerCase();
+  walkerFiltered = !filter ? walkerItems.slice() : walkerItems.filter(it => {
+    return (it.label || "").toLowerCase().includes(filter) || (it.meta || "").toLowerCase().includes(filter);
+  });
+  if (walkerCursor >= walkerFiltered.length) walkerCursor = Math.max(0, walkerFiltered.length - 1);
+  const list = document.getElementById("walker-list");
+  list.innerHTML = walkerFiltered.slice(0, 40).map((it, i) =>
+    '<li class="' + (i === walkerCursor ? "focused" : "") + '" data-i="' + i + '">' +
+    '<span class="walker-label">' + esc(it.label || "") + '</span>' +
+    (it.meta ? '<span class="walker-meta">' + esc(it.meta) + '</span>' : '') + '</li>'
+  ).join("");
+  Array.from(list.children).forEach(li => li.addEventListener("click", ev => {
+    walkerCursor = parseInt(li.getAttribute("data-i"), 10);
+    walkerSelect();
+  }));
+}
+function walkerMove(d) {
+  walkerCursor = Math.max(0, Math.min(walkerFiltered.length - 1, walkerCursor + d));
+  walkerRender(document.getElementById("walker-input").value);
+  const focused = document.querySelector("#walker-list li.focused");
+  if (focused) focused.scrollIntoView({block: "nearest"});
+}
+function walkerSelect() {
+  const it = walkerFiltered[walkerCursor];
+  if (!it) return;
+  if (walkerMode === "jump") {
+    closeWalker();
+    jumpToNode(it.id);
+  } else if (walkerMode === "actions") {
+    closeWalker();
+    copyToClipboard(it.cmd);
+  }
+}
+document.getElementById("walker-input").addEventListener("input", ev => { walkerCursor = 0; walkerRender(ev.target.value); });
+
+function openJumpWalker() {
+  const items = [];
+  document.querySelectorAll(".node-row").forEach(row => {
+    const id = row.getAttribute("data-id");
+    const kindEl = row.querySelector(".node-kind");
+    const nameEl = row.querySelector(".node-name");
+    items.push({ id, label: nameEl ? nameEl.textContent : "(unnamed)", meta: kindEl ? kindEl.textContent : "" });
+  });
+  openWalker("jump", "jump", null, items);
+}
+function openActionsWalker() {
+  if (focused < 0 || !NODES[focused]) { toast("focus a node first (j/k)"); return; }
+  const row = NODES[focused];
+  const id = row.getAttribute("data-id");
+  const payload = ACTION_PAYLOADS[id];
+  if (!payload) { toast("no actions for this node"); return; }
+  const nameEl = row.querySelector(".node-name");
+  const kindEl = row.querySelector(".node-kind");
+  const title = (kindEl ? kindEl.textContent + ": " : "") + (nameEl ? nameEl.textContent : "");
+  openWalker("actions", title, payload.subtitle || null, payload.actions);
+}
+function jumpToNode(id) {
+  const node = document.getElementById(id);
+  if (!node) return;
+  // open ancestors
+  let p = node.parentElement;
+  while (p && p.id !== "left-body" && p.id !== "right-body") {
+    if (p.classList && p.classList.contains("node")) p.classList.add("open");
+    p = p.parentElement;
+  }
+  // focus the row
+  const row = node.querySelector(":scope > .node-row");
+  rebuildNodeList();
+  if (row) {
+    const i = NODES.indexOf(row);
+    if (i >= 0) {
+      if (focused >= 0 && NODES[focused]) NODES[focused].classList.remove("focused");
+      focused = i;
+      NODES[i].classList.add("focused");
+      NODES[i].scrollIntoView({block: "center"});
+    }
+  }
+}
 function moveFocus(delta) {
   rebuildNodeList();
   if (!NODES.length) return;
@@ -945,35 +1303,16 @@ function moveFocus(delta) {
 }
 
 // ---------------------------------------------------------------------------
-// Search
-// ---------------------------------------------------------------------------
-function doSearch(q) {
-  q = q.trim().toLowerCase();
-  const all = document.querySelectorAll(".node");
-  if (!q) { all.forEach(n => n.style.display = ""); return; }
-  all.forEach(n => {
-    const text = n.querySelector(".node-row").textContent.toLowerCase();
-    n.style.display = text.includes(q) ? "" : "none";
-  });
-}
-document.getElementById("search").addEventListener("input", ev => doSearch(ev.target.value));
-
-// ---------------------------------------------------------------------------
 // Refresh
 // ---------------------------------------------------------------------------
 async function refresh() {
-  const btn = document.getElementById("refresh");
-  btn.classList.add("refreshing");
-  btn.textContent = "refreshing...";
+  toast("refreshing...");
   try {
     await fetch("/refresh");
     await load();
-  } finally {
-    btn.classList.remove("refreshing");
-    btn.textContent = "refresh";
-  }
+    toast("refreshed");
+  } catch (e) { toast("refresh failed: " + e); }
 }
-document.getElementById("refresh").addEventListener("click", refresh);
 
 // ---------------------------------------------------------------------------
 // Load
