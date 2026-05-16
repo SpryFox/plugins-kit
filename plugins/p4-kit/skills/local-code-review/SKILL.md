@@ -40,10 +40,10 @@ technique_skill:
           input: "p4 -ztag changes -s pending -u $(p4 set -q P4USER | cut -d= -f2) -m 20"
           expected: A single integer CL number confirmed by the user.
         - n: 2
-          action: Run prepare_review.py to fetch the diff (with shelved fallback), map ancestor CLAUDE.md files for each changed file, detect unreconciled files in the directories the CL touches, and scan ancestor CLAUDE.md files for submit-gate reminders that apply to this CL.
+          action: Run prepare_review.py to fetch the diff (with shelved fallback), map ancestor CLAUDE.md files for each changed file, detect unreconciled files in the directories the CL touches, detect unresolved merges in the CL, and scan ancestor CLAUDE.md files for submit-gate reminders that apply to this CL.
           tool: ${CLAUDE_PLUGIN_ROOT}/scripts/prepare_review.py
           input: "<CL>"
-          expected: JSON with cl, description, diff, changed_files, unique_claude_mds, unreconciled, submit_gates.
+          expected: JSON with cl, description, diff, changed_files, unique_claude_mds, unreconciled, unresolved, submit_gates.
           on_failure: Surface the stderr message to the user and stop. No retry.
         - n: 3
           action: |
@@ -89,7 +89,15 @@ technique_skill:
         - n: 8
           action: Drop rejected issues silently (do not report rejected issues to the user).
         - n: 9
-          action: Render the markdown review. Prepend a `## Submit checklist` section when any submit gates applied to this CL (confirmed and unconfirmed both rendered). Group the review body by file.
+          action: |
+            Render the markdown review.
+            - When `bundle.submit_gates` is non-empty, prepend a `## Submit checklist`
+              section (confirmed and unconfirmed gates both rendered).
+            - When `bundle.unresolved` is non-empty, prepend a `## Unresolved merges`
+              section listing each unresolved file with its resolve type. This is
+              informational, not a finding -- the CL is not submittable until the
+              user runs `p4 resolve` on each entry, but the review still renders.
+            Group the review body by file.
       checklist:
         - CL number resolved
         - Context bundled via prepare_review.py
@@ -100,7 +108,7 @@ technique_skill:
         - Reviewers launched in parallel (single message, one Agent call per reviewer in the selected profile)
         - Validators launched in parallel (single message, N Agent calls), models picked from the profile's validator_models
         - Filtered to confirmed-only
-        - Markdown rendered to chat (Submit checklist section prepended when gates applied)
+        - Markdown rendered to chat (Submit checklist section prepended when gates applied; Unresolved merges section prepended when bundle.unresolved is non-empty)
       gotchas:
         - Always quote the exact CLAUDE.md rule text when flagging a claude_md issue. If you cannot quote it verbatim, do not flag it.
         - Sequential reviewer or validator calls waste time. Reviewers run in one message with one concurrent Agent call per reviewer in the selected profile (2 for data_only, 3 for code). Validators run in one message with N concurrent Agent calls.
@@ -112,6 +120,7 @@ technique_skill:
         - Submit gates are reminders, not findings -- they do NOT go through reviewer or validator subagents. They are parsed deterministically by prepare_review.py and rendered verbatim in a separate output section. Do not try to validate, score, or filter them.
         - The submit-gates AskUserQuestion fires once, regardless of gate count. multiSelect bundles all gates into one prompt. Re-prompting per gate is rude and adds no value -- the author's response is final either way.
         - Unconfirmed submit gates are NOT errors. Render them with ✗ so they're visible, but do not block the review or refuse to render the rest.
+        - Unresolved merges are NOT findings -- they do NOT go through reviewer or validator subagents. They are detected deterministically by prepare_review.py (`p4 resolve -n -c <CL>`) and rendered verbatim in a separate output section. The reviewers see the raw diff (including any conflict markers) and may legitimately flag bugs in it; the unresolved section is a separate informational warning to the user.
   narration:
     note: Reviews involve long silent stretches (batched file reads, parallel subagents that take 30s+). Post one short status line per step using these templates verbatim, filling in the bracketed counts. Do not paraphrase, omit, or add extras.
     templates:
@@ -129,6 +138,8 @@ technique_skill:
         template: "Got <N> changed file(s) and <M> unique CLAUDE.md scope(s). Reading them now."
       - when: "After step 3, before step 4 (M = 0)"
         template: "Got <N> changed file(s); no CLAUDE.md scopes apply."
+      - when: "After step 2 (V >= 1)"
+        template: "Found <V> file(s) with unresolved merges in CL <CL>. Will surface in the review output -- CL is not submittable until resolved."
       - when: "Before step 5 (G >= 1)"
         template: "Found <G> submit-gate reminder(s) applying to this CL. Asking the author to confirm."
       - when: "Before step 6"
@@ -153,6 +164,7 @@ technique_skill:
       "<R>": "count of reviewers in the selected profile"
       "<reviewer_summary>": "comma-separated '<model> <reviewer short name>' for each launched reviewer (e.g. 'sonnet CLAUDE.md compliance, opus diff-only bugs, opus introduced-code')"
       "<G>": "len(bundle.submit_gates)"
+      "<V>": "len(bundle.unresolved)"
   review_profiles:
     description: |
       Routing table for selecting reviewers and models based on CL content. Exactly one
@@ -300,8 +312,13 @@ technique_skill:
 
       Always show the section when gates applied -- including in the "no issues" path.
   output_format:
-    description: "Final markdown rendered to chat. Submit checklist (when applicable) above the per-file review body."
+    description: "Final markdown rendered to chat. Unresolved merges (when applicable) and Submit checklist (when applicable) above the per-file review body."
     template: |
+      ## Unresolved merges
+      CL is not submittable until each file below is run through `p4 resolve`.
+      - `path/to/file.cpp` -- content resolve pending (from `//depot/branch/file.cpp`)
+      - `path/to/other.csv` -- branch resolve pending
+
       ## Submit checklist
       - **[✓] ./build.sh configbinaries must pass before submit** -- per `<path>/CLAUDE.md`, triggered by `GameConfigs/Real/x.csv`.
       - **[✗] Regenerate the asset index** -- per `<path>/CLAUDE.md`, triggered by `Content/Assets/y.uasset`.
@@ -322,7 +339,9 @@ technique_skill:
 
       No issues found. Reviewed for bugs and CLAUDE.md compliance.
     notes:
+      - "Omit the Unresolved merges section entirely when bundle.unresolved is empty."
       - "Omit the Submit checklist section entirely when bundle.submit_gates is empty."
       - "When matched_files has >3 entries, render the first 3 then '(+N more)'."
       - "Rationale renders as a markdown blockquote (`> `) indented one level below the bullet, only if non-empty."
+      - "Unresolved-merge entries render local path first (workspace-relative if possible); append `(from <fromFile>)` only when from_file is non-empty (integrations); omit for plain edit/sync resolves."
 ```

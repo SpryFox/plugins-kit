@@ -18,6 +18,12 @@ directories containing CL files, and reports any unreconciled files
 forgotten to include in the CL. `.p4ignore` is honored by p4 itself; files
 already opened in any pending CL are skipped by reconcile.
 
+Also runs `p4 resolve -n -c <CL>` to report any files in the CL with
+pending merge/integrate resolves. These are informational: the diff still
+goes to reviewers (conflict markers in the file content are themselves
+a legitimate review observation), but the user is warned that the CL is
+not submittable until each unresolved file is run through `p4 resolve`.
+
 The workspace root is intentionally excluded from recursive scans -- if a
 CL touches a root-level file, the root is scanned non-recursively (`/*`)
 and deeper CL directories keep their recursive (`/...`) scans separately.
@@ -52,6 +58,11 @@ Output schema:
       "unique_claude_mds": ["<absolute path>", ...],
       "unreconciled": [
         {"local": "<local path>", "depot": "<depot path>", "action": "add"|"edit"|"delete"}
+      ],
+      "unresolved": [
+        {"local": "<local path>", "depot": "<depot path>",
+         "resolve_type": "<p4 resolveType, e.g. content/branch/delete>",
+         "from_file": "<source depot path, may be empty>"}
       ],
       "submit_gates": [
         {"source": "<absolute path to CLAUDE.md>",
@@ -97,6 +108,13 @@ _APPLIES_TO_LINE = re.compile(r"^Applies to\b.*?:\s*$", re.IGNORECASE)
 _BULLET_LINE = re.compile(r"^\s*[-*]\s+(.+?)\s*$")
 _GLOB_CHARS = re.compile(r"[*?\[]")
 _HEADING_LINE = re.compile(r"^#{1,6}\s")
+
+# Cap each `p4 ... <paths>` invocation. Windows' CreateProcess limits the
+# combined command line to ~32 KB; bulk CLs (asset reconciles, regen passes)
+# can easily push 500+ depot paths totalling 70+ KB into one call and trip
+# `FileNotFoundError: [WinError 206] The filename or extension is too long`.
+# 100 keeps each batch well under any platform's limit with room to spare.
+_P4_PATH_BATCH = 100
 
 
 def run_p4(args: list[str]) -> tuple[int, str, str]:
@@ -408,23 +426,28 @@ def resolve_local_paths(depot_paths: list[str]) -> dict[str, Optional[str]]:
     """Map each depot path to a local workspace path via `p4 -ztag where`.
 
     Returns {depot_path: local_path_or_None}. Files not in the workspace map to None.
+
+    Batched in chunks of `_P4_PATH_BATCH` so bulk CLs don't trip the Windows
+    CreateProcess command-line length limit (~32 KB).
     """
     result: dict[str, Optional[str]] = {p: None for p in depot_paths}
     if not depot_paths:
         return result
-    rc, out, _ = run_p4(["-ztag", "where", *depot_paths])
-    if rc != 0:
-        return result
 
-    current_depot: Optional[str] = None
-    for line in out.splitlines():
-        if line.startswith("... depotFile "):
-            current_depot = line[len("... depotFile "):].strip()
-        elif line.startswith("... path ") and current_depot:
-            result[current_depot] = line[len("... path "):].strip()
-            current_depot = None
-        elif line.strip() == "":
-            current_depot = None
+    for i in range(0, len(depot_paths), _P4_PATH_BATCH):
+        chunk = depot_paths[i:i + _P4_PATH_BATCH]
+        rc, out, _ = run_p4(["-ztag", "where", *chunk])
+        if rc != 0:
+            continue
+        current_depot: Optional[str] = None
+        for line in out.splitlines():
+            if line.startswith("... depotFile "):
+                current_depot = line[len("... depotFile "):].strip()
+            elif line.startswith("... path ") and current_depot:
+                result[current_depot] = line[len("... path "):].strip()
+                current_depot = None
+            elif line.strip() == "":
+                current_depot = None
     return result
 
 
@@ -502,28 +525,25 @@ def find_unreconciled(dir_specs: list[tuple[Path, bool]]) -> list[dict]:
     if not dir_specs:
         return []
     specs = [f"{d}/..." if recursive else f"{d}/*" for d, recursive in dir_specs]
-    rc, out, err = run_p4(["-ztag", "reconcile", "-n", *specs])
-    # rc != 0 with "no file(s) to reconcile" means nothing to report -- not an error.
-    if rc != 0 and "no file(s) to reconcile" not in (err + out):
-        print(
-            f"prepare_review: reconcile check failed (rc={rc}): {err.strip() or out.strip()}",
-            file=sys.stderr,
-        )
-        return []
 
     items: list[dict] = []
-    current: dict = {}
-
-    def flush() -> None:
-        if current.get("action") in _RECONCILE_ACTIONS and current.get("local"):
-            items.append(
-                {
-                    "local": current["local"],
-                    "depot": current.get("depot", ""),
-                    "action": current["action"],
-                }
+    for i in range(0, len(specs), _P4_PATH_BATCH):
+        chunk = specs[i:i + _P4_PATH_BATCH]
+        rc, out, err = run_p4(["-ztag", "reconcile", "-n", *chunk])
+        # rc != 0 with "no file(s) to reconcile" means nothing to report -- not an error.
+        if rc != 0 and "no file(s) to reconcile" not in (err + out):
+            print(
+                f"prepare_review: reconcile check failed (rc={rc}): {err.strip() or out.strip()}",
+                file=sys.stderr,
             )
+            continue
+        items.extend(_parse_reconcile_output(out))
+    return items
 
+
+def _parse_reconcile_output(out: str) -> list[dict]:
+    items: list[dict] = []
+    current: dict = {}
     for line in out.splitlines():
         if line.startswith("... depotFile "):
             current["depot"] = line[len("... depotFile "):].strip()
@@ -532,9 +552,73 @@ def find_unreconciled(dir_specs: list[tuple[Path, bool]]) -> list[dict]:
         elif line.startswith("... action "):
             current["action"] = line[len("... action "):].strip()
         elif line.strip() == "":
-            flush()
+            if current.get("action") in _RECONCILE_ACTIONS and current.get("local"):
+                items.append(
+                    {
+                        "local": current["local"],
+                        "depot": current.get("depot", ""),
+                        "action": current["action"],
+                    }
+                )
             current = {}
-    flush()
+    if current.get("action") in _RECONCILE_ACTIONS and current.get("local"):
+        items.append(
+            {
+                "local": current["local"],
+                "depot": current.get("depot", ""),
+                "action": current["action"],
+            }
+        )
+    return items
+
+
+def find_unresolved(cl: str) -> list[dict]:
+    """Run `p4 -ztag resolve -n -c <CL>` and return unresolved files in this CL.
+
+    Each result entry: {"local": <path>, "depot": <path>,
+                        "resolve_type": <p4 resolveType>, "from_file": <source>}.
+
+    p4 exits non-zero with "no file(s) to resolve" when the CL is clean -- that
+    isn't an error. On other failures, returns [] and logs to stderr; the
+    review still proceeds.
+    """
+    rc, out, err = run_p4(["-ztag", "resolve", "-n", "-c", cl])
+    if rc != 0 and "no file(s) to resolve" not in (err + out):
+        print(
+            f"prepare_review: resolve check failed (rc={rc}): {err.strip() or out.strip()}",
+            file=sys.stderr,
+        )
+        return []
+
+    items: list[dict] = []
+    current: dict = {}
+
+    def flush() -> None:
+        if current.get("local") or current.get("depot"):
+            items.append(
+                {
+                    "local": current.get("local", ""),
+                    "depot": current.get("depot", ""),
+                    "resolve_type": current.get("resolve_type", ""),
+                    "from_file": current.get("from_file", ""),
+                }
+            )
+
+    for line in out.splitlines():
+        if line.startswith("... clientFile "):
+            current["local"] = line[len("... clientFile "):].strip()
+        elif line.startswith("... toFile "):
+            current["depot"] = line[len("... toFile "):].strip()
+        elif line.startswith("... fromFile "):
+            current["from_file"] = line[len("... fromFile "):].strip()
+        elif line.startswith("... resolveType "):
+            current["resolve_type"] = line[len("... resolveType "):].strip()
+        elif line.strip() == "":
+            if current:
+                flush()
+                current = {}
+    if current:
+        flush()
     return items
 
 
@@ -839,6 +923,7 @@ def build_bundle(cl: str) -> dict:
         [f["local"] for f in changed_files], workspace_root
     )
     unreconciled = find_unreconciled(minimal_dirs)
+    unresolved = find_unresolved(cl)
 
     submit_gates = collect_submit_gates(
         unique, [f["local"] for f in changed_files if f["local"]], workspace_root
@@ -851,6 +936,7 @@ def build_bundle(cl: str) -> dict:
         "changed_files": changed_files,
         "unique_claude_mds": unique,
         "unreconciled": unreconciled,
+        "unresolved": unresolved,
         "submit_gates": submit_gates,
     }
 
