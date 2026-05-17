@@ -8,7 +8,7 @@ description: Use when reviewing a pending Perforce changelist, or before asking 
 
 # Local Code Review
 
-Run a multi-agent code review of a Perforce changelist directly in conversation. Reviewer subagents (set by the selected review profile) examine the diff in parallel; each flagged issue is then validated by an independent subagent to suppress false positives. Path-scoped pre-submit reminders (submit gates) authored in ancestor CLAUDE.md files are surfaced alongside the review for author confirmation. Results are rendered as markdown -- no persistence to disk.
+Run a multi-agent code review of a Perforce changelist directly in conversation. The diff is partitioned on disk into chunks (one per file boundary cluster, balanced under a 1 MB cap); reviewer subagents (set by the selected review profile) run **once per (role × chunk)** so a single large CL fans out across multiple parallel agents instead of forcing each reviewer to ingest the full diff. Each flagged issue is then validated by an independent subagent to suppress false positives. Path-scoped pre-submit reminders (submit gates) authored in ancestor CLAUDE.md files are surfaced alongside the review for author confirmation. Results are rendered as markdown -- no persistence to disk.
 
 ```yaml
 technique_skill:
@@ -40,10 +40,11 @@ technique_skill:
           input: "p4 -ztag changes -s pending -u $(p4 set -q P4USER | cut -d= -f2) -m 20"
           expected: A single integer CL number confirmed by the user.
         - n: 2
-          action: Run prepare_review.py to fetch the diff (with shelved fallback), map ancestor CLAUDE.md files for each changed file, detect unreconciled files in the directories the CL touches, detect unresolved merges in the CL, and scan ancestor CLAUDE.md files for submit-gate reminders that apply to this CL.
+          action: Run prepare_review.py to fetch the diff (with shelved fallback), partition the diff into chunked .diff fragments on disk, map ancestor CLAUDE.md files for each changed file, detect unreconciled files in the directories the CL touches, detect unresolved merges in the CL, and scan ancestor CLAUDE.md files for submit-gate reminders that apply to this CL.
           tool: ${CLAUDE_PLUGIN_ROOT}/scripts/prepare_review.py
           input: "<CL>"
-          expected: JSON with cl, description, diff, changed_files, unique_claude_mds, unreconciled, unresolved, submit_gates.
+          expected: |
+            JSON with cl, description, bundle_dir, diff_chunks, changed_files, unique_claude_mds, unreconciled, unresolved, submit_gates. The raw diff text is NOT inline -- it lives in per-chunk files at `<bundle_dir>/<diff_chunks[i].path>` (paths are relative to bundle_dir). Each `changed_files` entry carries `chunk_index` pointing to the chunk that contains its diff.
           on_failure: Surface the stderr message to the user and stop. No retry.
         - n: 3
           action: |
@@ -75,11 +76,16 @@ technique_skill:
             Select one profile from `review_profiles` using its `selection.guidance` -- this is
             an inference call, not regex. Read each profile's guidance, weigh the actual contents
             of `bundle.changed_files`, and pick the most appropriate profile. Default to `code`
-            when uncertain. Then launch every reviewer in that profile's `reviewers` list in
-            parallel via a single message with N Agent calls, using the model named in each
-            reviewer entry. Reviewers not listed in the selected profile are NOT launched.
+            when uncertain. Then launch one subagent per (reviewer × chunk) pair in parallel via
+            a single message with R × K Agent calls, where R = len(profile.reviewers) and
+            K = len(bundle.diff_chunks). Each subagent gets the chunk's absolute diff path
+            (`<bundle.bundle_dir>/<diff_chunks[i].path>`), the depot paths of the files in that
+            chunk (`diff_chunks[i].files`), and -- for reviewer_a -- the CLAUDE.md mapping
+            restricted to those files. Reviewers not listed in the selected profile are NOT
+            launched. If bundle.diff_chunks is empty (CL has no diff content), skip step 6 and
+            jump to step 9 with zero issues.
           tool: Agent
-          expected: JSON arrays of candidate issues from each launched reviewer.
+          expected: JSON arrays of candidate issues from each launched reviewer (one array per (reviewer, chunk) subagent).
         - n: 7
           action: |
             Launch one validator subagent per candidate issue, all in parallel via a single message.
@@ -105,13 +111,14 @@ technique_skill:
         - All CLAUDE.md files read
         - Submit gates surfaced (if any) and author confirmation collected via a single AskUserQuestion
         - Review profile selected from review_profiles (first match)
-        - Reviewers launched in parallel (single message, one Agent call per reviewer in the selected profile)
+        - Reviewers launched in parallel (single message, R × K Agent calls -- one per (reviewer × chunk) pair, where K = len(bundle.diff_chunks))
         - Validators launched in parallel (single message, N Agent calls), models picked from the profile's validator_models
         - Filtered to confirmed-only
         - Markdown rendered to chat (Submit checklist section prepended when gates applied; Unresolved merges section prepended when bundle.unresolved is non-empty)
       gotchas:
         - Always quote the exact CLAUDE.md rule text when flagging a claude_md issue. If you cannot quote it verbatim, do not flag it.
-        - Sequential reviewer or validator calls waste time. Reviewers run in one message with one concurrent Agent call per reviewer in the selected profile (2 for data_only, 3 for code). Validators run in one message with N concurrent Agent calls.
+        - Sequential reviewer or validator calls waste time. Reviewers run in one message with one concurrent Agent call per (reviewer × chunk) pair (R reviewers × K chunks). For a small CL (K=1) that's still 2 calls for data_only / 3 for code; for a large CL (K=N) it scales to R × N. Validators run in one message with N concurrent Agent calls.
+        - Each reviewer subagent reads ONE chunk path, not the whole diff. Do not pass `bundle_dir` and expect the subagent to glob -- pass the absolute chunk path the subagent should Read.
         - Render only -- this skill outputs in chat. There is no Swarm comment, PR comment, or disk write step.
         - If prepare_review.py fails, report the error and stop. No retry.
         - Validators are independent of reviewers. The validator does not see who flagged the issue.
@@ -143,7 +150,7 @@ technique_skill:
       - when: "Before step 5 (G >= 1)"
         template: "Found <G> submit-gate reminder(s) applying to this CL. Asking the author to confirm."
       - when: "Before step 6"
-        template: "Selected review profile: <P>. Launching <R> reviewer(s) in parallel: <reviewer_summary>."
+        template: "Selected review profile: <P>. Diff partitioned into <K> chunk(s). Launching <RK> subagent(s) in parallel (<R> reviewer(s) × <K> chunk(s)): <reviewer_summary>."
       - when: "After step 6, before step 7 (X >= 1)"
         template: "Reviewers returned <X> candidate issue(s) (<B> bug, <C> CLAUDE.md). Launching <X> validator(s) in parallel."
       - when: "After step 6 (X = 0)"
@@ -162,7 +169,9 @@ technique_skill:
       "<Y>": "count of validators returning CONFIRMED"
       "<P>": "selected review profile id (e.g. code, data_only)"
       "<R>": "count of reviewers in the selected profile"
-      "<reviewer_summary>": "comma-separated '<model> <reviewer short name>' for each launched reviewer (e.g. 'sonnet CLAUDE.md compliance, opus diff-only bugs, opus introduced-code')"
+      "<K>": "len(bundle.diff_chunks)"
+      "<RK>": "<R> * <K>"
+      "<reviewer_summary>": "comma-separated '<model> <reviewer short name>' for each reviewer in the profile (e.g. 'sonnet CLAUDE.md compliance, opus diff-only bugs, opus introduced-code') -- each is fanned out across all K chunks"
       "<G>": "len(bundle.submit_gates)"
       "<V>": "len(bundle.unresolved)"
   review_profiles:
@@ -221,25 +230,30 @@ technique_skill:
   subagents:
     - name: reviewer_a_claude_md_compliance
       subagent_type: general-purpose
-      scope: CLAUDE.md compliance only
-      input: "full diff + per-file CLAUDE.md mapping with full text of each CLAUDE.md (read in step 3)"
+      scope: CLAUDE.md compliance only, restricted to the files in one chunk
+      input: "absolute path to ONE chunk .diff file, the depot paths of the files in that chunk, the per-file CLAUDE.md mapping restricted to those files, and the full text of each relevant CLAUDE.md (read in step 4)"
       restrictions:
+        - "Read the assigned chunk diff once (single Read call). Do not Read other chunks."
         - "Only consider CLAUDE.md files that share a path with the file being reviewed (use the per-file mapping; do not cross-apply)."
+        - "Only flag issues in files present in your chunk -- files in other chunks are someone else's responsibility."
     - name: reviewer_b_diff_only_bugs
       subagent_type: general-purpose
-      scope: obvious bugs visible in the diff alone
-      input: "diff and CL description only"
+      scope: obvious bugs visible in one chunk's diff alone
+      input: "absolute path to ONE chunk .diff file, the depot paths of the files in that chunk, and the CL description"
       restrictions:
-        - "MUST NOT use Read or any other tool to look beyond the diff."
+        - "Read the assigned chunk diff once. MUST NOT use Read for anything beyond that chunk."
         - "Only flag won't-compile, syntax/type errors, missing imports, unresolved references, definitely-wrong logic regardless of inputs."
         - "For data/doc files (data_only profile): focus on malformed syntax, duplicate keys, schema or column-count violations, and broken cross-file references."
+        - "Only flag issues in files present in your chunk."
     - name: reviewer_c_introduced_code
       subagent_type: general-purpose
-      scope: bugs/security/logic problems in the introduced code that need broader context
-      input: "diff, CL description, list of local file paths"
+      scope: bugs/security/logic problems in the introduced code that need broader context, restricted to one chunk's files
+      input: "absolute path to ONE chunk .diff file, the depot paths of the files in that chunk, local paths for those files, and the CL description"
       restrictions:
-        - "MAY use Read to look at surrounding context in the changed files when needed."
+        - "Read the assigned chunk diff first."
+        - "MAY use Read to look at surrounding context in the changed files (the LOCAL paths you were given) when needed."
         - "Examples: concurrency issues, lifetime bugs, security holes."
+        - "Only flag issues in files present in your chunk."
     - name: validator
       subagent_type: general-purpose
       scope: confirm or reject one candidate issue with high confidence

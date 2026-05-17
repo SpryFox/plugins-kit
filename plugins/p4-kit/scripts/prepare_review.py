@@ -46,13 +46,27 @@ validator) -- not in-diff issues. Authoring format:
 
     <optional rationale paragraph>
 
+Diff text is NOT inlined in the bundle. It is partitioned into chunks of
+<= MAX_CHUNK_BYTES each, written to <bundle_dir>/chunks/chunk-NNN.diff,
+and indexed by `diff_chunks`. Each `changed_files` entry carries the
+`chunk_index` that contains its diff. Reviewer subagents Read one chunk
+per agent -- one large CL fans out across multiple agents in parallel
+instead of forcing every reviewer to ingest the full diff. The bundle
+itself (also written to <bundle_dir>/bundle.json) is small enough to
+inline through stdout.
+
 Output schema:
     {
       "cl": "<CL>",
       "description": "<change description>",
-      "diff": "<full diff text>",
+      "bundle_dir": "<absolute path to bundle directory>",
+      "diff_chunks": [
+        {"index": 0, "path": "chunks/chunk-000.diff",
+         "files": ["<depot path>", ...], "bytes": <int>}
+      ],
       "changed_files": [
         {"depot": "<depot path>", "local": "<local path>",
+         "chunk_index": <int or null if absent from diff>,
          "claude_mds": ["<absolute path>", ...]}
       ],
       "unique_claude_mds": ["<absolute path>", ...],
@@ -79,8 +93,10 @@ Stderr-only diagnostics. Non-zero exit on hard failure.
 
 import fnmatch
 import json
+import math
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -115,6 +131,20 @@ _HEADING_LINE = re.compile(r"^#{1,6}\s")
 # `FileNotFoundError: [WinError 206] The filename or extension is too long`.
 # 100 keeps each batch well under any platform's limit with room to spare.
 _P4_PATH_BATCH = 100
+
+# Max bytes per per-chunk diff file. Sized for the Read tool: large CLs
+# fail with "file too large" above some unpublished threshold (a 1.4 MB
+# diff hit it on CL 148623, 119 files). 1 MB leaves ~40% headroom under
+# the only known failure point and keeps chunk counts close to 1 for
+# typical CLs. Tune downward if a Read failure surfaces.
+MAX_CHUNK_BYTES = 1024 * 1024
+
+# Where bundles land on disk. <CL> directory holds bundle.json and
+# chunks/. Overwritten on each prepare_review run for the same CL.
+DEFAULT_BUNDLE_ROOT = (
+    Path.home() / ".claude" / "plugins" / "data"
+    / "plugins-kit" / "p4-kit" / "reviews"
+)
 
 
 def run_p4(args: list[str]) -> tuple[int, str, str]:
@@ -420,6 +450,94 @@ def extract_diff(
         )
 
     return "".join(result_parts)
+
+
+def _depot_parent(depot_path: str) -> str:
+    """Return depot path's parent (e.g. '//depot/foo/bar.cpp' -> '//depot/foo')."""
+    idx = depot_path.rfind("/")
+    return depot_path[:idx] if idx > 1 else depot_path
+
+
+def partition_diff_into_chunks(diff_text: str, max_bytes: int) -> list[dict]:
+    """Partition a diff into balanced chunks at natural boundaries.
+
+    Each chunk is a self-contained text fragment containing one or more whole
+    file sections (`==== //depot/... ====` ... hunks). Files are never split;
+    directory boundaries are preferred over balance.
+
+    Sizing: K = ceil(total_bytes / max_bytes), target = total_bytes / K.
+    The walk closes the current chunk when bytes >= target AND the next file
+    is in a different parent directory, OR when adding the next file would
+    exceed max_bytes (hard cap). A single file larger than max_bytes lands
+    alone in an oversized chunk -- we don't split inside a file.
+
+    Returns [{"text": str, "files": [depot...], "bytes": int}, ...] (no `path`;
+    callers add it when writing to disk).
+    """
+    preamble, sections = split_diff_sections(diff_text)
+    if not sections:
+        return []
+
+    total = sum(len((s["header"] + s["body"]).encode("utf-8")) for s in sections)
+    if preamble:
+        total += len(preamble.encode("utf-8"))
+    k = max(1, math.ceil(total / max_bytes))
+    target = total / k if k > 0 else total
+
+    chunks: list[dict] = []
+    cur_text = preamble or ""
+    cur_files: list[str] = []
+    cur_bytes = len(preamble.encode("utf-8")) if preamble else 0
+    cur_last_dir: Optional[str] = None
+
+    for sec in sections:
+        sec_text = sec["header"] + sec["body"]
+        sec_bytes = len(sec_text.encode("utf-8"))
+        sec_dir = _depot_parent(sec["depot"])
+
+        if cur_files:
+            would_be = cur_bytes + sec_bytes
+            hard_cap = would_be > max_bytes
+            balanced = cur_bytes >= target and sec_dir != cur_last_dir
+            if hard_cap or balanced:
+                chunks.append(
+                    {"text": cur_text, "files": cur_files, "bytes": cur_bytes}
+                )
+                cur_text = ""
+                cur_files = []
+                cur_bytes = 0
+                cur_last_dir = None
+
+        cur_text += sec_text
+        cur_files.append(sec["depot"])
+        cur_bytes += sec_bytes
+        cur_last_dir = sec_dir
+
+    if cur_files or cur_text:
+        chunks.append({"text": cur_text, "files": cur_files, "bytes": cur_bytes})
+    return chunks
+
+
+def write_chunks(chunks: list[dict], bundle_dir: Path) -> list[dict]:
+    """Write chunk text files to <bundle_dir>/chunks/ and return the JSON index.
+
+    Stale chunks from a prior run on the same CL are removed first so a
+    re-run can't leave orphaned chunk files behind when the new run
+    produces fewer chunks.
+    """
+    chunks_dir = bundle_dir / "chunks"
+    if chunks_dir.exists():
+        shutil.rmtree(chunks_dir)
+    chunks_dir.mkdir(parents=True)
+
+    index: list[dict] = []
+    for i, c in enumerate(chunks):
+        rel = f"chunks/chunk-{i:03d}.diff"
+        (bundle_dir / rel).write_text(c["text"], encoding="utf-8")
+        index.append(
+            {"index": i, "path": rel, "files": list(c["files"]), "bytes": c["bytes"]}
+        )
+    return index
 
 
 def resolve_local_paths(depot_paths: list[str]) -> dict[str, Optional[str]]:
@@ -893,7 +1011,15 @@ def collect_submit_gates(
     return out
 
 
-def build_bundle(cl: str) -> dict:
+def build_bundle(cl: str, bundle_dir: Path) -> dict:
+    """Gather CL context, partition diff into chunks on disk, return the index bundle.
+
+    Writes per-file diff fragments under `<bundle_dir>/chunks/chunk-NNN.diff`
+    (created if missing; stale chunks removed). The returned dict carries
+    `bundle_dir`, `diff_chunks` index, and per-`changed_files` `chunk_index`
+    -- the diff text itself is NOT inlined, so the bundle stays small enough
+    for downstream stdout / consumer ingestion.
+    """
     describe, is_shelved = fetch_describe(cl)
     description = parse_description(describe)
     actions = parse_file_actions(describe)
@@ -904,6 +1030,16 @@ def build_bundle(cl: str) -> dict:
     depot_files = list(actions.keys())
     local_map = resolve_local_paths(depot_files)
     workspace_root = get_workspace_root()
+
+    bundle_dir.mkdir(parents=True, exist_ok=True)
+    chunks = partition_diff_into_chunks(diff, MAX_CHUNK_BYTES)
+    diff_chunks = write_chunks(chunks, bundle_dir)
+
+    # depot -> chunk index, for tagging changed_files entries.
+    depot_to_chunk: dict[str, int] = {}
+    for entry in diff_chunks:
+        for d in entry["files"]:
+            depot_to_chunk[d] = entry["index"]
 
     changed_files: list[dict] = []
     unique: list[str] = []
@@ -917,7 +1053,14 @@ def build_bundle(cl: str) -> dict:
                 if cm not in seen:
                     unique.append(cm)
                     seen.add(cm)
-        changed_files.append({"depot": depot, "local": local, "claude_mds": claude_mds})
+        changed_files.append(
+            {
+                "depot": depot,
+                "local": local,
+                "chunk_index": depot_to_chunk.get(depot),
+                "claude_mds": claude_mds,
+            }
+        )
 
     minimal_dirs = compute_minimal_dirs(
         [f["local"] for f in changed_files], workspace_root
@@ -932,7 +1075,8 @@ def build_bundle(cl: str) -> dict:
     return {
         "cl": cl,
         "description": description,
-        "diff": diff,
+        "bundle_dir": str(bundle_dir),
+        "diff_chunks": diff_chunks,
         "changed_files": changed_files,
         "unique_claude_mds": unique,
         "unreconciled": unreconciled,
@@ -946,11 +1090,18 @@ def main(argv: list[str]) -> int:
         print("Usage: prepare_review.py <CL>", file=sys.stderr)
         return 2
     cl = argv[1]
+    bundle_dir = DEFAULT_BUNDLE_ROOT / cl
+    bundle_dir.mkdir(parents=True, exist_ok=True)
     try:
-        bundle = build_bundle(cl)
+        bundle = build_bundle(cl, bundle_dir)
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+    # Persist alongside the chunks so the skill (or a human) can re-read
+    # without re-running prepare_review.
+    (bundle_dir / "bundle.json").write_text(
+        json.dumps(bundle, indent=2) + "\n", encoding="utf-8"
+    )
     json.dump(bundle, sys.stdout, indent=2)
     sys.stdout.write("\n")
     return 0

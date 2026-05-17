@@ -10,6 +10,19 @@ import pytest
 import prepare_review as pr
 
 
+def _concat_diff_from_chunks(bundle: dict) -> str:
+    """Read all chunk files for a bundle and concatenate -- the historical
+    bundle["diff"] string, reconstructed from on-disk chunks.
+
+    Tests that used to assert `bundle["diff"]` should call this instead.
+    """
+    bundle_dir = Path(bundle["bundle_dir"])
+    return "".join(
+        (bundle_dir / entry["path"]).read_text(encoding="utf-8")
+        for entry in bundle["diff_chunks"]
+    )
+
+
 # ---------------------------------------------------------------------------
 # run_p4 — subprocess invocation
 # ---------------------------------------------------------------------------
@@ -474,6 +487,176 @@ class TestExtractDiff:
         err = capsys.readouterr().err
         assert "synthesized add hunks" in err
         assert "//depot/new.py" in err
+
+
+# ---------------------------------------------------------------------------
+# partition_diff_into_chunks + write_chunks
+# ---------------------------------------------------------------------------
+
+
+def _make_section(depot: str, body_bytes: int) -> str:
+    """Build a single ==== file section padded to roughly `body_bytes` bytes."""
+    header = f"==== {depot}#1 (text) ====\n"
+    # @@ hunk + lines. Pad with `+x` lines so the section is ~body_bytes.
+    line = "+xxxxxxxx\n"  # 10 bytes per line
+    n = max(1, body_bytes // len(line))
+    body = "@@ -0,0 +1,{n} @@\n".format(n=n) + (line * n)
+    return header + body
+
+
+class TestPartitionDiffIntoChunks:
+    def test_single_small_file_fits_one_chunk(self):
+        diff = _make_section("//d/a/foo.cpp", 100)
+        chunks = pr.partition_diff_into_chunks(diff, max_bytes=1024 * 1024)
+        assert len(chunks) == 1
+        assert chunks[0]["files"] == ["//d/a/foo.cpp"]
+        assert chunks[0]["text"].startswith("==== //d/a/foo.cpp")
+
+    def test_empty_diff_returns_no_chunks(self):
+        assert pr.partition_diff_into_chunks("", max_bytes=1024) == []
+
+    def test_balances_when_total_exceeds_max(self):
+        """K = ceil(total / max). Two files of ~600B each with max=1000 -> K=2 chunks of ~600B each.
+
+        The greedy fill-to-max alternative would put both into one 1200B chunk
+        (over cap) or one full + one tiny -- both worse than balanced halves.
+        """
+        diff = (
+            _make_section("//d/a/file1.cpp", 600)
+            + _make_section("//d/b/file2.cpp", 600)
+        )
+        chunks = pr.partition_diff_into_chunks(diff, max_bytes=1000)
+        assert len(chunks) == 2
+        # Each chunk got exactly one file.
+        assert chunks[0]["files"] == ["//d/a/file1.cpp"]
+        assert chunks[1]["files"] == ["//d/b/file2.cpp"]
+        # Both well-balanced, well under max.
+        assert all(c["bytes"] < 1000 for c in chunks)
+
+    def test_never_splits_a_file_even_when_oversized(self):
+        """A single file larger than max_bytes lands alone in an oversized chunk.
+
+        We can't split a file mid-hunk -- the section is atomic. Caller accepts
+        the breach for that one chunk; oversize is bounded by file size.
+        """
+        diff = _make_section("//d/huge.bin", 2048)
+        chunks = pr.partition_diff_into_chunks(diff, max_bytes=512)
+        assert len(chunks) == 1
+        assert chunks[0]["bytes"] >= 2048
+        assert chunks[0]["files"] == ["//d/huge.bin"]
+
+    def test_prefers_directory_boundary_for_split(self):
+        """When the chunk is past target, close at a directory transition, not mid-dir.
+
+        Files in dirA/ should stay together; the split happens between dirA and dirB.
+        """
+        sections = (
+            _make_section("//d/dirA/f1.cpp", 300)
+            + _make_section("//d/dirA/f2.cpp", 300)
+            + _make_section("//d/dirA/f3.cpp", 300)
+            + _make_section("//d/dirB/g1.cpp", 300)
+            + _make_section("//d/dirB/g2.cpp", 300)
+            + _make_section("//d/dirB/g3.cpp", 300)
+        )
+        # K = ceil(1800 / 1500) = 2. Target = 900.
+        # Without the directory preference, the boundary would fall after f3
+        # (cur ~900). With the preference it also falls there since f3 -> g1
+        # IS a dir transition; this test verifies the boundary doesn't cut
+        # mid-directory when the size hits target mid-way.
+        chunks = pr.partition_diff_into_chunks(sections, max_bytes=1500)
+        assert len(chunks) == 2
+        # Each chunk holds exactly one directory's files.
+        assert chunks[0]["files"] == [
+            "//d/dirA/f1.cpp", "//d/dirA/f2.cpp", "//d/dirA/f3.cpp",
+        ]
+        assert chunks[1]["files"] == [
+            "//d/dirB/g1.cpp", "//d/dirB/g2.cpp", "//d/dirB/g3.cpp",
+        ]
+
+    def test_holds_off_close_until_directory_transition(self):
+        """When target is hit mid-directory, keep packing until we cross a dir boundary.
+
+        20 files in dirA + 10 in dirB, ~131 B each. Total ~3930 B, max=3000
+        forces K=2, target=1965. Naive close-at-target would close after
+        ~15 dirA files (mid-directory). The directory-aware logic holds off
+        until the first dirA -> dirB transition, putting all 20 dirA files
+        in chunk0 (~2620 B, still under max) and all 10 dirB files in chunk1.
+        """
+        sections = "".join(
+            _make_section(f"//d/dirA/f{i}.cpp", 80) for i in range(20)
+        ) + "".join(
+            _make_section(f"//d/dirB/g{i}.cpp", 80) for i in range(10)
+        )
+        chunks = pr.partition_diff_into_chunks(sections, max_bytes=3000)
+        assert len(chunks) == 2
+        # All dirA files land in chunk0, all dirB files in chunk1 -- no dir splits.
+        assert all("/dirA/" in f for f in chunks[0]["files"])
+        assert all("/dirB/" in f for f in chunks[1]["files"])
+        assert len(chunks[0]["files"]) == 20
+        assert len(chunks[1]["files"]) == 10
+
+    def test_hard_cap_forces_close_even_within_directory(self):
+        """When the next file would breach max, close even if still in the same dir.
+
+        Hard cap wins over the dir-coherence preference -- we can't let a
+        chunk grow past the Read tool's threshold just to keep a directory
+        together.
+        """
+        sections = (
+            _make_section("//d/dirA/f1.cpp", 700)
+            + _make_section("//d/dirA/f2.cpp", 700)
+            + _make_section("//d/dirA/f3.cpp", 700)
+        )
+        chunks = pr.partition_diff_into_chunks(sections, max_bytes=1000)
+        # Each file alone is 700+, two files together would be 1400 > 1000.
+        # So each file gets its own chunk.
+        assert len(chunks) == 3
+        for c in chunks:
+            assert len(c["files"]) == 1
+
+    def test_preamble_kept_with_first_chunk(self):
+        """Diff preamble (before any ==== header) attaches to the first chunk."""
+        diff = "preamble line\n" + _make_section("//d/a.cpp", 100)
+        chunks = pr.partition_diff_into_chunks(diff, max_bytes=1024 * 1024)
+        assert len(chunks) == 1
+        assert chunks[0]["text"].startswith("preamble line\n")
+
+
+class TestWriteChunks:
+    def test_writes_files_and_returns_index(self, tmp_path):
+        chunks = [
+            {"text": "chunk0 text\n", "files": ["//d/a.cpp"], "bytes": 12},
+            {"text": "chunk1 text\n", "files": ["//d/b.cpp", "//d/c.cpp"], "bytes": 12},
+        ]
+        index = pr.write_chunks(chunks, tmp_path)
+        assert (tmp_path / "chunks" / "chunk-000.diff").read_text() == "chunk0 text\n"
+        assert (tmp_path / "chunks" / "chunk-001.diff").read_text() == "chunk1 text\n"
+        assert index == [
+            {"index": 0, "path": "chunks/chunk-000.diff", "files": ["//d/a.cpp"], "bytes": 12},
+            {"index": 1, "path": "chunks/chunk-001.diff", "files": ["//d/b.cpp", "//d/c.cpp"], "bytes": 12},
+        ]
+
+    def test_removes_stale_chunks_from_prior_run(self, tmp_path):
+        """A re-run that produces fewer chunks must not leave orphaned chunk files behind."""
+        chunks_dir = tmp_path / "chunks"
+        chunks_dir.mkdir()
+        (chunks_dir / "chunk-000.diff").write_text("stale 0\n")
+        (chunks_dir / "chunk-001.diff").write_text("stale 1\n")
+        (chunks_dir / "chunk-099.diff").write_text("stale 99\n")
+
+        new_chunks = [{"text": "fresh\n", "files": ["//d/x.cpp"], "bytes": 6}]
+        pr.write_chunks(new_chunks, tmp_path)
+
+        survivors = sorted(p.name for p in chunks_dir.glob("chunk-*.diff"))
+        assert survivors == ["chunk-000.diff"]
+        assert (chunks_dir / "chunk-000.diff").read_text() == "fresh\n"
+
+    def test_empty_chunks_writes_no_files(self, tmp_path):
+        index = pr.write_chunks([], tmp_path)
+        assert index == []
+        # Directory created (empty), no chunk files.
+        assert (tmp_path / "chunks").is_dir()
+        assert list((tmp_path / "chunks").iterdir()) == []
 
 
 # ---------------------------------------------------------------------------
@@ -1028,16 +1211,23 @@ class TestBuildBundle:
                 return (1, "", "no file(s) to reconcile.\n")
             return (1, "", "")
 
+        bundle_dir = tmp_path / "bundle"
         with patch.object(pr, "run_p4", side_effect=fake_run_p4):
-            bundle = pr.build_bundle("999")
+            bundle = pr.build_bundle("999", bundle_dir)
 
         assert bundle["cl"] == "999"
         assert bundle["description"] == "Fix the thing"
-        assert "==== //depot/src/foo.cpp#1" in bundle["diff"]
+        assert bundle["bundle_dir"] == str(bundle_dir)
+        # Diff content lives in chunk files on disk now; no inline `diff` field.
+        assert "diff" not in bundle
+        assert len(bundle["diff_chunks"]) >= 1
+        assert "==== //depot/src/foo.cpp#1" in _concat_diff_from_chunks(bundle)
         assert len(bundle["changed_files"]) == 1
         cf = bundle["changed_files"][0]
         assert cf["depot"] == "//depot/src/foo.cpp"
         assert Path(cf["local"]) == local_file
+        # The single-file CL should land in a single chunk (index 0).
+        assert cf["chunk_index"] == 0
         assert len(cf["claude_mds"]) == 1
         assert Path(cf["claude_mds"][0]).read_text() == "workspace rule\n"
         assert len(bundle["unique_claude_mds"]) == 1
@@ -1094,7 +1284,7 @@ class TestBuildBundle:
             return (1, "", f"unexpected: {args}")
 
         with patch.object(pr, "run_p4", side_effect=fake_run_p4):
-            bundle = pr.build_bundle("1000")
+            bundle = pr.build_bundle("1000", tmp_path / "bundle")
 
         assert len(bundle["unreconciled"]) == 1
         u = bundle["unreconciled"][0]
@@ -1158,7 +1348,7 @@ class TestBuildBundle:
             return (1, "", f"unexpected: {args}")
 
         with patch.object(pr, "run_p4", side_effect=fake_run_p4):
-            pr.build_bundle("7")
+            pr.build_bundle("7", tmp_path / "bundle")
 
         ws_resolved = ws.resolve()
         deep_resolved = deep.resolve()
@@ -1219,18 +1409,19 @@ class TestBuildBundle:
             return (1, "", f"unexpected: {args}")
 
         with patch.object(pr, "run_p4", side_effect=fake_run_p4):
-            bundle = pr.build_bundle("144072")
+            bundle = pr.build_bundle("144072", tmp_path / "bundle")
 
         # Both files in changed_files
         depots = [f["depot"] for f in bundle["changed_files"]]
         assert "//depot/edit.py" in depots
         assert "//depot/new.py" in depots
 
+        diff = _concat_diff_from_chunks(bundle)
         # Edit hunk intact
-        assert "+x = 2" in bundle["diff"]
+        assert "+x = 2" in diff
         # Add hunk synthesized
-        assert "@@ -0,0 +1,2 @@" in bundle["diff"]
-        assert "+def brief():" in bundle["diff"]
+        assert "@@ -0,0 +1,2 @@" in diff
+        assert "+def brief():" in diff
 
     def test_add_only_shelved_cl(self, tmp_path):
         """A shelved CL containing only adds (no edits) must bundle full content."""
@@ -1275,11 +1466,12 @@ class TestBuildBundle:
             return (1, "", f"unexpected: {args}")
 
         with patch.object(pr, "run_p4", side_effect=fake_run_p4):
-            bundle = pr.build_bundle("1")
+            bundle = pr.build_bundle("1", tmp_path / "bundle")
 
         assert bundle["description"] == "Add new modules"
-        assert "+content of a" in bundle["diff"]
-        assert "+content of b" in bundle["diff"]
+        diff = _concat_diff_from_chunks(bundle)
+        assert "+content of a" in diff
+        assert "+content of b" in diff
 
     def test_mixed_cl_adds_omitted_from_differences(self, tmp_path):
         """Regression (Spirit Crossing CL 144098): on some p4 servers, `describe -du -S`
@@ -1330,7 +1522,7 @@ class TestBuildBundle:
             return (1, "", f"unexpected: {args}")
 
         with patch.object(pr, "run_p4", side_effect=fake_run_p4):
-            bundle = pr.build_bundle("144098")
+            bundle = pr.build_bundle("144098", tmp_path / "bundle")
 
         # All four files in changed_files — not just the edit
         depots = [f["depot"] for f in bundle["changed_files"]]
@@ -1341,15 +1533,16 @@ class TestBuildBundle:
             "//depot/mod_c.cpp",
         ]
 
+        diff = _concat_diff_from_chunks(bundle)
         # Edit preserved
-        assert "+wire_new();" in bundle["diff"]
+        assert "+wire_new();" in diff
         # Adds synthesized with full content, even though they had no ==== header in Differences
-        assert "==== //depot/mod_a.cpp#1" in bundle["diff"]
-        assert "==== //depot/mod_b.cpp#1" in bundle["diff"]
-        assert "==== //depot/mod_c.cpp#1" in bundle["diff"]
-        assert "+mod_a contents" in bundle["diff"]
-        assert "+mod_b contents" in bundle["diff"]
-        assert "+mod_c contents" in bundle["diff"]
+        assert "==== //depot/mod_a.cpp#1" in diff
+        assert "==== //depot/mod_b.cpp#1" in diff
+        assert "==== //depot/mod_c.cpp#1" in diff
+        assert "+mod_a contents" in diff
+        assert "+mod_b contents" in diff
+        assert "+mod_c contents" in diff
 
 
 # ---------------------------------------------------------------------------
@@ -1363,15 +1556,22 @@ class TestMain:
         assert rc == 2
         assert "Usage" in capsys.readouterr().err
 
-    def test_value_error_returns_1(self, capsys):
-        with patch.object(pr, "build_bundle", side_effect=ValueError("nope")):
+    def test_value_error_returns_1(self, capsys, tmp_path):
+        with patch.object(pr, "DEFAULT_BUNDLE_ROOT", tmp_path / "reviews"), \
+                patch.object(pr, "build_bundle", side_effect=ValueError("nope")):
             rc = pr.main(["prepare_review.py", "123"])
         assert rc == 1
         assert "nope" in capsys.readouterr().err
 
-    def test_success_prints_json(self, capsys):
-        with patch.object(pr, "build_bundle", return_value={"cl": "123"}):
+    def test_success_prints_json_and_persists_bundle(self, capsys, tmp_path):
+        """main() prints the bundle to stdout AND persists bundle.json next to chunks."""
+        reviews_root = tmp_path / "reviews"
+        fake_bundle = {"cl": "123", "bundle_dir": str(reviews_root / "123")}
+        with patch.object(pr, "DEFAULT_BUNDLE_ROOT", reviews_root), \
+                patch.object(pr, "build_bundle", return_value=fake_bundle):
             rc = pr.main(["prepare_review.py", "123"])
         assert rc == 0
         captured = capsys.readouterr()
-        assert json.loads(captured.out) == {"cl": "123"}
+        assert json.loads(captured.out) == fake_bundle
+        persisted = json.loads((reviews_root / "123" / "bundle.json").read_text())
+        assert persisted == fake_bundle
