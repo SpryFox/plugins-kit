@@ -25,6 +25,9 @@
       }
     }
   ],
+  "venv": {
+    "check_imports": ["bootstrap_lib.code_review.chunking", "bootstrap_lib.code_review.claude_mds"]
+  },
   "script": {
     "path": "scripts/cleanup_legacy_config.py",
     "entry_point": "cleanup"

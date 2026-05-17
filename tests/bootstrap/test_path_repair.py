@@ -12,7 +12,8 @@ from bootstrap_lib.path_repair import PathRepairResult, repair_path
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _CANON = _REPO_ROOT / "plugins" / "bootstrap" / "bootstrap_lib" / "path_repair.py"
 _VENDORED = [
-    _REPO_ROOT / "plugins" / "p4-kit" / "lib" / "path_repair.py",
+    # p4-kit used to vendor a copy here; it now imports bootstrap_lib.path_repair
+    # directly via its venv (0.10.0 +).
     _REPO_ROOT / "plugins" / "unreal-kit" / "lib" / "path_repair.py",
 ]
 

@@ -1,12 +1,12 @@
 ---
 _schema_version: 1
-name: local-code-review
+name: p4-code-review
 author: christina
 skill-type: technique-skill
-description: Use when reviewing a pending Perforce changelist, or before asking the user to submit a CL just opened. Do NOT use for git diffs or non-Perforce reviews.
+description: Use when reviewing a pending Perforce changelist, or before asking the user to submit a CL just opened. Do NOT use for git diffs (see /git-code-review) or non-Perforce reviews.
 ---
 
-# Local Code Review
+# P4 Code Review
 
 Run a multi-agent code review of a Perforce changelist directly in conversation. The diff is partitioned on disk into chunks (one per file boundary cluster, balanced under a 1 MB cap); reviewer subagents (set by the selected review profile) run **once per (role × chunk)** so a single large CL fans out across multiple parallel agents instead of forcing each reviewer to ingest the full diff. Each flagged issue is then validated by an independent subagent to suppress false positives. Path-scoped pre-submit reminders (submit gates) authored in ancestor CLAUDE.md files are surfaced alongside the review for author confirmation. Results are rendered as markdown -- no persistence to disk.
 

@@ -1,0 +1,9 @@
+[project]
+name = "git-kit"
+version = "0.2.0"
+description = "Host-side dependencies for git-kit plugin"
+requires-python = ">=3.12,!=3.14.*"
+
+dependencies = [
+    "bootstrap @ git+https://github.com/kitaekatt/plugins-kit.git#subdirectory=plugins/bootstrap",
+]

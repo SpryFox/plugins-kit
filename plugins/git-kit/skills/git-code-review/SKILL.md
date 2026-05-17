@@ -1,0 +1,376 @@
+---
+_schema_version: 1
+name: git-code-review
+author: christina
+skill-type: technique-skill
+description: Use when reviewing local git changes -- before pushing, before opening a PR, or when looking over what a branch added. Do NOT use for Perforce changelists (see /p4-code-review) or for reviewing an existing GitHub PR by URL.
+---
+
+# Git Code Review
+
+Run a multi-agent code review of a git diff range directly in conversation. The default diff range is inferred from workspace state (mid-merge / mid-rebase / branch-with-upstream / origin-main-fallback), so the agent does the right thing for "review what I'm about to push" without forcing the user to spell out a range; arguments accepted for explicit control. The diff is partitioned on disk into chunks (one per file boundary cluster, balanced under a 1 MB cap); reviewer subagents (set by the selected review profile) run **once per (role × chunk)** so a single large branch fans out across multiple parallel agents instead of forcing each reviewer to ingest the full diff. Each flagged issue is then validated by an independent subagent to suppress false positives. Path-scoped pre-submit reminders (submit gates) authored in ancestor CLAUDE.md files are surfaced alongside the review for author confirmation. Results are rendered as markdown -- no persistence to disk.
+
+```yaml
+technique_skill:
+  _schema_version: "1"
+  trigger_model: auto
+  identity: Run a multi-agent code review of a git diff range using parallel Claude subagents.
+  scope:
+    covers:
+      - reviewing the current branch's changes (default = upstream..HEAD, with auto-detect fallbacks)
+      - reviewing an explicit ref / range / staged / working-tree mode
+      - reviewing an in-progress merge or rebase
+      - CLAUDE.md compliance audits in a git repo
+      - bug audits scoped to introduced code
+      - surfacing path-scoped pre-submit reminders (submit gates) from CLAUDE.md
+    excludes:
+      - Perforce workflows (use /p4-code-review)
+      - reviewing a remote PR by URL or PR number (this skill works against the local working copy / refs only)
+      - persisting review output to disk or a PR comment
+      - enforcing submit gates (advisory only; enforcement belongs in a pre-push hook)
+  techniques:
+    - id: full_review
+      name: Full multi-agent review
+      keywords: [code review, git review, branch review, multi-agent review, claude.md compliance, parallel reviewers, pre-push review]
+      goal: Produce a markdown summary of confirmed issues for one git diff range.
+      preconditions:
+        - cwd is inside a git repository.
+      steps:
+        - n: 1
+          action: |
+            Resolve the diff range.
+            - If the user passed an explicit argument (`<ref>`, `<a>..<b>`, `<a>...<b>`, `--staged`, `--working`), use it verbatim.
+            - Otherwise let prepare_review.py auto-detect from workspace state. The detection order is:
+              1. mid-merge (MERGE_HEAD present) -> review the in-progress merge
+              2. mid-rebase -> review the in-progress rebase
+              3. @{upstream}..HEAD if upstream is set
+              4. origin/main..HEAD / origin/master..HEAD / main..HEAD / master..HEAD as fallbacks
+              5. else error with a hint to pass an explicit range
+            If auto-detect fails (detached HEAD with no fallback, or no upstream and no main/master), surface the error to the user and ask them for an explicit range. Do NOT guess.
+          tool: prepare_review.py
+          input: "[<ref>|<a>..<b>|<a>...<b>|--staged|--working]"
+          expected: The script's stdout JSON includes `range` and (when auto-detected) `auto_detected_reason`. Restate the chosen range to the user in the step-1 narration line so they can correct if the wrong one was inferred.
+        - n: 2
+          action: Run prepare_review.py to fetch the diff, partition it into chunked .diff fragments on disk, enumerate changed files via `git diff --name-status`, map ancestor CLAUDE.md files for each, detect untracked-or-unstaged files in the directories the diff touches, detect unresolved merge conflicts, and scan ancestor CLAUDE.md files for submit-gate reminders that apply to this range.
+          tool: ${CLAUDE_PLUGIN_ROOT}/scripts/prepare_review.py
+          input: "<range or argument from step 1>"
+          expected: |
+            JSON with vcs, range, head_sha, branch, description, bundle_dir, diff_chunks, changed_files, unique_claude_mds, untracked_or_unstaged, merge_conflicts, submit_gates. The raw diff text is NOT inline -- it lives in per-chunk files at `<bundle_dir>/<diff_chunks[i].path>` (paths are relative to bundle_dir). Each `changed_files` entry carries `chunk_index` pointing to the chunk that contains its diff.
+          on_failure: Surface the stderr message to the user and stop. No retry.
+        - n: 3
+          action: |
+            If bundle.untracked_or_unstaged is non-empty, list the files (grouped by `kind`: untracked / unstaged_modified / unstaged_deleted / staged_uncommitted) and ask the user whether any should be folded into the review before reviewers spawn.
+            - If the user picks one or more untracked / unstaged files: run `git add <paths>` to stage them, optionally commit them with `git commit -m "<message>"` to include in the range, and re-run prepare_review.py with the same range. Use the new bundle.
+            - For `staged_uncommitted` files the user wants in: same flow -- commit them so they land in the range. (`--staged` mode already includes them; the prompt is for committed-range modes.)
+            - If the user declines all: continue with the current bundle.
+            On the post-fold re-run, do NOT prompt again about untracked_or_unstaged files even if some remain -- the user already decided.
+            Skip this step entirely if bundle.untracked_or_unstaged is empty.
+          tool: AskUserQuestion + git add/commit + prepare_review.py
+        - n: 4
+          action: Read every CLAUDE.md path in unique_claude_mds. Subagents do not need to re-read.
+          tool: Read
+        - n: 5
+          action: |
+            If bundle.submit_gates is non-empty, surface each gate as a checklist item the
+            author must confirm BEFORE the review renders. Issue ONE AskUserQuestion call
+            with `multiSelect: true`, one option per gate, labeled with the gate's summary
+            and (in the description) the source CLAUDE.md path and the triggering files.
+            Phrase the question as: "Confirm each pre-push obligation you've already
+            completed for <range>."
+            - Selected options become CONFIRMED gates.
+            - Unselected options become UNCONFIRMED gates -- still rendered, just marked.
+            Do NOT skip a gate, do NOT collapse multiple gates into one option, do NOT
+            re-prompt. The author's answer (or lack thereof) is final.
+            Skip this step entirely if bundle.submit_gates is empty.
+          tool: AskUserQuestion
+        - n: 6
+          action: |
+            Select one profile from `review_profiles` using its `selection.guidance` -- this is
+            an inference call, not regex. Read each profile's guidance, weigh the actual contents
+            of `bundle.changed_files`, and pick the most appropriate profile. Default to `code`
+            when uncertain. Then launch one subagent per (reviewer × chunk) pair in parallel via
+            a single message with R × K Agent calls, where R = len(profile.reviewers) and
+            K = len(bundle.diff_chunks). Each subagent gets the chunk's absolute diff path
+            (`<bundle.bundle_dir>/<diff_chunks[i].path>`), the repo-relative paths of the files
+            in that chunk (`diff_chunks[i].files`), and -- for reviewer_a -- the CLAUDE.md
+            mapping restricted to those files. Reviewers not listed in the selected profile are
+            NOT launched. If bundle.diff_chunks is empty (range has no diff content), skip
+            step 6 and jump to step 9 with zero issues.
+          tool: Agent
+          expected: JSON arrays of candidate issues from each launched reviewer (one array per (reviewer, chunk) subagent).
+        - n: 7
+          action: |
+            Launch one validator subagent per candidate issue, all in parallel via a single message.
+            Use the selected profile's `validator_models[reason]` to pick the model per issue.
+          tool: Agent
+          expected: CONFIRMED or REJECTED per issue.
+        - n: 8
+          action: Drop rejected issues silently (do not report rejected issues to the user).
+        - n: 9
+          action: |
+            Render the markdown review.
+            - When `bundle.submit_gates` is non-empty, prepend a `## Submit checklist`
+              section (confirmed and unconfirmed gates both rendered).
+            - When `bundle.merge_conflicts` is non-empty, prepend a `## Unresolved merge conflicts`
+              section listing each conflicted file. This is informational, not a finding --
+              the merge cannot be completed until each file is resolved (`git add <file>`
+              after editing), but the review still renders.
+            Group the review body by file.
+      checklist:
+        - Diff range resolved (auto-detected from workspace state OR explicit user arg) and surfaced in the step-1 narration line
+        - Context bundled via prepare_review.py
+        - Untracked/unstaged files surfaced (and either folded in via `git add`/`git commit` with a re-run, or explicitly declined)
+        - All CLAUDE.md files read
+        - Submit gates surfaced (if any) and author confirmation collected via a single AskUserQuestion
+        - Review profile selected from review_profiles
+        - Reviewers launched in parallel (single message, R × K Agent calls -- one per (reviewer × chunk) pair, where K = len(bundle.diff_chunks))
+        - Validators launched in parallel (single message, N Agent calls), models picked from the profile's validator_models
+        - Filtered to confirmed-only
+        - Markdown rendered to chat (Submit checklist section prepended when gates applied; Unresolved merge conflicts section prepended when bundle.merge_conflicts is non-empty)
+      gotchas:
+        - Always quote the exact CLAUDE.md rule text when flagging a claude_md issue. If you cannot quote it verbatim, do not flag it.
+        - Sequential reviewer or validator calls waste time. Reviewers run in one message with one concurrent Agent call per (reviewer × chunk) pair (R reviewers × K chunks). For a small diff (K=1) that's still 2 calls for data_only / 3 for code; for a large diff (K=N) it scales to R × N. Validators run in one message with N concurrent Agent calls.
+        - Each reviewer subagent reads ONE chunk path, not the whole diff. Do not pass `bundle_dir` and expect the subagent to glob -- pass the absolute chunk path the subagent should Read.
+        - Render only -- this skill outputs in chat. There is no PR comment or disk write step.
+        - If prepare_review.py fails, report the error and stop. No retry.
+        - Validators are independent of reviewers. The validator does not see who flagged the issue.
+        - The untracked/unstaged check must happen BEFORE reviewers spawn. Folding in forgotten files after agents have already reviewed the diff wastes their work and produces a stale review.
+        - On the post-fold re-run, do NOT prompt again about untracked_or_unstaged files. The user already chose. Re-prompting on the same list is annoying; re-prompting on a smaller list (because they only added some) implies the rest were forgotten when they were declined.
+        - Submit gates are reminders, not findings -- they do NOT go through reviewer or validator subagents. They are parsed deterministically by prepare_review.py and rendered verbatim in a separate output section. Do not try to validate, score, or filter them.
+        - The submit-gates AskUserQuestion fires once, regardless of gate count. multiSelect bundles all gates into one prompt.
+        - Unconfirmed submit gates are NOT errors. Render them with ✗ so they're visible, but do not block the review or refuse to render the rest.
+        - Merge conflicts are NOT findings -- they do NOT go through reviewer subagents. They are detected deterministically by prepare_review.py (`git ls-files -u`). The reviewers see the raw diff (including any conflict markers) and may legitimately flag bugs in it; the merge-conflicts section is a separate informational warning to the user.
+        - Auto-detect is convenient, not authoritative. Always restate the chosen range in the step-1 narration line; a user reviewing the wrong branch will catch it there before subagents spawn.
+        - Detached HEAD with no main/master fallback is a real failure mode; surface the error and ask for an explicit range. Do not guess at a "probably right" base.
+  narration:
+    note: Reviews involve long silent stretches (batched file reads, parallel subagents that take 30s+). Post one short status line per step using these templates verbatim, filling in the bracketed counts. Do not paraphrase, omit, or add extras.
+    templates:
+      - when: "Before step 2"
+        template: "Gathering context for <range> (<auto_or_explicit>): fetching diff, mapping CLAUDE.md scopes, scanning for untracked/unstaged files."
+      - when: "Before step 3 (U >= 1)"
+        template: "Found <U> untracked/unstaged file(s) in the directories this range touches. Asking before reviewing."
+      - when: "After step 3 if user folded files in (U_added >= 1)"
+        template: "Folded <U_added> file(s) into the range via `git add`/`git commit`. Re-running prepare to refresh the diff."
+      - when: "After step 3 if user declined (U_added = 0 and U >= 1)"
+        template: "Continuing with <range> as-is."
+      - when: "After step 3, before step 4 (M >= 1)"
+        template: "Got <N> changed file(s) and <M> unique CLAUDE.md scope(s). Reading them now."
+      - when: "After step 3, before step 4 (M = 0)"
+        template: "Got <N> changed file(s); no CLAUDE.md scopes apply."
+      - when: "After step 2 (V >= 1)"
+        template: "Found <V> file(s) with unresolved merge conflicts. Will surface in the review output -- the merge cannot complete until resolved."
+      - when: "Before step 5 (G >= 1)"
+        template: "Found <G> submit-gate reminder(s) applying to this range. Asking the author to confirm."
+      - when: "Before step 6"
+        template: "Selected review profile: <P>. Diff partitioned into <K> chunk(s). Launching <RK> subagent(s) in parallel (<R> reviewer(s) × <K> chunk(s)): <reviewer_summary>."
+      - when: "After step 6, before step 7 (X >= 1)"
+        template: "Reviewers returned <X> candidate issue(s) (<B> bug, <C> CLAUDE.md). Launching <X> validator(s) in parallel."
+      - when: "After step 6 (X = 0)"
+        template: "Reviewers found no issues. Skipping validation."
+      - when: "After step 7, before step 9"
+        template: "Validators confirmed <Y> of <X>. Rendering review."
+    variables:
+      "<range>": "bundle.range"
+      "<auto_or_explicit>": "'auto-detected: <bundle.auto_detected_reason>' if auto_detected_reason is set, else 'explicit'"
+      "<N>": "len(bundle.changed_files)"
+      "<M>": "len(bundle.unique_claude_mds)"
+      "<U>": "len(bundle.untracked_or_unstaged)"
+      "<U_added>": "count of files the user chose to fold into the range"
+      "<X>": "total candidate issues from all launched reviewers combined"
+      "<B>": "count where reason == 'bug'"
+      "<C>": "count where reason == 'claude_md'"
+      "<Y>": "count of validators returning CONFIRMED"
+      "<P>": "selected review profile id (e.g. code, data_only)"
+      "<R>": "count of reviewers in the selected profile"
+      "<K>": "len(bundle.diff_chunks)"
+      "<RK>": "<R> * <K>"
+      "<reviewer_summary>": "comma-separated '<model> <reviewer short name>' for each reviewer in the profile -- each is fanned out across all K chunks"
+      "<G>": "len(bundle.submit_gates)"
+      "<V>": "len(bundle.merge_conflicts)"
+  review_profiles:
+    description: |
+      Routing table for selecting reviewers and models based on diff content. Exactly one
+      profile is selected per review. Selection is an inference call -- read each profile's
+      `selection.guidance` and pick the most appropriate one based on the actual contents
+      of `bundle.changed_files`. Default to `code` when uncertain.
+    profiles:
+      - id: data_only
+        selection:
+          data_only_extensions: [".csv", ".yaml", ".yml", ".json", ".tsv", ".md"]
+          guidance: |
+            Select this profile when every changed file is either:
+              (a) in `data_only_extensions` (flat data / docs), OR
+              (b) an inert binary asset -- images, audio, video, fonts, compiled binaries,
+                  3D/animation assets -- whose presence wouldn't change what a code-grade
+                  review would find. These files aren't reviewable for logic anyway, so
+                  including them in a diff shouldn't force the heavier `code` profile.
+            Use judgment: the question is "is there any file in this range that needs Opus-level
+            semantic reasoning to review?" -- not "is every extension on a fixed list?"
+
+            Pick `code` instead the moment any changed file contains executable logic
+            (source code, scripts, build configuration that runs code, templated configs
+            that are interpreted as code, etc.).
+        rationale: |
+          Flat data and doc files don't exhibit the failure modes Opus is uniquely good at
+          (concurrency, lifetime, deep semantic reasoning). Bugs in these files are
+          surface-level: malformed syntax, duplicate keys, column-count mismatches, broken
+          cross-file references, schema violations -- pattern-matching tasks where Sonnet is
+          at near-parity with Opus.
+        reviewers:
+          - { name: reviewer_a_claude_md_compliance, model: sonnet }
+          - { name: reviewer_b_diff_only_bugs,       model: sonnet }
+        validator_models:
+          bug: sonnet
+          claude_md: sonnet
+      - id: code
+        selection:
+          guidance: |
+            Default profile. Use whenever any changed file contains executable logic
+            (source code, scripts, build configuration that runs code) -- i.e. anytime
+            `data_only` doesn't clearly apply.
+        rationale: "Full reviewer set with Opus where deep semantic reasoning pays off."
+        reviewers:
+          - { name: reviewer_a_claude_md_compliance, model: sonnet }
+          - { name: reviewer_b_diff_only_bugs,       model: opus }
+          - { name: reviewer_c_introduced_code,      model: opus }
+        validator_models:
+          bug: opus
+          claude_md: sonnet
+  # subagents: reviewer/validator definitions (scope, input, restrictions).
+  # Models are NOT set here -- they are bound by the selected `review_profiles` entry.
+  subagents:
+    - name: reviewer_a_claude_md_compliance
+      subagent_type: general-purpose
+      scope: CLAUDE.md compliance only, restricted to the files in one chunk
+      input: "absolute path to ONE chunk .diff file, the repo-relative paths of the files in that chunk, the per-file CLAUDE.md mapping restricted to those files, and the full text of each relevant CLAUDE.md (read in step 4)"
+      restrictions:
+        - "Read the assigned chunk diff once (single Read call). Do not Read other chunks."
+        - "Only consider CLAUDE.md files that share a path with the file being reviewed (use the per-file mapping; do not cross-apply)."
+        - "Only flag issues in files present in your chunk -- files in other chunks are someone else's responsibility."
+    - name: reviewer_b_diff_only_bugs
+      subagent_type: general-purpose
+      scope: obvious bugs visible in one chunk's diff alone
+      input: "absolute path to ONE chunk .diff file, the repo-relative paths of the files in that chunk, and the diff description"
+      restrictions:
+        - "Read the assigned chunk diff once. MUST NOT use Read for anything beyond that chunk."
+        - "Only flag won't-compile, syntax/type errors, missing imports, unresolved references, definitely-wrong logic regardless of inputs."
+        - "For data/doc files (data_only profile): focus on malformed syntax, duplicate keys, schema or column-count violations, and broken cross-file references."
+        - "Only flag issues in files present in your chunk."
+    - name: reviewer_c_introduced_code
+      subagent_type: general-purpose
+      scope: bugs/security/logic problems in the introduced code that need broader context, restricted to one chunk's files
+      input: "absolute path to ONE chunk .diff file, the repo-relative paths of the files in that chunk, local paths for those files, and the diff description"
+      restrictions:
+        - "Read the assigned chunk diff first."
+        - "MAY use Read to look at surrounding context in the changed files (the LOCAL paths you were given) when needed."
+        - "Examples: concurrency issues, lifetime bugs, security holes."
+        - "Only flag issues in files present in your chunk."
+    - name: validator
+      subagent_type: general-purpose
+      scope: confirm or reject one candidate issue with high confidence
+      input: "the issue (JSON), the chunk diff, [if claude_md: relevant CLAUDE.md contents]"
+      output_format: "exactly one line: 'CONFIRMED: <one-sentence reason>' or 'REJECTED: <one-sentence reason>'"
+      restrictions:
+        - "Validator does not see who flagged the issue. Independence is the value."
+  false_positive_guardrails:
+    only_flag:
+      - "code that will fail to compile or parse (syntax errors, type errors, missing imports, unresolved references)"
+      - "code that will definitely produce wrong results regardless of inputs (clear logic errors)"
+      - "a CLAUDE.md rule clearly and unambiguously violated, with the exact rule quotable"
+    do_not_flag:
+      - "code style or quality concerns"
+      - "potential issues that depend on specific inputs or state"
+      - "subjective suggestions or improvements"
+      - "pre-existing issues (only review the diff)"
+      - "anything a linter would catch (do not run a linter)"
+      - "issues that appear in CLAUDE.md but are explicitly silenced in the code (e.g. lint-ignore comments)"
+    rule: "If you are not certain an issue is real, do not flag it. False positives erode trust."
+  agent_assumptions:
+    - "All tools are functional. Do not test tools or make exploratory calls."
+    - "Only call a tool if it is required to complete the task."
+  issue_format:
+    description: "JSON shape returned by reviewer subagents and accepted by validators."
+    schema: |
+      [{
+        "file": "<repo-relative or absolute path>",
+        "lines": "<line range, e.g. 42 or 42-48>",
+        "reason": "bug" | "claude_md",
+        "description": "<one-sentence explanation>",
+        "citation": "<exact rule quote, only for claude_md issues>"
+      }]
+  submit_gates:
+    description: |
+      Path-scoped pre-push reminders authored in CLAUDE.md files. Surfaced verbatim at
+      review time when at least one file in the range falls within the gate's scope.
+      Reminders are not findings -- they don't go through reviewer or validator subagents.
+      Detection is deterministic, performed by prepare_review.py (same parser as p4-code-review).
+    authoring_format: |
+      Add this block to any CLAUDE.md (root, subdirectory, or both):
+
+        **Submit gate:** <imperative -- what the author must do>.
+        Applies to:
+        - <path prefix or glob>
+        - <path prefix or glob>
+
+        <optional rationale paragraph, rendered verbatim with the gate>
+
+      Scope path semantics:
+        - No glob characters (`*`, `?`, `[`): prefix match. `Foo/Bar/` matches every file
+          under Foo/Bar/. `Foo/Bar` (no trailing slash) is equivalent and does NOT
+          accidentally match `Foo/BarBaz/`.
+        - Contains glob characters: fnmatch-style glob, anchored to the repo root.
+          `*` matches anything including `/`; `?` matches one character.
+        - Case-insensitive on Windows, case-sensitive elsewhere.
+
+      Multiple gates per CLAUDE.md allowed; blocks must be separated by a blank line.
+      Malformed blocks (missing `Applies to:`, empty scope list) are skipped with a
+      one-line stderr warning -- never silently dropped.
+    rendering: |
+      When bundle.submit_gates is non-empty, the rendered review prepends a
+      `## Submit checklist` section ABOVE the per-file review body. Each gate renders as:
+
+        - **[✓|✗] <summary>** -- per `<source>`, triggered by `<file>` (+N more if many).
+          > <rationale, indented as blockquote, omitted if empty>
+
+      ✓ = author confirmed in the step-5 AskUserQuestion.
+      ✗ = author did not confirm. NOT an error; the review still renders.
+
+      Always show the section when gates applied -- including in the "no issues" path.
+  output_format:
+    description: "Final markdown rendered to chat. Unresolved merge conflicts (when applicable) and Submit checklist (when applicable) above the per-file review body."
+    template: |
+      ## Unresolved merge conflicts
+      The merge cannot complete until each file below is resolved (`git add <file>` after editing).
+      - `path/to/file.cpp`
+      - `path/to/other.csv`
+
+      ## Submit checklist
+      - **[✓] ./build.sh configbinaries must pass before push** -- per `<path>/CLAUDE.md`, triggered by `GameConfigs/Real/x.csv`.
+      - **[✗] Regenerate the asset index** -- per `<path>/CLAUDE.md`, triggered by `Content/Assets/y.uasset`.
+        > <rationale if any, as a blockquote>
+
+      ## Review: <range> -- <description>
+
+      Branch: <branch>  ·  HEAD: <head_sha>
+
+      Found N issues (M filtered as false positives).
+
+      ### path/to/file.cpp
+      - **[bug]** L42: Buffer overflow risk -- `items[i]` accessed without bounds check.
+      - **[claude_md]** L78: Violates `src/CLAUDE.md` rule "Use absl::Status not bool returns".
+    empty_template: |
+      ## Submit checklist
+      - **[✓] ./build.sh configbinaries must pass before push** -- per `<path>/CLAUDE.md`, triggered by `GameConfigs/Real/x.csv`.
+
+      ## Review: <range> -- <description>
+
+      Branch: <branch>  ·  HEAD: <head_sha>
+
+      No issues found. Reviewed for bugs and CLAUDE.md compliance.
+    notes:
+      - "Omit the Unresolved merge conflicts section entirely when bundle.merge_conflicts is empty."
+      - "Omit the Submit checklist section entirely when bundle.submit_gates is empty."
+      - "When matched_files has >3 entries, render the first 3 then '(+N more)'."
+      - "Rationale renders as a markdown blockquote (`> `) indented one level below the bullet, only if non-empty."
+      - "<range>, <branch>, <head_sha>, <description> come from the top-level bundle fields."
+```

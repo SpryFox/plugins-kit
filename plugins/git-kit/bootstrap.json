@@ -8,8 +8,27 @@
         "macos": "brew install gh",
         "ubuntu": "manual"
       }
+    },
+    {
+      "name": "git",
+      "install": {
+        "windows": "winget install --id Git.Git --accept-source-agreements --accept-package-agreements --silent --disable-interactivity",
+        "macos": "manual",
+        "ubuntu": "manual"
+      }
+    },
+    {
+      "name": "uv",
+      "install": {
+        "macos": "curl -LsSf https://astral.sh/uv/install.sh | sh",
+        "windows": "powershell -ExecutionPolicy ByPass -c \"irm https://astral.sh/uv/install.ps1 | iex\"",
+        "ubuntu": "curl -LsSf https://astral.sh/uv/install.sh | sh"
+      }
     }
   ],
+  "venv": {
+    "check_imports": ["bootstrap_lib.code_review.chunking", "bootstrap_lib.code_review.claude_mds"]
+  },
   "script": {
     "path": "scripts/bootstrap.py",
     "entry_point": "bootstrap"

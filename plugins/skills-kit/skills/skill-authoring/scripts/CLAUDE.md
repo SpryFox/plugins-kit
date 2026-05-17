@@ -69,9 +69,9 @@ claude_md:
       added: "2026-04-28"
     - id: extra_keys_allowed
       keywords: [extra keys, schema strictness, open record, narration, subagents, skill-specific structure]
-      summary: The validator does not reject unknown keys; skill-specific structure (e.g. local-code-review's narration, subagents) is preserved.
+      summary: The validator does not reject unknown keys; skill-specific structure (e.g. p4-code-review's narration, subagents) is preserved.
       detail: |
-        validate() walks declared schema keys but does not error on additional keys present in the YAML data. This permits skill-specific structured fields the generic schema doesn't cover (e.g. local-code-review carries narration:, subagents:, false_positive_guardrails: alongside the technique_skill: required keys). Forbidden cross-type keys (rules:, counters:, facts:, etc. inside a wrong root) DO fail. The trade: unknown keys pass silently rather than flagging for review. Y5 schema lock may revisit this if real audits surface load-bearing content hiding in extra keys.
+        validate() walks declared schema keys but does not error on additional keys present in the YAML data. This permits skill-specific structured fields the generic schema doesn't cover (e.g. p4-code-review carries narration:, subagents:, false_positive_guardrails: alongside the technique_skill: required keys). Forbidden cross-type keys (rules:, counters:, facts:, etc. inside a wrong root) DO fail. The trade: unknown keys pass silently rather than flagging for review. Y5 schema lock may revisit this if real audits surface load-bearing content hiding in extra keys.
       origin: Phase Y4 conversion of local-code-review; proposal recommendation in section E.3.
       added: "2026-04-28"
   conventions:

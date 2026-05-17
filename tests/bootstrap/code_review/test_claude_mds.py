@@ -1,11 +1,71 @@
-"""Tests for submit-gate parsing and scope matching in prepare_review.py."""
+"""Tests for bootstrap_lib.code_review.claude_mds.
+
+CLAUDE.md ancestor walk, submit-gate parsing, scope matching, and
+end-to-end collection. Vendor-neutral: the same primitives back both
+p4-kit and git-kit code-review skills.
+"""
 
 import os
 from pathlib import Path
 
 import pytest
 
-import prepare_review as pr
+from bootstrap_lib.code_review import claude_mds as pr
+
+
+# ---------------------------------------------------------------------------
+# collect_claude_mds -- ancestor walk
+# ---------------------------------------------------------------------------
+
+
+class TestCollectClaudeMds:
+    def test_walks_to_workspace_root(self, tmp_path):
+        (tmp_path / "CLAUDE.md").write_text("root rule\n")
+        sub = tmp_path / "src" / "module"
+        sub.mkdir(parents=True)
+        (sub.parent / "CLAUDE.md").write_text("src rule\n")
+        target = sub / "file.cpp"
+        target.write_text("code\n")
+
+        result = pr.collect_claude_mds(target, tmp_path)
+        # Nearest first
+        assert len(result) == 2
+        assert Path(result[0]).read_text() == "src rule\n"
+        assert Path(result[1]).read_text() == "root rule\n"
+
+    def test_no_claude_md(self, tmp_path):
+        sub = tmp_path / "src"
+        sub.mkdir()
+        target = sub / "file.cpp"
+        target.write_text("")
+        assert pr.collect_claude_mds(target, tmp_path) == []
+
+    def test_stops_at_workspace_root(self, tmp_path):
+        # CLAUDE.md ABOVE workspace root should not be collected
+        outer = tmp_path / "outer"
+        outer.mkdir()
+        (tmp_path / "CLAUDE.md").write_text("outer rule\n")  # outside workspace
+        ws_root = outer / "ws"
+        ws_root.mkdir()
+        (ws_root / "CLAUDE.md").write_text("ws rule\n")
+        sub = ws_root / "src"
+        sub.mkdir()
+        target = sub / "file.cpp"
+        target.write_text("")
+
+        result = pr.collect_claude_mds(target, ws_root)
+        assert len(result) == 1
+        assert Path(result[0]).read_text() == "ws rule\n"
+
+    def test_no_workspace_root_walks_to_fs_root(self, tmp_path):
+        (tmp_path / "CLAUDE.md").write_text("rule\n")
+        sub = tmp_path / "src"
+        sub.mkdir()
+        target = sub / "file.cpp"
+        target.write_text("")
+        result = pr.collect_claude_mds(target, None)
+        # At minimum, should find tmp_path/CLAUDE.md
+        assert any(Path(r).read_text() == "rule\n" for r in result)
 
 
 # ---------------------------------------------------------------------------

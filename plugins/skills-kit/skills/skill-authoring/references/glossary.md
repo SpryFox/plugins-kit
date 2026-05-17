@@ -483,7 +483,7 @@ glossary:
     - term: Integration
       keywords: [integration, third-party system, talks to, submits, returns, perforce, plugin, remote git]
       definition: |
-        The attribute on a skill that talks to a third-party system. Typical examples: `/local-code-review` (submits to Perforce and returns review comments); `/bootstrap` (manages plugin marketplaces and remote dependencies); skills syncing files to a remote git host.
+        The attribute on a skill that talks to a third-party system. Typical examples: `/p4-code-review` and `/git-code-review` (run multi-agent reviews against Perforce / Git); `/bootstrap` (manages plugin marketplaces and remote dependencies); skills syncing files to a remote git host.
 
     - term: Bootstrap
       keywords: [bootstrap, one-time setup, initializes, dependencies, configuration, session start, allowlist]

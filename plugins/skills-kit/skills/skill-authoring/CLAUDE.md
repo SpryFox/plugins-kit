@@ -80,7 +80,7 @@ claude_md:
         user-only technique-skills (disable-model-invocation: true) from the ordered-step
         body requirement, and classify.py could not detect ordered steps in the user-only
         branch. Verification against actual user-only technique-skills (cache-report,
-        local-code-review, test-greeting) showed every technique reduces to ordered steps,
+        p4-code-review, test-greeting) showed every technique reduces to ordered steps,
         even cache-report's "render script stdout verbatim" which maps to a 1-2 step
         procedure. Steps are a sufficient body; output_template: is a separate concept
         (output-shape contract) that stays as an optional companion field, not a
@@ -114,7 +114,7 @@ claude_md:
         always allow extras. Disallowing extras would push authors toward unstructured
         prose when they want to add legitimate load-bearing structure (an exceptions:
         list inside an anti-pattern entry; narration: and subagents: blocks inside
-        local-code-review's technique). That contradicts the bias-toward-structured-data
+        p4-code-review's technique). That contradicts the bias-toward-structured-data
         default codified by Dec-1.
 
         The schema validates the floor: required keys, required item shapes, required

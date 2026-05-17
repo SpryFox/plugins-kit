@@ -490,173 +490,30 @@ class TestExtractDiff:
 
 
 # ---------------------------------------------------------------------------
-# partition_diff_into_chunks + write_chunks
+# _p4_diff_to_sections -- thin adapter feeding bootstrap_lib's chunker
 # ---------------------------------------------------------------------------
 
 
-def _make_section(depot: str, body_bytes: int) -> str:
-    """Build a single ==== file section padded to roughly `body_bytes` bytes."""
-    header = f"==== {depot}#1 (text) ====\n"
-    # @@ hunk + lines. Pad with `+x` lines so the section is ~body_bytes.
-    line = "+xxxxxxxx\n"  # 10 bytes per line
-    n = max(1, body_bytes // len(line))
-    body = "@@ -0,0 +1,{n} @@\n".format(n=n) + (line * n)
-    return header + body
-
-
-class TestPartitionDiffIntoChunks:
-    def test_single_small_file_fits_one_chunk(self):
-        diff = _make_section("//d/a/foo.cpp", 100)
-        chunks = pr.partition_diff_into_chunks(diff, max_bytes=1024 * 1024)
-        assert len(chunks) == 1
-        assert chunks[0]["files"] == ["//d/a/foo.cpp"]
-        assert chunks[0]["text"].startswith("==== //d/a/foo.cpp")
-
-    def test_empty_diff_returns_no_chunks(self):
-        assert pr.partition_diff_into_chunks("", max_bytes=1024) == []
-
-    def test_balances_when_total_exceeds_max(self):
-        """K = ceil(total / max). Two files of ~600B each with max=1000 -> K=2 chunks of ~600B each.
-
-        The greedy fill-to-max alternative would put both into one 1200B chunk
-        (over cap) or one full + one tiny -- both worse than balanced halves.
-        """
+class TestP4DiffToSections:
+    def test_passes_preamble_and_depot_as_identifier(self):
         diff = (
-            _make_section("//d/a/file1.cpp", 600)
-            + _make_section("//d/b/file2.cpp", 600)
+            "preamble line\n"
+            "==== //depot/foo/bar.cpp#1 (text) ====\n"
+            "@@ -1 +1 @@\n"
+            "-old\n"
+            "+new\n"
+            "==== //depot/foo/baz.h#2 (text) ====\n"
+            "@@ -5 +5 @@\n"
+            "-a\n"
+            "+b\n"
         )
-        chunks = pr.partition_diff_into_chunks(diff, max_bytes=1000)
-        assert len(chunks) == 2
-        # Each chunk got exactly one file.
-        assert chunks[0]["files"] == ["//d/a/file1.cpp"]
-        assert chunks[1]["files"] == ["//d/b/file2.cpp"]
-        # Both well-balanced, well under max.
-        assert all(c["bytes"] < 1000 for c in chunks)
-
-    def test_never_splits_a_file_even_when_oversized(self):
-        """A single file larger than max_bytes lands alone in an oversized chunk.
-
-        We can't split a file mid-hunk -- the section is atomic. Caller accepts
-        the breach for that one chunk; oversize is bounded by file size.
-        """
-        diff = _make_section("//d/huge.bin", 2048)
-        chunks = pr.partition_diff_into_chunks(diff, max_bytes=512)
-        assert len(chunks) == 1
-        assert chunks[0]["bytes"] >= 2048
-        assert chunks[0]["files"] == ["//d/huge.bin"]
-
-    def test_prefers_directory_boundary_for_split(self):
-        """When the chunk is past target, close at a directory transition, not mid-dir.
-
-        Files in dirA/ should stay together; the split happens between dirA and dirB.
-        """
-        sections = (
-            _make_section("//d/dirA/f1.cpp", 300)
-            + _make_section("//d/dirA/f2.cpp", 300)
-            + _make_section("//d/dirA/f3.cpp", 300)
-            + _make_section("//d/dirB/g1.cpp", 300)
-            + _make_section("//d/dirB/g2.cpp", 300)
-            + _make_section("//d/dirB/g3.cpp", 300)
-        )
-        # K = ceil(1800 / 1500) = 2. Target = 900.
-        # Without the directory preference, the boundary would fall after f3
-        # (cur ~900). With the preference it also falls there since f3 -> g1
-        # IS a dir transition; this test verifies the boundary doesn't cut
-        # mid-directory when the size hits target mid-way.
-        chunks = pr.partition_diff_into_chunks(sections, max_bytes=1500)
-        assert len(chunks) == 2
-        # Each chunk holds exactly one directory's files.
-        assert chunks[0]["files"] == [
-            "//d/dirA/f1.cpp", "//d/dirA/f2.cpp", "//d/dirA/f3.cpp",
-        ]
-        assert chunks[1]["files"] == [
-            "//d/dirB/g1.cpp", "//d/dirB/g2.cpp", "//d/dirB/g3.cpp",
-        ]
-
-    def test_holds_off_close_until_directory_transition(self):
-        """When target is hit mid-directory, keep packing until we cross a dir boundary.
-
-        20 files in dirA + 10 in dirB, ~131 B each. Total ~3930 B, max=3000
-        forces K=2, target=1965. Naive close-at-target would close after
-        ~15 dirA files (mid-directory). The directory-aware logic holds off
-        until the first dirA -> dirB transition, putting all 20 dirA files
-        in chunk0 (~2620 B, still under max) and all 10 dirB files in chunk1.
-        """
-        sections = "".join(
-            _make_section(f"//d/dirA/f{i}.cpp", 80) for i in range(20)
-        ) + "".join(
-            _make_section(f"//d/dirB/g{i}.cpp", 80) for i in range(10)
-        )
-        chunks = pr.partition_diff_into_chunks(sections, max_bytes=3000)
-        assert len(chunks) == 2
-        # All dirA files land in chunk0, all dirB files in chunk1 -- no dir splits.
-        assert all("/dirA/" in f for f in chunks[0]["files"])
-        assert all("/dirB/" in f for f in chunks[1]["files"])
-        assert len(chunks[0]["files"]) == 20
-        assert len(chunks[1]["files"]) == 10
-
-    def test_hard_cap_forces_close_even_within_directory(self):
-        """When the next file would breach max, close even if still in the same dir.
-
-        Hard cap wins over the dir-coherence preference -- we can't let a
-        chunk grow past the Read tool's threshold just to keep a directory
-        together.
-        """
-        sections = (
-            _make_section("//d/dirA/f1.cpp", 700)
-            + _make_section("//d/dirA/f2.cpp", 700)
-            + _make_section("//d/dirA/f3.cpp", 700)
-        )
-        chunks = pr.partition_diff_into_chunks(sections, max_bytes=1000)
-        # Each file alone is 700+, two files together would be 1400 > 1000.
-        # So each file gets its own chunk.
-        assert len(chunks) == 3
-        for c in chunks:
-            assert len(c["files"]) == 1
-
-    def test_preamble_kept_with_first_chunk(self):
-        """Diff preamble (before any ==== header) attaches to the first chunk."""
-        diff = "preamble line\n" + _make_section("//d/a.cpp", 100)
-        chunks = pr.partition_diff_into_chunks(diff, max_bytes=1024 * 1024)
-        assert len(chunks) == 1
-        assert chunks[0]["text"].startswith("preamble line\n")
-
-
-class TestWriteChunks:
-    def test_writes_files_and_returns_index(self, tmp_path):
-        chunks = [
-            {"text": "chunk0 text\n", "files": ["//d/a.cpp"], "bytes": 12},
-            {"text": "chunk1 text\n", "files": ["//d/b.cpp", "//d/c.cpp"], "bytes": 12},
-        ]
-        index = pr.write_chunks(chunks, tmp_path)
-        assert (tmp_path / "chunks" / "chunk-000.diff").read_text() == "chunk0 text\n"
-        assert (tmp_path / "chunks" / "chunk-001.diff").read_text() == "chunk1 text\n"
-        assert index == [
-            {"index": 0, "path": "chunks/chunk-000.diff", "files": ["//d/a.cpp"], "bytes": 12},
-            {"index": 1, "path": "chunks/chunk-001.diff", "files": ["//d/b.cpp", "//d/c.cpp"], "bytes": 12},
-        ]
-
-    def test_removes_stale_chunks_from_prior_run(self, tmp_path):
-        """A re-run that produces fewer chunks must not leave orphaned chunk files behind."""
-        chunks_dir = tmp_path / "chunks"
-        chunks_dir.mkdir()
-        (chunks_dir / "chunk-000.diff").write_text("stale 0\n")
-        (chunks_dir / "chunk-001.diff").write_text("stale 1\n")
-        (chunks_dir / "chunk-099.diff").write_text("stale 99\n")
-
-        new_chunks = [{"text": "fresh\n", "files": ["//d/x.cpp"], "bytes": 6}]
-        pr.write_chunks(new_chunks, tmp_path)
-
-        survivors = sorted(p.name for p in chunks_dir.glob("chunk-*.diff"))
-        assert survivors == ["chunk-000.diff"]
-        assert (chunks_dir / "chunk-000.diff").read_text() == "fresh\n"
-
-    def test_empty_chunks_writes_no_files(self, tmp_path):
-        index = pr.write_chunks([], tmp_path)
-        assert index == []
-        # Directory created (empty), no chunk files.
-        assert (tmp_path / "chunks").is_dir()
-        assert list((tmp_path / "chunks").iterdir()) == []
+        preamble, sections = pr._p4_diff_to_sections(diff)
+        assert preamble == "preamble line\n"
+        assert len(sections) == 2
+        assert sections[0]["identifier"] == "//depot/foo/bar.cpp"
+        assert sections[0]["text"].startswith("==== //depot/foo/bar.cpp#1")
+        assert "-old" in sections[0]["text"]
+        assert sections[1]["identifier"] == "//depot/foo/baz.h"
 
 
 # ---------------------------------------------------------------------------
@@ -902,61 +759,6 @@ class TestResolveLocalPaths:
         with patch.object(pr, "run_p4", return_value=(1, "", "error")):
             result = pr.resolve_local_paths(["//depot/a.cpp"])
         assert result == {"//depot/a.cpp": None}
-
-
-# ---------------------------------------------------------------------------
-# collect_claude_mds
-# ---------------------------------------------------------------------------
-
-
-class TestCollectClaudeMds:
-    def test_walks_to_workspace_root(self, tmp_path):
-        (tmp_path / "CLAUDE.md").write_text("root rule\n")
-        sub = tmp_path / "src" / "module"
-        sub.mkdir(parents=True)
-        (sub.parent / "CLAUDE.md").write_text("src rule\n")
-        target = sub / "file.cpp"
-        target.write_text("code\n")
-
-        result = pr.collect_claude_mds(target, tmp_path)
-        # Nearest first
-        assert len(result) == 2
-        assert Path(result[0]).read_text() == "src rule\n"
-        assert Path(result[1]).read_text() == "root rule\n"
-
-    def test_no_claude_md(self, tmp_path):
-        sub = tmp_path / "src"
-        sub.mkdir()
-        target = sub / "file.cpp"
-        target.write_text("")
-        assert pr.collect_claude_mds(target, tmp_path) == []
-
-    def test_stops_at_workspace_root(self, tmp_path):
-        # CLAUDE.md ABOVE workspace root should not be collected
-        outer = tmp_path / "outer"
-        outer.mkdir()
-        (tmp_path / "CLAUDE.md").write_text("outer rule\n")  # outside workspace
-        ws_root = outer / "ws"
-        ws_root.mkdir()
-        (ws_root / "CLAUDE.md").write_text("ws rule\n")
-        sub = ws_root / "src"
-        sub.mkdir()
-        target = sub / "file.cpp"
-        target.write_text("")
-
-        result = pr.collect_claude_mds(target, ws_root)
-        assert len(result) == 1
-        assert Path(result[0]).read_text() == "ws rule\n"
-
-    def test_no_workspace_root_walks_to_fs_root(self, tmp_path):
-        (tmp_path / "CLAUDE.md").write_text("rule\n")
-        sub = tmp_path / "src"
-        sub.mkdir()
-        target = sub / "file.cpp"
-        target.write_text("")
-        result = pr.collect_claude_mds(target, None)
-        # At minimum, should find tmp_path/CLAUDE.md
-        assert any(Path(r).read_text() == "rule\n" for r in result)
 
 
 # ---------------------------------------------------------------------------
