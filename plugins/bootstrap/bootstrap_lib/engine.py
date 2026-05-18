@@ -313,6 +313,13 @@ def main():
             label=bootstrap_label, output_file=output_file,
             persistent_output_file=persistent_output_file,
         )
+        # Clear this project's cooldown stamp so the next SessionStart re-runs
+        # bootstrap instead of silently throttling. The shell hook stamps the
+        # cooldown optimistically before invoking the engine; on failure we
+        # roll that back so out-of-band fixes (user runs winget themselves,
+        # restarts their IDE, edits config) are picked up on the next session
+        # rather than waiting out the throttle window.
+        _clear_project_cooldown(data_dir, args.project_dir)
     elif display_content:
         emit_success_response(display_content, label=bootstrap_label, output_file=output_file)
     # else: nothing to show — silent exit (no file written in background mode)
@@ -601,8 +608,14 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
 
         if result.install_cmd:
             from .tool_check import run_install
+            from .path_repair import repair_path
             ok, _output = run_install(result.install_cmd)
             if ok:
+                # Installers (winget, etc.) update HKLM/HKCU PATH but the
+                # change isn't visible to this already-running process.
+                # Re-merge the registry PATH so the recheck can see the
+                # freshly-installed binary's directory.
+                repair_path()
                 recheck = check_tool(name, install_cmds, current_os, install_path=tool_install_path)
                 if recheck.passed:
                     tools_installed.append((result.name, f"via `{result.install_cmd}`"))
@@ -1212,8 +1225,14 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
         # Tool not found — attempt remediation if install command available
         if result.install_cmd:
             from .tool_check import run_install
+            from .path_repair import repair_path
             ok, _output = run_install(result.install_cmd)
             if ok:
+                # Installers (winget, etc.) update HKLM/HKCU PATH but the
+                # change isn't visible to this already-running process.
+                # Re-merge the registry PATH so the recheck can see the
+                # freshly-installed binary's directory.
+                repair_path()
                 recheck = check_tool(name, install_cmds, current_os, install_path=tool_install_path)
                 if recheck.passed:
                     tools_installed.append((result.name, f"via `{result.install_cmd}`"))
@@ -1924,6 +1943,31 @@ def _read_new_log_entries(data_dir, start_time=None):
     return "".join(new_lines).rstrip("\n")
 
 
+def _clear_project_cooldown(data_dir, project_dir):
+    """Delete this project's cooldown stamp so the next SessionStart re-runs.
+
+    Mirrors the path construction in hooks/sessionstart/session-bootstrap.sh:
+    <data_dir>/cooldowns/last_run_epoch.<sha1(project_dir)>, with the same
+    "_global_" fallback when no project_dir is available. Silent on any I/O
+    error -- a stale stamp at worst delays the next re-run by the throttle
+    window; it never blocks remediation.
+    """
+    import hashlib
+    key = "_global_"
+    if project_dir:
+        try:
+            key = hashlib.sha1(project_dir.encode("utf-8")).hexdigest()
+        except Exception:
+            pass
+    stamp = os.path.join(data_dir, "cooldowns", f"last_run_epoch.{key}")
+    try:
+        os.remove(stamp)
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
+
+
 def _update_display_marker(data_dir):
     """Update the display marker to the latest timestamp in the log file."""
     from .log import LOG_FILENAME
@@ -2003,6 +2047,29 @@ def emit_success_response(log_content, label="bootstrap", output_file=None):
         print(json.dumps(response))
 
 
+# Failure types fix-all can deterministically remediate without user input.
+# Anything else (config items asking for API keys, python_stub admin
+# elevation, parse errors in user-edited files, generic custom failures)
+# is manual-only — Claude can guide but can't run a one-shot command.
+_AUTO_FIXABLE_TYPES = frozenset({
+    "path", "venv", "git_dep", "ini", "pypi",
+    "json", "marketplace", "plugin", "sync_to_data",
+})
+
+
+def _is_auto_fixable(failure):
+    t = failure.get("type")
+    if t == "tool":
+        # Tools are fix-all eligible only when we know how to install them.
+        return bool(failure.get("install_cmd"))
+    return t in _AUTO_FIXABLE_TYPES
+
+
+def _format_indexes(idxs):
+    """Render a sorted index list as '#1, #2, #4' for footer copy."""
+    return ", ".join(f"#{i}" for i in idxs)
+
+
 def emit_failure_response(failures, current_os, log_content, label="bootstrap", output_file=None, persistent_output_file=None):
     """Emit hook JSON with fix-all directives to stdout or file.
 
@@ -2054,7 +2121,30 @@ def emit_failure_response(failures, current_os, log_content, label="bootstrap", 
             generic = f.get("agent_msg") or f.get("user_msg") or f.get("message") or f"{f['type']}: see log"
             agent_lines.append(f"{i}. {generic}{plugin_tag}")
 
-    agent_lines.append("\nAfter fixing, type 'fix-all' or 'fixed' to re-run bootstrap, or restart Claude Code.")
+    # Classify each item as fix-all eligible vs manual-only so the footer
+    # matches reality. Three cases: all auto, mixed, all manual.
+    auto_idxs = [i for i, f in enumerate(failures, 1) if _is_auto_fixable(f)]
+    manual_idxs = [i for i, f in enumerate(failures, 1) if not _is_auto_fixable(f)]
+
+    if auto_idxs and not manual_idxs:
+        agent_trailer = "\nAll items above are fix-all eligible. Run 'fix-all' to resolve them, or type 'fixed' after manual fixes."
+        user_msg = "Tell Claude 'fix-all' to auto-fix, or 'fixed' after manual fixes."
+    elif auto_idxs and manual_idxs:
+        agent_trailer = (
+            f"\nRun 'fix-all' to auto-resolve items {_format_indexes(auto_idxs)}. "
+            f"Items {_format_indexes(manual_idxs)} need manual attention — guide the user "
+            f"through the steps above. Type 'fixed' once everything is resolved."
+        )
+        user_msg = (
+            f"Tell Claude 'fix-all' to auto-fix items {_format_indexes(auto_idxs)}; "
+            f"items {_format_indexes(manual_idxs)} need manual attention. "
+            f"Type 'fixed' once done."
+        )
+    else:
+        agent_trailer = "\nNone of these are fix-all eligible — guide the user through the steps above. Type 'fixed' once resolved."
+        user_msg = "These issues need manual attention — work through them with Claude. Type 'fixed' once resolved."
+
+    agent_lines.append(agent_trailer)
     agent_msg = "\n".join(agent_lines)
 
     # Special-case: if all failures are python_stub, emit a focused, user-friendly
@@ -2096,8 +2186,8 @@ def emit_failure_response(failures, current_os, log_content, label="bootstrap", 
     if output_file:
         # Background mode: consumed by UserPromptSubmit hook.
         # `additionalContext` gives Claude the full log + fix directives,
-        # `systemMessage` is user-facing only.
-        user_msg = "Tell Claude 'fix-all' to auto-fix, or 'fixed' after manual fixes."
+        # `systemMessage` is user-facing only. `user_msg` was selected above
+        # based on the auto/manual partition.
         response = {
             "systemMessage": f"{label} -> Setup issues found. Fix in order:\n{log_content}\n\n{user_msg}",
             "hookSpecificOutput": {

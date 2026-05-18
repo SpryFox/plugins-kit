@@ -1,4 +1,14 @@
 {
+  "tools": [
+    {
+      "name": "jq",
+      "install": {
+        "windows": "winget install --id jqlang.jq --accept-source-agreements --accept-package-agreements --silent --disable-interactivity",
+        "macos": "brew install jq",
+        "ubuntu": "manual"
+      }
+    }
+  ],
   "marketplaces": [
     {
       "name": "plugins-kit",
