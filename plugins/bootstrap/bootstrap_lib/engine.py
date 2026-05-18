@@ -301,6 +301,13 @@ def main():
     # Update the log display marker
     _update_display_marker(data_dir)
 
+    # Export BOOTSTRAP_BIN_<TOOL> env vars to $CLAUDE_ENV_FILE so plugin
+    # scripts can invoke recorded tools directly by absolute path. No-op
+    # when CLAUDE_ENV_FILE isn't set (e.g. console mode, tests). See
+    # docs/planning/bootstrap/tool-resolution-redesign.md.
+    from . import tool_paths as _tool_paths
+    _tool_paths.export_tool_env_vars(data_dir)
+
     # Step 8: Emit results
     output_file = os.path.join(data_dir, "bootstrap_display.pending") if args.background else None
     persistent_alert_path = os.path.join(data_dir, "bootstrap_alert.json")
@@ -590,6 +597,7 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
     from .tool_check import check_tool
     from .path_check import check_path_entry
     from .venv_check import check_venv, export_venv_env_var
+    from . import tool_paths
 
     failures = []
     p = "[bootstrap-setup] "
@@ -603,9 +611,12 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
         result = check_tool(name, install_cmds, current_os, install_path=tool_install_path)
 
         if result.passed:
+            if result.path:
+                tool_paths.record(data_dir, result.name, result.path)
             ok_entries.append(f"{p}{result.name}: ok - {result.message}")
             continue
 
+        install_state = "no_install_cmd"
         if result.install_cmd:
             from .tool_check import run_install
             from .path_repair import repair_path
@@ -618,9 +629,26 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
                 repair_path()
                 recheck = check_tool(name, install_cmds, current_os, install_path=tool_install_path)
                 if recheck.passed:
+                    if recheck.path:
+                        tool_paths.record(data_dir, recheck.name, recheck.path)
                     tools_installed.append((result.name, f"via `{result.install_cmd}`"))
                     continue
-            action_entries.append(f"{p}{result.name}: FAILED - install attempted but still not found")
+                install_state = "installed_but_path_stale"
+            else:
+                install_state = "install_failed"
+
+        if install_state == "installed_but_path_stale":
+            # We installed it but still can't find it. Per the "we install
+            # what we need to a location we control" philosophy this should
+            # not happen -- if it does, the installer put the binary
+            # somewhere that's not in HKLM/HKCU Path. Bootstrap bug, not a
+            # user instruction.
+            action_entries.append(
+                f"{p}{result.name}: install succeeded but binary not findable afterward "
+                f"(bootstrap should download to ~/.local/bin instead)"
+            )
+        elif install_state == "install_failed":
+            action_entries.append(f"{p}{result.name}: install command failed - `{result.install_cmd}`")
         else:
             action_entries.append(f"{p}{result.name}: FAILED - {result.message}")
 
@@ -628,6 +656,7 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
             "type": "tool",
             "name": result.name,
             "message": result.message,
+            "install_state": install_state,
             "install_cmd": result.install_cmd,
             "plugin": "bootstrap",
         })
@@ -1206,6 +1235,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
     from .path_check import check_path_entry
     from .venv_check import check_venv, export_venv_env_var
     from .git_dep_check import check_git_dep
+    from . import tool_paths
 
     failures = []
     prefix = ""
@@ -1219,10 +1249,13 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
         result = check_tool(name, install_cmds, current_os, install_path=tool_install_path)
 
         if result.passed:
+            if result.path:
+                tool_paths.record(data_dir, result.name, result.path)
             ok_entries.append(f"{prefix}{result.name}: ok - {result.message}")
             continue
 
         # Tool not found — attempt remediation if install command available
+        install_state = "no_install_cmd"
         if result.install_cmd:
             from .tool_check import run_install
             from .path_repair import repair_path
@@ -1235,10 +1268,21 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                 repair_path()
                 recheck = check_tool(name, install_cmds, current_os, install_path=tool_install_path)
                 if recheck.passed:
+                    if recheck.path:
+                        tool_paths.record(data_dir, recheck.name, recheck.path)
                     tools_installed.append((result.name, f"via `{result.install_cmd}`"))
                     continue  # no failure to record
-            # Install failed or tool still missing after install
-            action_entries.append(f"{prefix}{result.name}: FAILED - install attempted but still not found")
+                install_state = "installed_but_path_stale"
+            else:
+                install_state = "install_failed"
+
+        if install_state == "installed_but_path_stale":
+            action_entries.append(
+                f"{prefix}{result.name}: install succeeded but binary not findable afterward "
+                f"(bootstrap should download to ~/.local/bin instead)"
+            )
+        elif install_state == "install_failed":
+            action_entries.append(f"{prefix}{result.name}: install command failed - `{result.install_cmd}`")
         else:
             action_entries.append(f"{prefix}{result.name}: FAILED - {result.message}")
 
@@ -1246,6 +1290,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
             "type": "tool",
             "name": result.name,
             "message": result.message,
+            "install_state": install_state,
             "install_cmd": result.install_cmd,
             "plugin": plugin_name,
         })
@@ -2060,7 +2105,12 @@ _AUTO_FIXABLE_TYPES = frozenset({
 def _is_auto_fixable(failure):
     t = failure.get("type")
     if t == "tool":
-        # Tools are fix-all eligible only when we know how to install them.
+        # Tools are fix-all eligible only when we know how to install them
+        # AND the install hasn't already run successfully. If install_state
+        # is "installed_but_path_stale", rerunning the install just produces
+        # "already installed" — fix-all can't help; it's a bootstrap bug.
+        if failure.get("install_state") == "installed_but_path_stale":
+            return False
         return bool(failure.get("install_cmd"))
     return t in _AUTO_FIXABLE_TYPES
 
@@ -2082,7 +2132,27 @@ def emit_failure_response(failures, current_os, log_content, label="bootstrap", 
     for i, f in enumerate(failures, 1):
         plugin_tag = f" [{f['plugin']}]" if f.get("plugin", "bootstrap") != "bootstrap" else ""
         if f["type"] == "tool":
-            agent_lines.append(f"{i}. Install {f['name']}{plugin_tag}: `{f['install_cmd'] or 'see documentation'}`")
+            state = f.get("install_state", "no_install_cmd")
+            if state == "installed_but_path_stale":
+                # Don't prescribe a reinstall — winget will say "already
+                # installed" and the user loops. Tell Claude what actually
+                # happened so it can decide whether to ask the user to
+                # verify with `where.exe` or escalate as a bootstrap bug.
+                agent_lines.append(
+                    f"{i}. {f['name']}{plugin_tag}: install ran successfully but bootstrap still "
+                    f"can't find the binary. Don't re-run the install command — it will say "
+                    f"\"already installed.\" Ask the user to run `where.exe {f['name']}` "
+                    f"(Windows) or `which {f['name']}` (Unix) and report where the binary "
+                    f"actually lives; that location should be added to ~/.local/bin or bootstrap's "
+                    f"download fallback."
+                )
+            elif state == "install_failed":
+                agent_lines.append(
+                    f"{i}. Install of {f['name']} failed{plugin_tag}. "
+                    f"Re-run and capture output: `{f['install_cmd']}`"
+                )
+            else:
+                agent_lines.append(f"{i}. Install {f['name']}{plugin_tag}: `{f['install_cmd'] or 'see documentation'}`")
         elif f["type"] == "path":
             agent_lines.append(f"{i}. Add {f['path']} to PATH{plugin_tag}")
         elif f["type"] == "venv":

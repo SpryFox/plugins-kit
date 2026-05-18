@@ -7,6 +7,38 @@
         "macos": "brew install jq",
         "ubuntu": "manual"
       }
+    },
+    {
+      "name": "git",
+      "install": {
+        "windows": "winget install --id Git.Git --accept-source-agreements --accept-package-agreements --silent --disable-interactivity",
+        "macos": "manual",
+        "ubuntu": "manual"
+      }
+    },
+    {
+      "name": "curl",
+      "install": {
+        "windows": "manual",
+        "macos": "manual",
+        "ubuntu": "manual"
+      }
+    },
+    {
+      "name": "tar",
+      "install": {
+        "windows": "manual",
+        "macos": "manual",
+        "ubuntu": "manual"
+      }
+    },
+    {
+      "name": "claude",
+      "install": {
+        "macos": "manual",
+        "windows": "manual",
+        "ubuntu": "manual"
+      }
     }
   ],
   "marketplaces": [

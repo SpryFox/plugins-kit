@@ -1,4 +1,14 @@
 {
+  "tools": [
+    {
+      "name": "p4",
+      "install": {
+        "macos": "brew install --cask perforce",
+        "windows": "manual",
+        "ubuntu": "manual"
+      }
+    }
+  ],
   "venv": {
     "check_imports": ["upyrc", "yaml"]
   },
