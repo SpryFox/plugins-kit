@@ -61,16 +61,28 @@ def bootstrap(ctx: Any) -> None:
             "openrouter_credential",
             field=API_KEY_ENV,
             user_msg=(
-                "openrouter-kit needs an OpenRouter API key. "
-                "Get one at https://openrouter.ai/keys, then run "
-                "`openrouter-kit set-key` to store it."
+                "openrouter-kit needs an OpenRouter API key. Ask Claude to "
+                "'fix-all' and Claude will walk you through it."
             ),
             agent_msg=(
-                f"Ask the user for their OpenRouter API key (from "
-                f"https://openrouter.ai/keys). Run `openrouter-kit set-key` "
-                f"to write it to {USER_ENV_FILE}, OR write a .env file at "
-                f"that path containing `{API_KEY_ENV}=<key>`. The key starts "
-                f"with `sk-or-v1-`."
+                "openrouter-kit needs an OpenRouter API key. Give the user "
+                "this prepared statement, verbatim:\n\n"
+                "  > openrouter-kit needs an API key. Two ways to set it:\n"
+                "  >   1. (preferred -- key stays out of the transcript) Type "
+                "this in the prompt with the leading `!`:\n"
+                "  >        ! openrouter-kit set-key\n"
+                "  >      It'll prompt for the key with a hidden input. "
+                "Paste from https://openrouter.ai/keys (starts with `sk-or-v1-`).\n"
+                "  >   2. If you'd rather paste the key here and have me set "
+                "it for you, paste it. WARNING: the key will be visible in "
+                "the transcript, so prefer option 1 unless you don't mind.\n\n"
+                "If the user picks option 2 and pastes a key, run:\n"
+                "  openrouter-kit set-key --key <THE_KEY>\n"
+                "It validates against GET /auth/key before writing to "
+                f"{USER_ENV_FILE}. Do NOT run `openrouter-kit set-key` "
+                "without --key yourself -- it requires an interactive hidden "
+                "prompt you cannot provide; it must be the user who runs the "
+                "bang-prefixed form."
             ),
         )
         ctx.log("openrouter: no API key found")

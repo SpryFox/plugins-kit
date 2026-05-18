@@ -40,7 +40,7 @@
     {
       "name": "bootstrap",
       "description": "Centralized bootstrap engine for Claude Code plugins",
-      "version": "0.10.11",
+      "version": "0.10.12",
       "author": {
         "name": "Christina"
       },
@@ -110,7 +110,7 @@
     {
       "name": "openrouter-kit",
       "description": "OpenRouter API key management and account validation: shared library, CLI, and bootstrap-time credential check that other plugins/projects depend on for OpenRouter access",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "author": {
         "name": "Christina"
       },

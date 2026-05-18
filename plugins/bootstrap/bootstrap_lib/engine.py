@@ -2044,6 +2044,15 @@ def emit_failure_response(failures, current_os, log_content, label="bootstrap", 
             agent_lines.append(f"{i}. python stub fix needed{plugin_tag}: {f.get('agent_msg', f.get('message', 'see log'))}")
         elif f["type"] == "manifest_parse":
             agent_lines.append(f"{i}. {f.get('agent_msg', f.get('message', 'manifest parse error'))}{plugin_tag}")
+        else:
+            # Generic fallback for custom failure types (e.g. emitted by plugin
+            # custom_bootstrap scripts via ctx.add_failure). If the failure
+            # provides agent_msg / user_msg / message, surface it directly so
+            # the fix-all directive reaches Claude instead of being silently
+            # dropped. Without this, any unrecognized type produced no line at
+            # all and Claude had no remediation guidance.
+            generic = f.get("agent_msg") or f.get("user_msg") or f.get("message") or f"{f['type']}: see log"
+            agent_lines.append(f"{i}. {generic}{plugin_tag}")
 
     agent_lines.append("\nAfter fixing, type 'fix-all' or 'fixed' to re-run bootstrap, or restart Claude Code.")
     agent_msg = "\n".join(agent_lines)

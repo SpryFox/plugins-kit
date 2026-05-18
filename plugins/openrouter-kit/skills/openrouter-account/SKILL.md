@@ -31,25 +31,18 @@ The plugin ships a single CLI script at `${CLAUDE_PLUGIN_ROOT}/scripts/openroute
 
 ### Invocation
 
-Use the bootstrap-installed venv path so cwd does not matter:
+The plugin ships shims at `bin/openrouter-kit` (Unix) and `bin/openrouter-kit.cmd` (Windows). Claude Code adds each plugin's `bin/` directory to PATH, so the short form works from any cwd:
 
 ```bash
-# Windows
-~/.claude/plugins/data/plugins-kit/openrouter-kit/.venv/Scripts/python.exe \
-    ~/.claude/plugins/cache/plugins-kit/openrouter-kit/<version>/scripts/openrouter_kit_cli.py status
-
-# macOS / Linux
-~/.claude/plugins/data/plugins-kit/openrouter-kit/.venv/bin/python \
-    ~/.claude/plugins/cache/plugins-kit/openrouter-kit/<version>/scripts/openrouter_kit_cli.py status
+openrouter-kit status
+openrouter-kit set-key            # interactive (hidden prompt)
+openrouter-kit set-key --key sk-or-v1-...   # non-interactive; key lands in transcript
+openrouter-kit which
 ```
 
-When the plugin is being developed locally via `--plugin-dir`, swap the cache path for the working-copy path:
+`set-key` without `--key` requires an interactive hidden prompt -- Claude cannot supply that itself, so the user must run it (prefix with `!` to execute in the current prompt). `--key` is the non-interactive path Claude can run on the user's behalf when the user has already shared the key in chat.
 
-```bash
-uv run python <plugin-dir>/scripts/openrouter_kit_cli.py status
-```
-
-The script is stdlib-only; any Python 3.10+ interpreter works.
+The script is stdlib-only; the shims call the standalone Python that bootstrap installs.
 
 ## Common scenarios
 
