@@ -89,8 +89,8 @@
     },
     {
       "name": "awesome-kit",
-      "description": "Christina's cross-domain skills: a shared communication framework (hand-off + verbose-updates), meta-skills that evolve it (knowledge-encoding, update-documentation), and /plugin-ecosystem (interactive 16:9 HTML poster of marketplaces and plugins). Depends on plugins-kit:skills-kit for the shared audit framework. /claude-explorer moved to plugins-kit:prototypes in 0.5.0.",
-      "version": "0.5.0",
+      "description": "Christina's cross-domain skills: a shared communication framework (hand-off + verbose-updates), the update-documentation meta-skill, and /plugin-ecosystem (interactive 16:9 HTML poster of marketplaces and plugins). Depends on plugins-kit:skills-kit for the shared audit framework and knowledge-encoding. /claude-explorer moved to plugins-kit:prototypes in 0.5.0.",
+      "version": "0.5.1",
       "author": {
         "name": "Christina"
       },

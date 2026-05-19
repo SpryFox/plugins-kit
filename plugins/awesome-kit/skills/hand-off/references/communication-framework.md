@@ -2,7 +2,7 @@
 
 How the human and the agent communicate across turns and sessions. This is the canonical glossary; the two skills that operationalize it -- `/verbose-updates` (turn-level) and `/hand-off` (session-level) -- both reference it. When a term defined here appears in either skill, the definition lives here; the skill describes only how the protocol applies the term.
 
-The framework is co-located with `/knowledge-encoding`, which is the meta-skill for evolving the framework itself.
+The framework references `/knowledge-encoding` (in plugins-kit:skills-kit), which is the meta-skill for evolving the framework itself.
 
 ## Glossary
 
