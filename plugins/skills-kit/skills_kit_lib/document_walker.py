@@ -1,0 +1,91 @@
+"""Fenced-YAML-block extraction from markdown documents.
+
+A document may contain multiple fenced yaml blocks; each block may carry
+multiple top-level keys; each recognized typed-unit root key is one unit. The
+walker returns one entry per recognized unit across the whole document.
+"""
+
+import re
+
+from .schema_registry import SCHEMAS_BY_ROOT, SKILL_TYPE_ROOTS
+
+try:
+    import yaml as _pyyaml
+    HAVE_YAML = True
+except ImportError:
+    _pyyaml = None
+    HAVE_YAML = False
+
+
+_YAML_BLOCK_RE = re.compile(r"^```ya?ml\s*\n(.*?)^```", re.MULTILINE | re.DOTALL)
+
+
+CONTRACT_ROOT_KEYS = SKILL_TYPE_ROOTS + ("claude_md",)
+
+
+def iter_yaml_blocks(body_text: str):
+    """Yield each fenced YAML block's text as a string.
+
+    Pure iteration -- no parsing, no recognition. Use collect_yaml_units when
+    you need parsed + registered units.
+    """
+    for m in _YAML_BLOCK_RE.finditer(body_text):
+        yield m.group(1)
+
+
+def collect_yaml_units(body_text: str) -> tuple[list[tuple[str, dict]], str | None]:
+    """Walk all fenced yaml blocks; collect (unit_root, block_data) for every
+    recognized root key across all blocks.
+
+    Returns:
+        (units, detected_root_no_parser) where:
+        - units is a list of (unit_root, block_data) tuples. Empty if no blocks
+          parsed or no recognized units found.
+        - detected_root_no_parser is set only when pyyaml is missing AND a
+          contract root key was detected by regex; the audit knows a contract
+          is staged but cannot validate.
+    """
+    units: list[tuple[str, dict]] = []
+    detected_root_no_parser: str | None = None
+
+    if HAVE_YAML:
+        for text in iter_yaml_blocks(body_text):
+            try:
+                data = _pyyaml.safe_load(text)
+            except Exception:
+                continue
+            if isinstance(data, dict):
+                for key in data.keys():
+                    if key in SCHEMAS_BY_ROOT:
+                        units.append((key, data))
+        return units, None
+
+    # pyyaml missing -- detect a contract root key by regex inside any yaml fence
+    for text in iter_yaml_blocks(body_text):
+        for key in CONTRACT_ROOT_KEYS:
+            if re.search(rf"^{key}\s*:", text, re.MULTILINE):
+                detected_root_no_parser = key
+                break
+        if detected_root_no_parser:
+            break
+    return [], detected_root_no_parser
+
+
+def extract_skill_type_unit(body_text: str) -> tuple[dict | None, str, str | None]:
+    """Return (parsed_dict, err, root) for the skill-type contract unit if present.
+
+    Used by audit when the skill-type contract unit needs to be located distinct
+    from portable units. Returns the first matching skill-type (or claude_md)
+    unit's full block_data.
+    """
+    units, detected_root_no_parser = collect_yaml_units(body_text)
+    if units:
+        for root, data in units:
+            if root in CONTRACT_ROOT_KEYS:
+                return data, "", root
+        return None, "no-contract-yaml-block", None
+    if detected_root_no_parser:
+        return None, "no-yaml-parser", detected_root_no_parser
+    if HAVE_YAML:
+        return None, "no-contract-yaml-block", None
+    return None, "no-yaml-parser-no-block", None

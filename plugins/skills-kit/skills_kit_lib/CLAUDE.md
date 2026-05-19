@@ -1,0 +1,127 @@
+# skills_kit_lib insights
+
+Per-directory insight repository for the plugin-level Python library that powers audit / classify / tag / schema-validation across the skills-kit ecosystem. Insights captured during the YAML contract refactor (Phase Y1-Y4) and the library extraction (current session).
+
+**Phase / finding identifier legend.** `Phase Y1`-`Y4` = phases of the YAML contract refactor (Y1 = stdlib walker design; Y4 = local-code-review conversion). `Phase 4.2` = corpus audit pass. `F-4-2-N` = numbered findings from Phase 4.2 (e.g. F-4-2-2 / F-4-2-3 = paired user-only technique-skill findings). For the full legend, see ../skills/skill-authoring/CLAUDE.md.
+
+```yaml
+claude_md:
+  _schema_version: "1"
+  scope:
+    directory: plugins/skills-kit/skills_kit_lib
+    covers:
+      - schema_engine / schema_registry / rule_fragments design (the typed-unit DSL)
+      - schemas/portable, schemas/skill_types, schemas/claude_md (the registered schemas)
+      - document_walker (fenced-yaml-block extraction)
+      - markdown_heuristics (the heuristic vocabulary used by the legacy markdown fallback)
+      - corpus (SKILL.md discovery across user/project/plugin tiers)
+      - checks (owner_doc validation and other corpus-level rules)
+      - audit / classify / tag (per-skill CLI utilities, invoked via `python -m skills_kit_lib.<module>`)
+      - dependency posture (stdlib + pyyaml; editable-installed via pyproject.toml)
+    excludes:
+      - skill content authoring (covered by ../skills/skill-authoring/references/glossary.md and framework.md)
+      - bootstrap-engine internals (covered by plugins/bootstrap/skills/bootstrap/SKILL.md)
+  insights:
+    - id: strip_code_fences_before_heuristics
+      keywords: [code fence, fenced block, narrative body, mixed-type false positive, audience-claude, yaml block, stripped body, heuristic over-fire]
+      summary: Apply narrative heuristics to body text with fenced code blocks removed; structured data inside fences must not raise type-signal scores.
+      detail: |
+        markdown_heuristics.strip_code_fences() removes ```...``` blocks before applying type signal heuristics
+        (count_ordered_steps, has_recognition_marker, etc.). The principle: structured data inside
+        fenced YAML/JSON/python is reference content for machine comprehension, not narrative or
+        procedure. Counting ordered list items inside a fenced ```python code block raised technique
+        scores on reference-skills (bootstrap mixed-type false positive). markdown_heuristics.has_yaml_block()
+        is the inverse signal: presence of a fenced YAML block is a positive reference-content marker.
+      origin: Phase 4.2 audit lessons-learned (F-4-2 series); Audience-Claude principle.
+      added: "2026-04-28"
+    - id: user_only_via_disable_model_invocation
+      keywords: [user-only, disable-model-invocation, slash-command, technique-skill carve-out, ordered-step exemption]
+      summary: User-only technique-skills (disable-model-invocation true in frontmatter) skip the ordered-step body requirement; the technique IS the slash-command.
+      detail: |
+        markdown_heuristics.is_user_only(fm) returns true when frontmatter sets disable-model-invocation: true.
+        type_signals(body, fm) adds +3 to technique-skill score for user-only skills so classify
+        recognizes them as technique-skill even when the body has zero ordered-step entries.
+        audit.check_technique_skill threads frontmatter so the ordered-step row reports n/a for
+        user-only skills with note "user-only ... the technique IS the slash-command". The unified
+        TECHNIQUE_SKILL_SCHEMA in schemas/skill_types.py enforces "techniques must have steps OR output_template"
+        instead of the previous variant-separated schemas.
+      origin: Phase 4.2 audit lessons-learned F-4-2-2 / F-4-2-3.
+      added: "2026-04-28"
+    - id: schema_walker_rule_vocabulary
+      keywords: [schema, walker, validator, rule grammar, required, type, min_len, forbid_regex, items, keys, value_schema]
+      summary: schema_engine.py uses a small Python-dict rule vocabulary; no external schema language.
+      detail: |
+        Each schema row is a dict with keys from a fixed vocabulary: required (bool), type
+        (string|list|dict|int|bool), min_len/max_len (int), forbid_regex (regex with msg), items
+        (subschema for list members), keys (subschema for dict children), value_schema (subschema for
+        every value in a dict with arbitrary keys -- used by ACTIONS_SCHEMA). schema_engine._validate_value
+        walks recursively. Cross-record rules (e.g. facts_must_include_gotcha across nested+top-level
+        sources) live in audit.py as document-level checks evaluated after the walker. No jsonschema
+        or pydantic dependency.
+      origin: Phase Y1 design choice for the YAML contract refactor.
+      added: "2026-04-28"
+    - id: three_audit_states
+      keywords: [audit states, yaml-validated, contract-staged, legacy fallback, pyyaml, transition]
+      summary: audit.py has three runtime states; the staged middle state lets converted skills audit cleanly before pyyaml lands.
+      detail: |
+        State 1 (yaml-validated): pyyaml present + a recognized YAML contract block. Schema walker runs, deterministic per-row pass/fail, mixed-type signal deterministic. Legacy heuristics skipped.
+        State 2 (contract-staged): pyyaml absent BUT a YAML contract block is detected by regex (root key match). Universal rows pass; YAML contract row reports judgment-required ("install pyyaml to validate"); legacy heuristics skipped (because a contract is staged, just unvalidated). Mixed-type signal deferred.
+        State 3 (legacy markdown fallback): no YAML contract block at all. All legacy heuristics run as before; mixed-type via narrative scoring.
+        The middle state was added so the converted skills don't report bogus markdown-heuristic failures during the transition.
+      origin: Phase Y1.3 implementation; permission denial on global pip install of pyyaml in this dev env.
+      added: "2026-04-28"
+    - id: pyyaml_dependency_posture
+      keywords: [pyyaml, dependency, stdlib, plugin venv, bootstrap, optional]
+      summary: pyyaml is a runtime dependency declared in plugins/skills-kit/pyproject.toml; the audit runs without it via the contract-staged state.
+      detail: |
+        plugins/skills-kit/pyproject.toml declares pyyaml under dependencies. The bootstrap engine sets up a plugin venv at ~/.claude/plugins/data/plugins-kit/skills-kit/.venv/ where the audit script can be invoked with pyyaml available. Outside that venv (e.g. running with bare system Python), audit.py degrades gracefully: HAVE_YAML False, contract-staged state, JUDGMENT row noting parser unavailable. Do not add stdlib-only YAML parsing -- the multi-step YAML sequence pattern uses real YAML (lists, nested mappings) that a hand-rolled subset parser cannot cover.
+      origin: Phase Y1.1 dependency decision; proposal section E.6.
+      added: "2026-04-28"
+    - id: extra_keys_allowed
+      keywords: [extra keys, schema strictness, open record, narration, subagents, skill-specific structure]
+      summary: The validator does not reject unknown keys; skill-specific structure (e.g. p4-code-review's narration, subagents) is preserved.
+      detail: |
+        validate() walks declared schema keys but does not error on additional keys present in the YAML data. This permits skill-specific structured fields the generic schema doesn't cover (e.g. p4-code-review carries narration:, subagents:, false_positive_guardrails: alongside the technique_skill: required keys). Forbidden cross-type keys (rules:, counters:, facts:, etc. inside a wrong root) DO fail. The trade: unknown keys pass silently rather than flagging for review. Y5 schema lock may revisit this if real audits surface load-bearing content hiding in extra keys.
+      origin: Phase Y4 conversion of local-code-review; proposal recommendation in section E.3.
+      added: "2026-04-28"
+    - id: owner_doc_bidirectional_drift
+      keywords: [owner_doc, schema drift, prose spec, audit, bidirectional protection, instance block]
+      summary: Each registered schema declares owner_doc pointing at its canonical prose spec; corpus audit asserts the owner doc contains a valid instance of the schema's root key.
+      detail: |
+        Every schema in schemas/* declares an owner_doc field (plugin-root-relative path). The
+        check_schema_owner_docs_validate() function in checks.py walks the registry, opens each
+        owner_doc, finds <root>: blocks via document_walker.collect_yaml_units, and validates each
+        instance against its schema. This catches drift in both directions: a schema change that
+        adds a required field breaks the owner doc's example; an owner doc that edits to use a
+        key the schema doesn't know fails validation. Schemas are Python literals (canonical);
+        .md docs are prose specs that must round-trip through validation. The owner_doc field
+        does NOT make .md the source of truth -- it's a back-reference, not a forward dependency.
+      origin: Current session library-extraction design.
+      added: "2026-05-19"
+    - id: portable_units_vs_skill_type_roots
+      keywords: [portable unit, skill type, registry role, mutual exclusion, mixed-type drift]
+      summary: Portable units coexist freely; skill-type roots are mutually exclusive within a document.
+      detail: |
+        schema_registry tracks two role categories: SKILL_TYPE_ROOTS (reference_skill,
+        pattern_skill, technique_skill, discipline_skill, domain_skill, capability_skill,
+        audit_skill) and PORTABLE_UNIT_ROOTS (references, facts, area_config, sub_areas, actions).
+        detect_mixed_type_yaml only flags drift on skill-type roots; portable units are
+        first-class typed YAML primitives that can attach to any skill-type unit or stand
+        alone. claude_md is a third role -- one document type, no mutual exclusion with anything
+        because it identifies a CLAUDE.md not a SKILL.md.
+      origin: Current session typed-unit composition design.
+      added: "2026-05-19"
+  conventions:
+    - rule: When extending heuristics, modify markdown_heuristics.py first; audit.py and classify.py both import from there.
+      keywords: [SSOT, markdown_heuristics, helper extraction, drift]
+      why: Duplicating heuristics between audit.py and classify.py was an early-version mistake; the refactor pulled them into a shared module so a single update reaches both consumers.
+    - rule: Custom schema rules go in audit.py as document-level checks evaluated after the walker. Do not embed custom logic inside the schema engine itself.
+      keywords: [walker, custom rule, schema flag, validation order]
+      why: Engine stays general; custom rules are per-document and benefit from explicit audit-time invocation (check_facts_cross_rules, check_cross_block_drift). Engine should remain reusable across schema types.
+    - rule: Audit output rows describe what was checked, not what was good or bad in isolation. Verdict is one of pass/fail/judgment-required/n/a.
+      keywords: [verdict vocabulary, four-state output, audit row]
+      why: Three-state (pass/fail) loses the conditional-not-fired case (n/a) and the agent-must-judge case (judgment-required). Both are real and deserve their own slot.
+    - rule: Every new schema declares an owner_doc pointing at the canonical prose spec; the prose spec must contain a valid instance block of the schema's root key.
+      keywords: [owner_doc, schema registration, prose spec, drift protection]
+      why: Bidirectional drift protection. Schema changes that break the owner doc's example are caught; owner doc edits that drift from the schema are caught. Adding a schema without an owner_doc bypasses this and silently allows drift.
+```

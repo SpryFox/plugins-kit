@@ -39,25 +39,19 @@ layout. When run without --out the report goes to:
 
 The resolved output path is always echoed to stdout.
 
-Discovery is delegated to the plugin-level `_corpus.py` shared module so this
-script and the markdown roster (also under /skill-audit) enumerate the same
-corpus.
+Discovery is delegated to the plugin-level `skills_kit_lib.corpus` module so
+this script and the markdown roster (also under /skill-audit) enumerate the
+same corpus.
 """
 
 import argparse
 import html
 import json
 import os
-import sys
 from collections import OrderedDict
 from pathlib import Path
 
-# Plugin-level scripts/ dir holds the shared corpus module. From this script
-# (.../skills/skill-audit/scripts/skill_hierarchy_report.py) walk three
-# parents up to land in .../skills-kit/, then into scripts/.
-_PLUGIN_ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(_PLUGIN_ROOT / "scripts"))
-from _corpus import (  # type: ignore  # noqa: E402
+from skills_kit_lib.corpus import (
     PluginEntry,
     SkillCorpus,
     SkillRecord,

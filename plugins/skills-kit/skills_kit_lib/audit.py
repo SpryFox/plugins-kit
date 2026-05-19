@@ -1,17 +1,15 @@
-#!/usr/bin/env python3
-"""audit.py -- run deterministic contract checks against a SKILL.md.
+"""audit -- run deterministic contract checks against a SKILL.md.
 
 Usage:
-    python audit.py <path-to-SKILL.md>
-    python audit.py <path-to-SKILL.md> --json
+    python -m skills_kit_lib.audit <path-to-SKILL.md>
+    python -m skills_kit_lib.audit <path-to-SKILL.md> --json
 
-Emits a per-row verdict: pass / fail / judgment-required / n/a. Rows
-flagged judgment-required are not deterministic at this level; the
-agent runs them by hand against the contract in
-references/framework.md.
-
-Stdlib-only.
+Emits a per-row verdict: pass / fail / judgment-required / n/a. Rows flagged
+judgment-required are not deterministic at this level; the agent runs them
+by hand against the contract in skill-authoring's framework.md.
 """
+
+from __future__ import annotations
 
 import argparse
 import json
@@ -21,10 +19,15 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Any
 
-from _shared import (
-    CANONICAL_TYPES,
+from .document_walker import (
+    HAVE_YAML,
+    collect_yaml_units,
+    extract_skill_type_unit,
+)
+from .markdown_heuristics import (
     Body,
     Frontmatter,
+    CANONICAL_TYPES,
     count_ordered_steps,
     has_companion_declaration,
     has_conditional_loading,
@@ -43,67 +46,14 @@ from _shared import (
     parse_frontmatter,
     strip_code_fences,
 )
-
-from schemas import (
+from .schema_engine import validate
+from .schema_registry import (
+    PORTABLE_UNIT_ROOTS,
     SCHEMAS_BY_ROOT,
+    SKILL_TYPE_ROOTS,
     detect_mixed_type_yaml,
     resolve_schema,
-    validate,
 )
-
-try:
-    import yaml as _pyyaml
-    HAVE_YAML = True
-except ImportError:
-    _pyyaml = None
-    HAVE_YAML = False
-
-
-_YAML_BLOCK_RE = re.compile(r"^```ya?ml\s*\n(.*?)^```", re.MULTILINE | re.DOTALL)
-
-
-CONTRACT_ROOT_KEYS = (
-    "reference_skill",
-    "pattern_skill",
-    "technique_skill",
-    "discipline_skill",
-    "domain_skill",
-    "capability_skill",
-    "audit_skill",
-    "claude_md",
-)
-
-
-def extract_yaml_contract(body_text: str) -> tuple[dict | None, str, str | None]:
-    """Find the first fenced yaml block whose content parses as a contract block.
-
-    Returns (parsed_dict, error_msg, detected_root). When pyyaml is available and
-    parsing succeeds, returns (data, "", root_key). When pyyaml is missing but a
-    contract block is detected by regex, returns (None, "no-yaml-parser",
-    detected_root) -- the audit knows a contract is staged but can't validate.
-    When no contract block is present at all, returns (None, "no-contract-yaml-block", None).
-    """
-    detected_root: str | None = None
-    if HAVE_YAML:
-        for m in _YAML_BLOCK_RE.finditer(body_text):
-            text = m.group(1)
-            try:
-                data = _pyyaml.safe_load(text)
-            except Exception:
-                continue
-            if isinstance(data, dict):
-                for key in CONTRACT_ROOT_KEYS:
-                    if key in data:
-                        return data, "", key
-        return None, "no-contract-yaml-block", None
-
-    # pyyaml missing -- detect a contract root key by regex inside any yaml fence
-    for m in _YAML_BLOCK_RE.finditer(body_text):
-        text = m.group(1)
-        for key in CONTRACT_ROOT_KEYS:
-            if re.search(rf"^{key}\s*:", text, re.MULTILINE):
-                return None, "no-yaml-parser", key
-    return None, "no-yaml-parser-no-block", None
 
 
 RESERVED_NAMES = {"anthropic", "claude"}
@@ -226,11 +176,7 @@ def check_universal(fm: Frontmatter | None, body: Body, skill_dir: Path) -> list
         else:
             out.append(CheckResult("references one-hop-deep (ADP)", PASS))
 
-    # Match local references/X.md citations only. A negative lookbehind on
-    # `/` and `:` excludes plugin-qualified cross-references like
-    # `<plugin-name>:<skill-name>/references/X.md` and any other path that
-    # places `references/` as a non-leading path segment. Cross-plugin refs
-    # point at files in other plugins and are not auditable here.
+    # Match local references/X.md citations only; exclude cross-plugin refs.
     cited = set(re.findall(r"(?<![/:])references/([a-zA-Z0-9_\-]+\.md)", body.text))
     if not cited:
         out.append(CheckResult("references cited in body all exist", NA, "no references cited in body"))
@@ -309,10 +255,6 @@ def check_technique_skill(body: Body, skill_dir: Path, fm: Frontmatter | None) -
         f"{step_count} ordered-step entries detected",
     ))
     if step_count > 3:
-        # Dec-8: explicit step-tracking required when technique has >3 steps,
-        # satisfied by EITHER a paste-able `- [ ]` checklist OR an explicit
-        # step-tracker invocation (TaskCreate, scratch file, etc.). The goal
-        # is the discipline of explicit step-tracking, not the markdown syntax.
         has_checklist = has_tickbox_list(body.text)
         has_tracker = has_step_tracker_invocation(body.text)
         signal_present = has_checklist or has_tracker
@@ -405,15 +347,7 @@ def check_domain_skill(body: Body, skill_dir: Path) -> list[CheckResult]:
 
 
 def mixed_type_signal(body_text: str) -> tuple[int, list[str]]:
-    """Detect cross-type signals on the narrative body (code fences stripped).
-
-    Skill bodies can include structured data inside fenced code blocks (yaml,
-    json, python). That structured data is reference content for machine
-    comprehension, not narrative or procedure -- it must not raise the mixed-
-    type score by its internal shape. We strip fences before counting any
-    narrative-driven signal, and treat the presence of a YAML block itself as
-    a reference-content marker (not technique).
-    """
+    """Detect cross-type signals on the narrative body (code fences stripped)."""
     narrative = strip_code_fences(body_text)
     signals: list[str] = []
     if has_excuse_reality_table(narrative) or has_red_green_refactor(narrative):
@@ -439,11 +373,7 @@ TYPE_RUNNERS = {
 
 
 def check_yaml_contract(yaml_data: dict) -> tuple[list[CheckResult], str | None]:
-    """Validate the YAML block against the appropriate schema.
-
-    Returns (results, root_key). results is a list of CheckResult rows; root_key
-    is the resolved type root (or None if no contract block recognized).
-    """
+    """Validate the YAML block against the appropriate schema."""
     results: list[CheckResult] = []
 
     roots_present = detect_mixed_type_yaml(yaml_data)
@@ -471,13 +401,106 @@ def check_yaml_contract(yaml_data: dict) -> tuple[list[CheckResult], str | None]
     return results, root_key
 
 
-def audit_claude_md(claude_md_path: Path, content: str) -> dict[str, Any]:
-    """Audit a CLAUDE.md insight file. Skips skill-frontmatter universal checks
-    (CLAUDE.md does not carry skill metadata); validates only the claude_md
-    YAML contract block.
+def check_portable_units(body_text: str) -> list[CheckResult]:
+    """Validate every top-level portable typed unit in the document body."""
+    results: list[CheckResult] = []
+    if not HAVE_YAML:
+        return results
+    units, _ = collect_yaml_units(body_text)
+    for unit_root, block_data in units:
+        if unit_root not in PORTABLE_UNIT_ROOTS:
+            continue
+        schema = SCHEMAS_BY_ROOT.get(unit_root)
+        if schema is None:
+            continue
+        fails, _checked = validate(block_data, schema)
+        if not fails:
+            results.append(CheckResult(
+                f"yaml: portable unit '{unit_root}'",
+                PASS,
+                "all required keys present, all rules satisfied",
+            ))
+        else:
+            for path, msg in fails:
+                results.append(CheckResult(f"yaml: {path}", FAIL, msg))
+    return results
+
+
+def check_facts_cross_rules(body_text: str, declared_type: str | None) -> list[CheckResult]:
+    """Enforce document-level facts cross-rules across the union of all sources.
+
+    Facts can live nested in `reference_skill.facts` OR as a top-level `facts:`
+    portable unit, OR both. The cross-rules ("at least one fact carries gotchas",
+    "at least one fact carries example", "at least one fact exists") apply over
+    the union, not per-source. Only applies to reference-skill documents.
     """
+    if declared_type != "reference-skill":
+        return []
+    if not HAVE_YAML:
+        return []
+
+    all_facts: list[dict] = []
+    units, _ = collect_yaml_units(body_text)
+    for unit_root, block_data in units:
+        if unit_root == "reference_skill":
+            inner = block_data.get("reference_skill", {})
+            if isinstance(inner, dict):
+                inner_facts = inner.get("facts", [])
+                if isinstance(inner_facts, list):
+                    all_facts.extend(f for f in inner_facts if isinstance(f, dict))
+        elif unit_root == "facts":
+            top_facts = block_data.get("facts", [])
+            if isinstance(top_facts, list):
+                all_facts.extend(f for f in top_facts if isinstance(f, dict))
+
+    results: list[CheckResult] = []
+    if not all_facts:
+        results.append(CheckResult(
+            "yaml: facts present (cross-source)",
+            FAIL,
+            "reference-skill requires at least one fact (nested in reference_skill: or as a top-level facts: unit, or both)",
+        ))
+        return results
+
+    results.append(CheckResult(
+        "yaml: facts present (cross-source)",
+        PASS,
+        f"{len(all_facts)} facts across all sources",
+    ))
+    has_gotcha = any(f.get("gotchas") for f in all_facts)
+    results.append(CheckResult(
+        "yaml: >=1 fact carries gotchas (cross-source)",
+        PASS if has_gotcha else FAIL,
+        "" if has_gotcha else "no fact carries a gotchas list across any source",
+    ))
+    has_example = any(f.get("example") for f in all_facts)
+    results.append(CheckResult(
+        "yaml: >=1 fact carries example (cross-source)",
+        PASS if has_example else FAIL,
+        "" if has_example else "no fact carries an example block across any source",
+    ))
+    return results
+
+
+def check_cross_block_drift(body_text: str) -> CheckResult | None:
+    """Cross-block mixed-type drift detection."""
+    if not HAVE_YAML:
+        return None
+    units, _ = collect_yaml_units(body_text)
+    skill_type_roots = sorted({root for (root, _) in units if root in SKILL_TYPE_ROOTS})
+    if len(skill_type_roots) > 1:
+        return CheckResult(
+            "yaml: single skill-type root (cross-block)",
+            FAIL,
+            f"multiple skill-type roots across blocks (mixed-type drift): {skill_type_roots}",
+        )
+    return None
+
+
+def audit_claude_md(claude_md_path: Path, content: str) -> dict[str, Any]:
+    """Audit a CLAUDE.md insight file."""
     body = parse_body(content)
-    yaml_data, yaml_err, detected_root = extract_yaml_contract(body.text)
+    yaml_data, yaml_err, detected_root = extract_skill_type_unit(body.text)
     yaml_results: list[CheckResult] = []
     yaml_root: str | None = None
 
@@ -532,7 +555,7 @@ def audit(skill_md_path: Path) -> dict[str, Any]:
     universal = check_universal(fm, body, skill_dir)
     declared_type = fm.fields.get("skill-type") if fm else None
 
-    yaml_data, yaml_err, detected_root = extract_yaml_contract(body.text)
+    yaml_data, yaml_err, detected_root = extract_skill_type_unit(body.text)
     yaml_results: list[CheckResult] = []
     yaml_root: str | None = None
     contract_staged = yaml_data is not None or detected_root is not None
@@ -558,6 +581,13 @@ def audit(skill_md_path: Path) -> dict[str, Any]:
             JUDGMENT,
             "no fenced yaml contract block with a recognized root key; falling back to legacy markdown heuristics",
         ))
+
+    yaml_results.extend(check_portable_units(body.text))
+    yaml_results.extend(check_facts_cross_rules(body.text, declared_type))
+
+    cross_block_drift = check_cross_block_drift(body.text)
+    if cross_block_drift is not None:
+        yaml_results.append(cross_block_drift)
 
     type_specific: list[CheckResult] = []
     if not contract_staged and declared_type in TYPE_RUNNERS:
@@ -634,7 +664,7 @@ def render_text(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def main(argv: list[str]) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Audit a SKILL.md against the skill-authoring framework.",
     )

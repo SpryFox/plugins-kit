@@ -19,8 +19,8 @@ A trailing path or `-` selects the output destination:
   /skill-audit roster path/to/file.md       -> that path
   /skill-audit roster -                     -> stdout
 
-Discovery is shared via the plugin-level `_corpus.py` module so both reports
-enumerate the corpus the same way.
+Discovery is shared via the plugin-level `skills_kit_lib.corpus` module so both
+reports enumerate the corpus the same way.
 """
 
 from __future__ import annotations
@@ -32,12 +32,7 @@ from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
 
-# Plugin-level scripts/ dir holds the shared corpus module. From this script
-# (.../skills/skill-audit/scripts/report.py) walk three parents up to land in
-# .../skills-kit/, then into scripts/.
-_PLUGIN_ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(_PLUGIN_ROOT / "scripts"))
-from _corpus import (  # type: ignore  # noqa: E402
+from skills_kit_lib.corpus import (
     PluginEntry,
     SkillCorpus,
     SkillRecord,
