@@ -3,7 +3,7 @@ _schema_version: 1
 name: openrouter-account
 author: christina
 skill-type: technique-skill
-description: Use when checking, setting, or troubleshooting the OpenRouter API key managed by openrouter-kit -- account status, credit balance, key rotation, 401/402 errors. Do NOT use for general LLM/translation work; this only covers credential management.
+description: Use when checking, setting, or rotating the OpenRouter API key, or diagnosing 401/402 errors. Do NOT use for general LLM/translation work.
 ---
 
 # OpenRouter Account

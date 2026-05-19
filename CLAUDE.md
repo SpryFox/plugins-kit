@@ -334,7 +334,7 @@ claude_md:
           macOS/Linux: ~/.claude/plugins/data/<marketplace>/<plugin>/.venv/bin/python
         The path does not change across plugin versions and resolves correctly from any cwd.
         Use it directly in SKILL.md examples instead of `uv run python`.
-      origin: Surfaced 2026-05-05 in unreal-kit fix-up-redirectors -- broke Phase 2 with ModuleNotFoundError: yaml. Fixed in 0.9.4.
+      origin: "Surfaced 2026-05-05 in unreal-kit fix-up-redirectors -- broke Phase 2 with ModuleNotFoundError: yaml. Fixed in 0.9.4."
       added: "2026-05-05"
   conventions:
     - rule: When adding a new plugin Python dependency, update <plugin>/pyproject.toml AND <plugin>/bootstrap.json venv.check_imports together.
@@ -343,4 +343,7 @@ claude_md:
     - rule: Never invoke pip, python -m venv, or any other Python package manager manually for plugin dependencies.
       keywords: [no manual install, pip, venv, plugin deps, bootstrap-only]
       why: Plugin dependency installs go through the bootstrap engine so they end up in the right per-plugin venv at ~/.claude/plugins/data/<marketplace>/<plugin>/.venv/. Manual installs land in the wrong location and confuse the engine's cache.
+    - rule: Always run /git-code-review on non-trivial changelists before committing.
+      keywords: [git-code-review, code review, pre-commit, non-trivial CL, multi-file commit, before submit, multi-agent review]
+      why: Multi-agent review catches bugs and CLAUDE.md violations the author may miss; running it before commit lets the author fix issues in the same staging cycle rather than after the fact. "Non-trivial" = anything beyond a single-file mechanical change (typo fix, version bump). When in doubt, run it.
 ```

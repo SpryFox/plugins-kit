@@ -2,7 +2,7 @@
 _schema_version: 1
 name: plugin-ecosystem
 author: christina
-description: Use when generating, refreshing, or customizing the Claude Code plugin ecosystem poster (an interactive 16:9 HTML browser of installed marketplaces and plugins, with a click-to-expand skill-list panel). Do NOT use for skill authoring or single-plugin inspection.
+description: Use when generating or refreshing the Claude Code plugin ecosystem poster (16:9 HTML browser of marketplaces and plugins). Do NOT use for skill authoring.
 ---
 
 ## Skill Purpose

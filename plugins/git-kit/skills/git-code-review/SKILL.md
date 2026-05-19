@@ -3,7 +3,7 @@ _schema_version: 1
 name: git-code-review
 author: christina
 skill-type: technique-skill
-description: Use when reviewing local git changes -- before pushing, before opening a PR, or when looking over what a branch added. Do NOT use for Perforce changelists (see /p4-code-review) or for reviewing an existing GitHub PR by URL.
+description: Use when reviewing local git changes -- before push, before opening a PR, or auditing a branch. Do NOT use for Perforce CLs or existing PRs by URL.
 ---
 
 # Git Code Review

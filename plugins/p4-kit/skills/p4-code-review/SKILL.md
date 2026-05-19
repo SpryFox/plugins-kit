@@ -3,7 +3,7 @@ _schema_version: 1
 name: p4-code-review
 author: christina
 skill-type: technique-skill
-description: Use when reviewing a pending Perforce changelist, or before asking the user to submit a CL just opened. Do NOT use for git diffs (see /git-code-review) or non-Perforce reviews.
+description: Use when reviewing a pending Perforce changelist, or before asking the user to submit a CL. Do NOT use for git diffs or submitted CLs.
 ---
 
 # P4 Code Review
