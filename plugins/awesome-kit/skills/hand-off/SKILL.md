@@ -97,7 +97,7 @@ The eight `##` sections below are template-required. Project-specific `###` subs
 
 ### Length
 
-Soft target: ~250 lines at the high end. The shape is "every section has what it needs, nothing has accumulated unnecessarily." A section that keeps growing is a signal its content belongs in a referenced doc and CLAUDE.md should just link to it. The bundled example at `references/example-claude-md.md` is 257 lines and lands in this zone.
+**Soft target: up to 400 lines.** The shape is "every section has what it needs, nothing has accumulated unnecessarily." A section that keeps growing is a signal its content belongs in a referenced doc and CLAUDE.md should just link to it. CLAUDE.md is auto-loaded every session, so length is a context budget; 400 lines is the comfortable ceiling, not a goal. Land lower when the work allows.
 
 ## `plan.md` -- the plan
 
@@ -106,18 +106,16 @@ Read on turn 1 because CLAUDE.md tells the agent to. Two sections only:
 1. **Accomplished** -- one line per completed step. No implementation detail.
 2. **Forward overview** -- the next 1-3 steps in actionable detail; later steps as one-line summaries only.
 
-**Default target: 2800 characters or below.** Verify every hand-off with `wc -c plan.md`; ASCII-only rule means bytes equal characters. Apply rotation by default to hit this target -- it is not a fallback that activates only when over the limit, it is the standing goal each hand-off should land at. Rotation is the steady-state discipline that keeps the auto-load surface lean; treating it as exceptional ("only when bloated") is how plans drift toward the limit one session at a time.
+**Soft target: up to 400 lines** (verify with `wc -l plan.md`). plan.md is read on turn 1 of every session, so length is a context budget; 400 lines is the comfortable ceiling, not a goal. Land lower when the work allows.
 
-**Hard limit: 4000 characters.** The enforcement gate. If plan.md is over 4000 at the end of Step 3 of the workflow, the hand-off is NOT complete and rotation rules tighten: every section is in scope (primary AND secondary rotation, see below), no future-step detail is preserved as "nice to have", and the bar for keeping content in plan.md flips from "needed soon" to "needed in the very next agent turn." Keep rotating until at or under 4000. The hard limit catches drift; the 2800 default prevents it.
-
-In short: aim for 2800 every time. Only loosen if the next agent genuinely needs more forward detail visible right now (rare). If you hit 4000 you are too late -- recover by aggressive rotation, not by stopping at 3999.
+Apply rotation by default to stay under this target -- it is not a fallback that activates only when over the limit, it is the standing discipline. Rotation is the steady-state habit that keeps the auto-load surface lean; treating it as exceptional ("only when bloated") is how plans drift over 400 one session at a time.
 
 **Rotation strategy: history first, optional second.** When reducing, walk the file with this priority:
 
 1. **Primary -- move historical content out.** Completed-step detail, retrospective context, accumulated session-by-session log -- these go to `log.md` (or `step-N-completed.md`). The plan is for the remaining work, not the work already done. A completed step keeps a one-line summary plus a link to log.md; no implementation detail.
 2. **Secondary -- move not-always-required forward content out.** Identify subsections that the next agent does NOT need on turn 1 of every session: optional branch detail, "alternative approach" subsections, parked-decision lists if they have grown, far-future-step explanations. These go to referenced docs (`alternatives.md`, `parked.md`, `step-N-details.md`) with a one-line pointer in plan.
 
-Always exhaust primary before secondary. Removing future work from plan is more expensive (the next agent has to follow a link to know what's coming) than removing past work (the next agent does not care). If primary alone gets you to 2800, stop -- you preserved maximum visibility into upcoming work.
+When over 400 lines, rotate primary content (completed-step detail to log.md) first; secondary (far-future-step detail to referenced docs) only if primary alone doesn't get under 400. Removing future work from plan is more expensive (the next agent has to follow a link to know what's coming) than removing past work (the next agent does not care).
 
 The plan is a moving window, not a record (the framework's "rotate forward" principle, applied to the auto-load surface).
 
@@ -204,7 +202,7 @@ Two sections: accomplished + forward overview.
 - **Done but uncommitted** -- work is on disk but not yet committed / submitted / merged. Note in plan.md so the next agent does not re-do.
 - **Queued** -- ready to start. The next-1-3-steps actionable detail covers these.
 
-After writing, run `wc -c plan.md`. The target is **at or below 2800 characters** -- this is the default goal applied every hand-off, not a fallback. If over 2800, rotate detailed content out (primary first -- completed-step detail to log.md; secondary if needed -- far-future-step detail to a referenced `step-N-details.md`) and re-verify. If over 4000 you have hit the hard limit -- all primary AND secondary rotation rules become mandatory; keep rotating until at or under 4000, ideally back at or below 2800. Do not move on until the count is at or below 2800; if you stop above 2800 (e.g. 3000-3999) you must justify in your end-of-turn report which forward-step detail genuinely needed the extra room.
+After writing, run `wc -l plan.md`. The target is **at or below 400 lines** -- the comfortable ceiling, not a goal; land lower when the work allows. If over 400, rotate detailed content out (primary first -- completed-step detail to log.md; secondary if needed -- far-future-step detail to a referenced `step-N-details.md`) and re-verify. Do not move on until the count is at or below 400.
 
 ### Step 4 -- Update or create `log.md`
 
@@ -261,7 +259,7 @@ technique_skill:
       - "Producing or updating ./tmp/<slug>/ with CLAUDE.md + plan.md + log.md + optional referenced docs."
       - "Rotating completed-step detail and stale state out of the auto-load surface and into on-demand docs."
       - "Capturing project vocabulary, in-flight triage, and the cold-reader self-containment check."
-      - "Verifying plan.md stays at or under the 4000-character hard limit and ideally at or below 2800."
+      - "Verifying plan.md stays at or below the 400-line soft target."
     excludes:
       - "Ad-hoc end-of-session summaries that produce no on-disk artifacts."
       - "Single-file hand-offs with no accumulating state."
@@ -269,17 +267,17 @@ technique_skill:
     - id: prepare_hand_off
       name: Prepare hand-off folder
       keywords: [hand off, hand-off, continuation, fresh agent, context budget, project folder, plan rotation, vocabulary capture, in-flight triage]
-      goal: "Produce or update a project folder whose CLAUDE.md (eight ## sections under # Project Overview) orients the next agent on turn 1 and whose plan.md is at or below the 2800-character default target (4000 hard-limit fallback)."
+      goal: "Produce or update a project folder whose CLAUDE.md (eight ## sections under # Project Overview) orients the next agent on turn 1 and whose plan.md is at or below the 400-line soft target."
       preconditions:
         - "Current session has work-in-flight that a fresh agent will continue."
-        - "wc -c is available to verify the plan.md size."
+        - "wc -l is available to verify the plan.md size."
       steps:
         - n: 1
           action: "Locate or create the project folder at ./tmp/<short-slug>/. Slug is phase or project scope (the work-unit), not session scope. If folder exists, do three passes: rotation (move completed-step detail out, trim stale CLAUDE.md sections), stale-state (fix anything now untrue), vocabulary (update ## Project vocabulary against terms the session evolved)."
         - n: 2
           action: "Write or update CLAUDE.md using the eight required ## sections under a single # Project Overview: Where we are today (with ### Environment); Where we want to get to; Immediate Priorities; Project vocabulary; Protocols (### Always-invoke skills BEFORE any doc reads; ### Required reads on turn 1; ### Opening response protocol; ### Communication protocol -- default /verbose-updates); Behaviors (### Autonomy status; ### Authorizations; ### Rules to follow; ### Sub-agent orchestration -- main-context preservation; ### Anti-patterns to avoid); Relevant files (### Project folder; ### External files). Apply the session-vs-project filter; run the checklist sweep before declaring done."
         - n: 3
-          action: "Write or update plan.md with two sections: accomplished (one line per completed step) and forward overview (next 1-3 steps actionable; later steps one-line summaries). Before writing forward overview, classify in-flight items into blocked-on-user / blocked-on-prior-step / done-uncommitted / queued; surface blocked-on-user items under ## Immediate Priorities in CLAUDE.md. Run `wc -c plan.md`. Default target is at or below 2800 characters -- apply rotation by default to land there. If between 2800 and 4000, rotate further unless you can justify in your end-of-turn report why the extra forward-step detail is genuinely needed. If at or above 4000 the hard limit is breached: primary AND secondary rotation become mandatory; keep rotating until at or under 4000 and ideally back at or below 2800. Do not move on until the count is at or below 2800 (or, exceptionally, justified above)."
+          action: "Write or update plan.md with two sections: accomplished (one line per completed step) and forward overview (next 1-3 steps actionable; later steps one-line summaries). Before writing forward overview, classify in-flight items into blocked-on-user / blocked-on-prior-step / done-uncommitted / queued; surface blocked-on-user items under ## Immediate Priorities in CLAUDE.md. Run `wc -l plan.md`. Soft target is at or below 400 lines -- the comfortable ceiling, not a goal; land lower when the work allows. If over 400, rotate detailed content out (primary first -- completed-step detail to log.md; secondary if needed -- far-future-step detail to a referenced step-N-details.md) and re-verify. Do not move on until the count is at or below 400."
         - n: 4
           action: "Update or append log.md with dead ends whose reason would re-bite (filter out reasoning now obvious), decision rationale (provenance triad shape where useful), surprises, and any content rotated out of plan.md."
         - n: 5
@@ -291,8 +289,8 @@ technique_skill:
         - "## Project vocabulary is the biggest workflow loss when omitted. If you can't name three vocabulary items the session leaned on, you are under-capturing. Include the decoder for paths that retain old literal names."
         - "## Where we are today and ## Immediate Priorities have a subtle seam: state = static descriptive snapshot (what is true), priorities = decisions / actions queued against that snapshot (what changes next). When in doubt, ask: would this still be true after the agent acts? If yes, it's state."
         - "## Protocols vs ## Behaviors seam: Protocols have a trigger and an output shape (turn 1 -> say the opening-response sentence; end of every turn -> emit the three-part template). Behaviors are standing principles with no trigger -- they constrain how you act regardless of which protocol is firing."
-        - "plan.md has a 2800-character default target verified with `wc -c plan.md`. Apply rotation to hit it every hand-off, not just when bloated -- treating rotation as exceptional is how plans drift toward the 4000 hard limit one session at a time. If you stop above 2800 you must justify which forward-step detail needed the extra room; if you hit 4000 the hard limit is breached and stricter rotation kicks in."
-        - "CLAUDE.md is auto-loaded every session; treat its length as a context budget paid repeatedly. ~250 lines is the soft cap at the high end; sections that keep growing are signals that content belongs in a referenced doc."
+        - "plan.md has a 400-line soft target verified with `wc -l plan.md`. Apply rotation to stay under it every hand-off, not just when bloated -- treating rotation as exceptional is how plans drift over 400 one session at a time. 400 is the comfortable ceiling, not a goal; land lower when the work allows."
+        - "CLAUDE.md is auto-loaded every session; treat its length as a context budget paid repeatedly. Soft target is up to 400 lines; sections that keep growing are signals that content belongs in a referenced doc."
         - "The opening-response protocol in CLAUDE.md is what catches the silent-go-to-work anti-pattern. Skipping it leaves the next agent to invent their own orientation check, or skip it entirely."
         - "Pick the slug at the work-unit's natural scope (phase or project), not the session name. Sessions come and go; the folder outlives them."
         - "Never name a separate must-read decisions.md doc. If a decision is must-read, it belongs in plan.md; if not, it belongs in log.md. A third must-read doc is false economy."
@@ -309,7 +307,7 @@ technique_skill:
       name: Plan as historical record
       keywords: [history in plan, plan accumulates, never rotates]
       why_it_seems_right: "Keeping every step's full detail in plan.md preserves history in one place; readers can scroll for context."
-      why_it_is_wrong: "plan.md is auto-load surface paid every session. Past-step detail in plan bloats the budget for content the next agent will not act on. The 4000-char hard limit forces the rotation discipline; treating plan as a record violates the contract."
+      why_it_is_wrong: "plan.md is auto-load surface paid every session. Past-step detail in plan bloats the budget for content the next agent will not act on. The 400-line soft target enforces the rotation discipline; treating plan as a record violates the contract."
       alternative: "Rotate completed-step detail to log.md (or step-N-completed.md) as steps close. plan.md keeps a one-line summary plus a link."
     - id: session_scoped_slug
       name: Session-scoped folder slug
