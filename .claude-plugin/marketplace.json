@@ -60,7 +60,7 @@
     {
       "name": "git-kit",
       "description": "Git + GitHub multi-agent code review (/git-code-review) plus gh CLI bootstrap (auth + optional org membership). Shares chunking + CLAUDE.md primitives with p4-kit via bootstrap_lib.code_review.",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "author": {
         "name": "Christina"
       },
@@ -70,7 +70,7 @@
     {
       "name": "skills-kit",
       "description": "Skill authoring + shared audit framework. Vocabulary, type contracts, single-skill audit (/skill-audit), cross-reference audit/remediation (/references-audit), and the canonical audit-framework (primitives, compositions, audit-kinds, viewer-kinds) that other plugins' audits and viewers ride on.",
-      "version": "0.12.1",
+      "version": "0.12.2",
       "author": {
         "name": "Christina"
       },
@@ -90,7 +90,7 @@
     {
       "name": "awesome-kit",
       "description": "Christina's cross-domain skills: a shared communication framework (hand-off + verbose-updates), the update-documentation meta-skill, and /plugin-ecosystem (interactive 16:9 HTML poster of marketplaces and plugins). Depends on plugins-kit:skills-kit for the shared audit framework and knowledge-encoding. /claude-explorer moved to plugins-kit:prototypes in 0.5.0.",
-      "version": "0.5.2",
+      "version": "0.5.3",
       "author": {
         "name": "Christina"
       },
@@ -110,7 +110,7 @@
     {
       "name": "openrouter-kit",
       "description": "OpenRouter API key management and account validation: shared library, CLI, and bootstrap-time credential check that other plugins/projects depend on for OpenRouter access",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "author": {
         "name": "Christina"
       },
