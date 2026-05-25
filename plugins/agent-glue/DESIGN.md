@@ -18,7 +18,7 @@ A standalone primitive for handing Claude a unit of work and getting the result 
 
 Useful directly to any consumer that wants Claude to do something + come back with a structured result. Also the substrate the work subsystem's claude_inference and claude_agent workers dispatch through.
 
-Design is open today on three points (queue storage, signal mechanism, writer scope). See `claude-work-queue/DESIGN.md`.
+The queue is file-based on disk, signaled via a Stop-hook re-prompt, and open to any writer. See `claude-work-queue/DESIGN.md`.
 
 ## work-system
 

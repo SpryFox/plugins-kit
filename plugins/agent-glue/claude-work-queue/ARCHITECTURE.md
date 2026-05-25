@@ -2,33 +2,37 @@
 
 Shared patterns are in `core/ARCHITECTURE.md`.
 
-## Internal lib layout
+## Entities
+
+Entity-type definitions live as yaml files in `./entities/`; they are authored in the first implementation increment.
+
+- `WorkItem` -- one unit of work for Claude (prompt, optional input payload, optional result schema, identifier, requested timestamp).
+- `WorkItemResult` -- Claude's response to a WorkItem (output payload conforming to the optional result schema, completion timestamp; or an Errored component instead of output).
+
+## Components
+
+Per-component schemas live in `./components/`; they are authored alongside the entity types in the first implementation increment.
+
+Subsystem-specific components: `Prompt`, `InputPayload`, `ResultSchema`, `WorkItemId`, `RequestedAt`, `CompletedAt`.
+
+The work-queue references the cross-cutting `Errored` component from `core/components/` for the failure shape on a WorkItemResult.
+
+## Storage layout
+
+The queue is a directory on disk:
 
 ```
-agent_glue_lib/claude_work_queue/
-  __init__.py
-  ...                  # populated once the design questions are answered
+<queue_root>/
+  pending/                  # WorkItems awaiting pickup; lexicographic-first wins
+    <item_id>.yaml
+  in_progress/              # WorkItems currently being processed
+    <item_id>.yaml
+  done/                     # completed items + their result siblings
+    <item_id>.yaml
+    <item_id>.result.yaml
 ```
 
-## Entities and components
-
-Provisional sketch -- final shapes depend on the three open design questions in DESIGN.md.
-
-Likely entity types:
-
-- `WorkItem` -- one unit of work for Claude (prompt, optional input payload, optional result-schema, where the result will be written, identifier).
-- `WorkItemResult` -- Claude's response (output payload, optional error, completion timestamp).
-
-Likely components, names provisional:
-
-- `Prompt` (the instructions for Claude).
-- `InputPayload` (optional structured input).
-- `ResultSchema` (optional JSON Schema the result must satisfy).
-- `ResultLocation` (where Claude writes the result).
-- `WorkItemId`, `RequestedAt`, `CompletedAt`.
-- The cross-cutting `Errored` and `Status` from core.
-
-These are sketches; the storage / signaling / writer-scope answers reshape them.
+Default `<queue_root>` is `<consumer_root>/.claude-work-queue/`. The directory layout, the atomic-claim mechanism (rename from `pending/` to `in_progress/`), and the consumer API are detailed in DESIGN.md.
 
 ## Cross-subsystem interface
 
@@ -37,10 +41,10 @@ The primitive is consumed via:
 ```python
 from agent_glue_lib.claude_work_queue import submit, wait, result
 
-item_id = submit(prompt=..., input=..., schema=...)
+item_id = submit(prompt=..., input=..., schema=..., queue_root=...)
 output = wait(item_id, timeout=...)
 # or, non-blocking:
 status = result(item_id)
 ```
 
-This is the surface the work subsystem's claude_inference and claude_agent worker submitters will call. Other consumers (a CI script, a scheduled job, a hand-rolled tool) use the same surface.
+The work subsystem's claude_inference and claude_agent worker submitters call this surface; other consumers (a CI script, a scheduled job, a hand-rolled tool, a shell command writing directly into `pending/`) use the same surface or the documented wire format.

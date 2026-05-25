@@ -14,46 +14,49 @@ Three responsibilities, separable:
 
 A consumer interacts with the primitive at two boundaries: pushing items (`submit(item) -> id`) and reading results (`result(id) -> ...`). Everything in between is the subsystem's responsibility.
 
-## Open design questions
+## Design decisions
 
-Three questions gate the implementation plan.
+Three structural decisions were open during early design; both consumer reviews converged on the same answers (see `USER-FEEDBACK.md`). These are now locked.
 
-### Where does the queue live?
+### Queue storage: file-based on disk
 
-Options under consideration:
+The queue lives in a known directory; each work item is a yaml file. Pending items live under `pending/`; completed items move to `done/` with a result yaml alongside.
 
-- **File-based on disk** (`~/.claude/queue/pending/<id>.yaml`, `~/.claude/queue/done/<id>.yaml`). Cross-process, cross-session, survives restarts. Easy to inspect, easy to back up, easy to lose to a missed `git status`.
-- **SQLite database** at a known path. Transactional pickup (no two consumers grab the same item), structured queries (list pending by tag, list completed by requester), still cross-process. More code than the file approach.
-- **In-memory in the Claude Code session.** Lost on session end. Fast, no on-disk footprint. Eliminates any cross-process or scheduled-job consumer.
+```
+<queue_root>/
+  pending/
+    <item_id>.yaml          # WorkItem entity
+  in_progress/
+    <item_id>.yaml          # WorkItem moved here when claimed; ephemeral
+  done/
+    <item_id>.yaml          # original WorkItem
+    <item_id>.result.yaml   # WorkItemResult sibling
+```
 
-The choice affects what the queue can express. File-based and SQLite both admit external writers; in-memory only admits same-session writers.
+Default `<queue_root>` is `<consumer_root>/.claude-work-queue/`. A consumer may override per-call.
 
-### What signals Claude that work is available?
+Rationale: cross-process accessibility (the queue is writable by any program with filesystem access -- shell scripts, scheduled jobs, subprocess-spawned `claude -p` invocations, hand-rolled tools); yaml-readable (matches the rest of agent-glue's "yaml all the way down" substrate; queue items can be inspected via `cat` / `grep` / `diff`); survives session restarts (long-running batches can be paused and resumed across separate Claude Code sessions); the WorkItem yaml carries enough context that someone unfamiliar with the originating session can pick up the item.
 
-Options under consideration:
+### Signaling: Stop-hook with re-prompt
 
-- **Session-start hook.** Claude checks the queue when a session boots; pending items get surfaced as the first thing Claude sees. Simple, predictable, but only fires when a session starts -- items added mid-session don't get attention until the next boot.
-- **Stop hook with re-prompt.** When Claude finishes a turn, a hook checks the queue and re-prompts Claude with the next pending item if one exists. Picks up items added at any point. Couples the queue to turn boundaries.
-- **External trigger spawns a fresh session.** A scheduled job or external program detects a pending item and starts a new Claude session pointed at the queue. Decouples the queue from any running session. Adds a launch dependency (scheduler / cron / OS-level service).
+Claude is notified of pending items via a Claude Code Stop hook that runs after each turn. If the queue has any items in `pending/`, the hook re-prompts Claude with the next item's contents and identifier. Items added mid-session are picked up on the next turn boundary; items added between sessions are picked up on the next session-start (the same hook runs at session start as well).
 
-These compose: a deployment could use the session-start hook for items present at boot, the Stop hook for items added during the session, and the external trigger for items that need attention when no session is running.
+The hook is plain shell -- a thin wrapper that lists `pending/`, picks the next item by lexicographic order (item IDs are timestamp-prefixed so this is FIFO-ish), and emits the item's prompt into the conversation.
 
-### Who else writes to it?
+Rationale: picks up items added at any point in a session (a session-start-only hook would miss mid-session adds; an external-trigger model would require launching a new session per item, which is expensive); couples cleanly to turn boundaries (Claude finishes a thought, the hook checks the queue, the next thought starts on the next item); composes with the session-start case (same hook script, called at both points).
 
-Options under consideration:
+### Writer scope: open to any writer
 
-- **Claude-only.** Only the current Claude Code session pushes items. The queue is an in-session task list with some persistence. Simplest scope; least powerful.
-- **Claude + scheduled jobs.** A cron-style scheduler can drop items in alongside Claude itself. Useful for "every day at 9am, ask Claude to do X."
-- **Open to any writer.** External programs (CI, IDE plugins, terminal scripts) drop items in directly using the queue's wire format. The queue becomes a general inter-process inbox for Claude. Requires the wire format to be human-authorable and stable across versions.
+The queue's wire format (one yaml file per item, with documented field names and a stable on-disk layout) is human-authorable. Any program that can write a yaml file with the right shape into `<queue_root>/pending/` is a valid producer: a Python script using the consumer API, a shell command writing a yaml literal, a CI job invoking `cat > pending/<id>.yaml`, a different Claude Code session, an external scheduler.
 
-Cross-process writers force the queue to live in a known place with a stable on-disk shape. Claude-only allows more flexibility in storage.
+Rationale: the primitive's value comes from being a general inbox for Claude work; restricting writes to Python-only API consumers (as SQLite-with-API would have done) would force every external writer through a Python dependency and would block use cases like "bulk runner in a shell script drops 200 items, leaves Claude to process them" or "subprocess-spawned `claude -p` invocations drop their results back into the queue for the orchestrator to pick up." File-based + open-writer keeps that surface flat.
 
 ## How the work subsystem consumes this
 
-When the design questions are answered, the work subsystem's claude_inference and claude_agent workers become thin submitters over this primitive:
+The work subsystem's claude_inference and claude_agent workers are thin submitters over this primitive:
 
 ```python
-# inside agent_glue_lib/work/workers/claude_inference.py (sketch; not implemented yet)
+# inside agent_glue_lib/work/workers/claude_inference.py (sketch)
 def submit(request: WorkRequest, ...) -> WorkResult:
     item = build_claude_work_item(request)
     item_id = claude_work_queue.submit(item)
@@ -63,9 +66,48 @@ def submit(request: WorkRequest, ...) -> WorkResult:
 
 The work subsystem's caching and audit substrate wraps the queue call; the queue itself doesn't know about WorkRequest, WorkResult, or any of the work-subsystem entities.
 
+## Wire format
+
+A WorkItem yaml carries (provisional; the entity-type yaml is authored in the first implementation increment):
+
+```yaml
+type: WorkItem
+components:
+  work_item_id:
+    id: 2026-05-25T14-20-01_abc123
+  prompt:
+    text: |
+      <the rendered instructions for Claude>
+  input_payload:
+    value: { ... }                 # optional structured input
+  result_schema:
+    schema: { ... }                # optional JSON Schema for the result
+  requested_at:
+    timestamp: 2026-05-25T14:20:01Z
+```
+
+A WorkItemResult sibling carries:
+
+```yaml
+type: WorkItemResult
+components:
+  work_item_id:
+    id: 2026-05-25T14-20-01_abc123
+  output:
+    value: { ... }                 # the result data, conforming to result_schema if declared
+  completed_at:
+    timestamp: 2026-05-25T14:21:18Z
+  # OR (mutually exclusive with `output`):
+  errored:
+    error_type: TimeoutError
+    message: "..."
+```
+
+The Errored component is the cross-cutting one from core; result-schema validation at the queue boundary mirrors the work-system's `OutputSchemaViolation` shape.
+
 ## Out of scope (today)
 
 - Queue priority, scheduling fairness, multi-tenant isolation.
-- Distributed queues across machines.
+- Distributed queues across machines (the queue is single-machine; cross-machine handoff is a future concern).
 - Worker pool autoscaling (one Claude per item is the conceptual model; multiple parallel Claude sessions is a future concern).
 - Streaming partial results back to the requester before the work is fully done.

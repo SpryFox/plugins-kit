@@ -16,6 +16,7 @@ This file is the single source of truth for the plugin's .md files and how they 
 - **Single source of truth.** Each fact lives in exactly one doc. Other docs refer to the topic, not the text. No restated rules, no "companion to" preambles, no parallel summaries.
 - **CLAUDE.md is the index.** The directory layout, the where-to-find table, and the .md relationships live here. Subsystem CLAUDE.md files index their own subsystem; this file indexes them.
 - **Parent CLAUDE.md is assumed read.** A subdirectory CLAUDE.md does not restate anything the parent already says. Parents load automatically when the agent works in a child directory.
+- **User anonymity.** When the docs reference users -- consumers who reviewed the design, sources of feedback, motivating examples -- use generic role labels (e.g. "loc system user", "dialog system user"). Do not name employers, projects, internal codebases, file paths from a specific consumer, or other identifying details. Raw consumer reviews that contain such details belong in session-private working notes (e.g. `tmp/`), not in the plugin's own documentation.
 
 ## Document hierarchy and reading responsibilities
 
@@ -35,13 +36,14 @@ These reading responsibilities are part of the doc conventions: they make the SS
 ```
 plugins/agent-glue/
   .claude-plugin/plugin.json     # plugin manifest
-  bootstrap.json                 # bootstrap dependencies (openrouter-kit)  [Phase 1 deliverable: not yet authored]
-  pyproject.toml                 # Python package; deps: pydantic, pyyaml, jinja2, jsonschema
+  bootstrap.json                 # bootstrap dependencies (openrouter-kit)        [not yet authored]
+  pyproject.toml                 # Python package metadata + dependency declarations [not yet authored]
 
   CLAUDE.md                      # this file (SSOT for .md layout + doc conventions)
   DESIGN.md                      # plugin overview, four subsystems and what each provides
   ARCHITECTURE.md                # cross-subsystem interface; pointer to core for shared patterns
   IMPLEMENTATION-PLAN.md         # build map: subsystem dependency graph + definition of done + post-v1 framing
+  USER-FEEDBACK.md               # anonymized synthesis of feedback from users of related systems
 
   core/                          # yaml-entity-model + ECS loader + cross-cutting components + Disposition + shared patterns
     CLAUDE.md / DESIGN.md / ARCHITECTURE.md / IMPLEMENTATION-PLAN.md
@@ -81,9 +83,10 @@ plugins/agent-glue/
 | Four-subsystem overview, what each subsystem provides | DESIGN.md |
 | Cross-subsystem interface (`submit()` from graph-system to work-system; claude-work-queue's consumer API) + pointer to core for shared patterns | ARCHITECTURE.md |
 | Build map (subsystem dependency graph, build order, definition of done, post-v1 framing) | IMPLEMENTATION-PLAN.md |
+| Anonymized findings from users of related systems who reviewed the design for adoption | USER-FEEDBACK.md |
 | Yaml-entity-model dialect, ECS framing, cross-cutting components, Disposition primitive | core/DESIGN.md |
 | Shared architectural patterns (MVC + ECS, pre-commit consistency, fail-loudly, no-backcompat, scripts as facades, package cohesion, TDD) | core/ARCHITECTURE.md |
-| Queue + signal + execute-and-report primitive, open design questions | claude-work-queue/DESIGN.md |
+| Queue + signal + execute-and-report primitive; locked design (file-based storage, Stop-hook signaling, open-writer scope); wire format | claude-work-queue/DESIGN.md |
 | Worker types, request/result shape, show-your-work-as-cache (consumer view) | work-system/DESIGN.md |
 | Show-your-work-as-cache mechanical rules, temperature-zero constraint, worked Worker / WorkRecord examples | work-system/ARCHITECTURE.md |
 | Graph topology, nodes, edges, Disposition dispatch, PipelineState, canonical outputs, cohort substrate | graph-system/DESIGN.md |
