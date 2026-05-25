@@ -1,0 +1,6 @@
+kind: Description
+description: Free-form human-readable description of the entity.
+fields:
+  description:
+    type: string
+    required: true

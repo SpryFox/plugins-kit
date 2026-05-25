@@ -1,0 +1,11 @@
+name: WorkRequest
+description: One unit of work to perform. Not committed to any worker type at the contract level; the worker selection lives in a component.
+stored_at: input parameter to submit(); also serialized at cohorts/<name>/requests/<request_sha>.yaml when recorded
+components:
+  required:
+    - Input
+    - OutputSchema
+  optional:
+    - WorkerSelection         # absent = use system default worker
+    - CapabilityRequirement   # absent = no required tools or MCP servers
+    - CacheControl            # absent = default cache behavior (lookup by inputs_hash); set to force a re-run or specify invalidation criteria

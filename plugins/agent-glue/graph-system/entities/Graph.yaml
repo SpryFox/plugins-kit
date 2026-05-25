@@ -1,0 +1,13 @@
+name: Graph
+description: Top-level pipeline container.
+stored_at: graphs/<name>/graph.yaml
+components:
+  required:
+    - Name
+    - Start
+    - StateDecl
+  optional:
+    - Version
+    - Description
+    - Config
+    - ShowWork

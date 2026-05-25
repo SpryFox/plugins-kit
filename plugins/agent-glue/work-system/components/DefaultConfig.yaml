@@ -1,0 +1,8 @@
+kind: DefaultConfig
+description: Defaults the worker applies to a WorkRequest's WorkerSelection.config when keys are absent. Open-shaped because each worker type accepts different keys.
+fields:
+  values:
+    type: map
+    required: true
+    value_type:
+      type: any
