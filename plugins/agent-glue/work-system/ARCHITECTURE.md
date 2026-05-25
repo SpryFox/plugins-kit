@@ -1,6 +1,6 @@
-# Work-System Architecture
+# work-system: Architecture
 
-Entities, components, and systems specific to the work subsystem. MVC + ECS framing comes from the parent ARCHITECTURE.md.
+Entities, components, and systems specific to the work subsystem. Shared patterns are in `core/ARCHITECTURE.md` and not restated here.
 
 The work subsystem owns the show-your-work mechanism, which doubles as the disk cache. Records written for audit are the same records consulted for cache hits; one mechanism serves both purposes. See the *Show-your-work as cache* section below.
 
@@ -21,16 +21,16 @@ There is no separate "invocation" entity, no separate "cohort recording" entity,
 
 ## Components
 
-Component schemas live as yaml files in `./components/` (authored in Phase 1 alongside the loader). Each file declares one component's `kind`, its fields, and their types. Presence is the signal -- an entity has a component or it doesn't.
+Component schemas live as yaml files in `./components/`. Each file declares one component's `kind`, its fields, and their types. Presence is the signal -- an entity has a component or it doesn't.
 
-Component types referenced by work-subsystem entities (authored in Phase 1):
+Component types referenced by work-subsystem entities:
 
 - Request shape: `Input`, `OutputSchema`, `WorkerSelection`, `CapabilityRequirement`, `CacheControl` (fields: `bypass`, `invalidate_if`, `determinism`)
 - Result shape: `Output`, `SideEffects` (discriminated union: file-written, tool-used, subprocess-invoked), `Metadata`
 - Worker definition: `WorkerType`, `ProvidedCapabilities`, `Submitter`, `DefaultConfig`, `Determinism` (values: `deterministic` / `requires_declaration`)
 - Record shape: `RequestHash`, `InputsHash`, `Request`, `Result`, `WorkerRef`, `RecordedAt`, `Attribution`, `InvalidationCriteria`
 
-Cross-cutting components used by both subsystems (`Name`, `Description`, `Timestamps`, `Errored`, `Status`, `SourceRunId`) live at the plugin level in `agent-glue/components/`. The work subsystem references them by name (e.g. `SourceRunId` on a WorkRecord); it has no awareness of any other subsystem.
+The work subsystem references the cross-cutting components from `core/components/` by name (e.g. `SourceRunId` on a WorkRecord). The enumeration is in `core/DESIGN.md`.
 
 `SystemPrompt` is **not** a top-level component -- it lives inside `WorkerSelection.config` because it's a worker-specific concept. LLM workers require it; non-LLM workers (e.g. `python_script`) don't have one.
 
@@ -48,7 +48,7 @@ This collapses what would otherwise be two mechanisms (audit log + cache) into o
 
 **Cache directory selection.** In normal operation, records live at `<consumer_root>/.agent-glue-cache/<request_hash>.yaml`. In cohort mode, `submit(request, cohort=<name>)` points the cache lookup at `cohorts/<name>/recordings/<worker_type>/<request_hash>.yaml` instead. Same lookup, same record shape, different directory.
 
-**Worker determinism.** The default `Determinism: deterministic` makes cache lookups eligible. A worker may declare `Determinism: non_deterministic`, in which case cache lookups never match (every call hits the worker) but records are still written for audit. The temperature-0 constraint (parent ARCHITECTURE.md) keeps all LLM workers deterministic; this knob exists for hypothetical future workers (e.g. a "random sample" worker) that genuinely cannot be cached.
+**Worker determinism.** The default `Determinism: deterministic` makes cache lookups eligible. A worker may declare `Determinism: non_deterministic`, in which case cache lookups never match (every call hits the worker) but records are still written for audit. The temperature-zero constraint (below) keeps all LLM workers deterministic; this knob exists for hypothetical future workers (e.g. a "random sample" worker) that genuinely cannot be cached.
 
 **Per-request overrides.** A WorkRequest may carry a `CacheControl` component:
 - `bypass: true` -> ignore cache, always invoke worker, overwrite record.
@@ -56,11 +56,17 @@ This collapses what would otherwise be two mechanisms (audit log + cache) into o
 
 **Disabling records entirely.** A plugin-level setting (`show_work: never`) suppresses all WorkRecord writes; this also disables cache (no records means no cache hits). Default is `show_work: default`.
 
+## Temperature zero for LLM workers
+
+All LLM worker calls (currently the `openrouter` worker; any future LLM worker) use temperature 0 unconditionally when the request is cacheable. This is an architectural constraint of the work subsystem, not a configurable default.
+
+Rationale: temperature 0 makes the same request reliably produce the same output (modulo model drift between releases), which makes the WorkRecord cache a true cache rather than a hash-pinned lookup of a non-deterministic source. Cohort recordings can be replayed with confidence; show-your-work records can be relied on as authoritative.
+
+The temperature override mechanism is `CacheControl.determinism: non_deterministic`. When the consumer declares it, the LLM worker switches to a non-zero temperature internally (default 0.7) and the submit pipeline skips the cache lookup (writes the record for audit but does not read). Temperature is not a user-facing config field on any LLM worker.
+
 ## Yaml primitive vocabulary
 
-- Scalars, lists, maps, named refs (bare strings resolved by loaders), no custom yaml tags, no expressions.
-- JSON Schema (authored as yaml) is the OutputSchema vocabulary -- it's just yaml; the `jsonschema` Python package validates against it.
-- No path templates here -- work entities have hash-derived paths, no per-context templating.
+JSON Schema (authored as yaml) is the OutputSchema vocabulary -- it's just yaml; the `jsonschema` Python package validates against it. Work entities have hash-derived paths, so the graph subsystem's path-template substrate is not used here.
 
 ## Worked example: a Worker entity instance
 
@@ -103,7 +109,7 @@ components:
   # is the correct caching semantic: the work was done once; the result describes the new state.
 ```
 
-The `provided_capabilities.mcp_servers` is dynamic -- what the worker can offer depends on the running environment's MCP configuration. The capability check at submit-time intersects `request.capability_requirement.mcp_servers` with `worker.provided_capabilities.mcp_servers` (as discovered at that moment). Missing entries -> `CapabilityUnavailable`. Per the parent ARCHITECTURE.md's "fail loudly on changed conditions" rule, this check happens ONCE at submit time and fails loudly if invalidated mid-run; no graceful degradation.
+The `provided_capabilities.mcp_servers` is dynamic -- what the worker can offer depends on the running environment's MCP configuration. The capability check at submit-time intersects `request.capability_requirement.mcp_servers` with `worker.provided_capabilities.mcp_servers` (as discovered at that moment). Missing entries -> `CapabilityUnavailable`. Per core's "fail loudly on changed conditions" rule, this check happens ONCE at submit time and fails loudly if invalidated mid-run; no graceful degradation.
 
 The claude_inference worker (no tools enabled):
 
@@ -190,5 +196,4 @@ The work subsystem exposes one entry point -- `submit(request, cohort=None, bypa
 
 ## Open questions
 
-None outstanding.
-2. **Cache directory location for live runs.** Default `<consumer_root>/.agent-glue-cache/` proposed. Confirm vs. alternatives (e.g. `<consumer_root>/.cache/agent-glue/`, or under `~/.cache/agent-glue/<consumer_path_hash>/`). Lean `<consumer_root>/.agent-glue-cache/` for git-localness (consumer can gitignore, share via shelved work, etc.).
+- **Cache directory location for live runs.** Default `<consumer_root>/.agent-glue-cache/` proposed. Confirm vs. alternatives (e.g. `<consumer_root>/.cache/agent-glue/`, or under `~/.cache/agent-glue/<consumer_path_hash>/`). Lean `<consumer_root>/.agent-glue-cache/` for git-localness (consumer can gitignore, share via shelved work, etc.).

@@ -1,8 +1,10 @@
-# Work-system context
+# work-system subsystem context
 
-## Python-lib internal layout
+The **work-system** of agent-glue. Worker-agnostic "do a unit of work" abstraction with show-your-work-as-cache.
 
-The post-build Python package lives at `../agent_glue_lib/work/`:
+See top-level `ARCHITECTURE.md` for the dependency graph.
+
+## Internal lib layout
 
 ```
 agent_glue_lib/work/
@@ -12,13 +14,26 @@ agent_glue_lib/work/
   registry.py           # worker registry (dict of WorkerType.name -> Worker entity)
   errors.py             # WorkerNotAvailable, CapabilityUnavailable, OutputSchemaViolation, WorkerError
   cache.py              # WorkRecord read/write; live cache + cohort recording dir selection
-  schema.py             # JSON Schema validation (jsonschema package wrapper)
+  output_schema.py      # JSON Schema validation (jsonschema package wrapper)
+  hashing.py            # compute_subhashes() and other request-hash helpers
+  side_effects.py       # SideEffects record builders
   workers/
     __init__.py
-    openrouter.py       # single-shot LLM completion via openrouter-kit (default deterministic + temp 0; non_deterministic override -> temp 0.7)
-    claude_inference.py # single-shot Claude Code subagent dispatch, no tools (same determinism rules as openrouter)
-    claude_agent.py     # Claude Code subagent with tool + MCP access; Determinism requires_declaration
-    python_script.py    # any dotted-name Python function (may shell out); Determinism requires_declaration; consumes_dirs/produces_dirs convention
-  hashing.py            # compute_subhashes() and other request-hash helpers for consumers that need sub-element invalidation
-  helpers.py            # optional convenience helpers (e.g. run_subprocess() that returns result + pre-populated SideEffects record)
+    openrouter.py       # single-shot LLM completion via openrouter-kit
+    claude_inference.py # single-shot Claude Code subagent dispatch (no tools) via claude-work-queue
+    claude_agent.py     # Claude Code subagent (tools + MCP) via claude-work-queue
+    python_script.py    # any dotted-name Python function (may shell out)
+  helpers/
+    __init__.py
+    run_subprocess.py   # convenience: run a command + return result + pre-populated SideEffects
 ```
+
+## Where to find things
+
+| Topic | Document |
+|---|---|
+| Worker types, request/result shape, failure modes, show-your-work-as-cache mechanism, CLI surface | DESIGN.md |
+| Work entities, work-side component list, show-your-work-as-cache rules, temperature-zero constraint, worked Worker / WorkRecord examples | ARCHITECTURE.md |
+| Build increments and acceptance criteria | IMPLEMENTATION-PLAN.md |
+| Work entity-type definitions | entities/ |
+| Work component schemas | components/ |

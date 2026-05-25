@@ -1,8 +1,8 @@
-# Work-System Design
+# work-system: Design
 
 The **work subsystem** of agent-glue. Worker-agnostic abstraction for "do a unit of work."
 
-This document describes the full design. Build phases, definition of done, and what's stubbed vs. fully implemented at any given milestone live in IMPLEMENTATION-PLAN.md (a level up).
+This document describes the full design. Build increments and acceptance criteria live in `work-system/IMPLEMENTATION-PLAN.md`.
 
 ## TL;DR
 
@@ -22,7 +22,7 @@ A **work request** is a contract: yaml input + JSON-Schema-shaped output schema 
 - Prompt template authoring. Consumers supply already-rendered system prompts (for workers that use them). The subsystem does not render Jinja or run a template engine.
 - Output validation against the consumer's domain types. The subsystem verifies the output is well-formed yaml against the supplied JSON Schema; the consumer parses it into their own Pydantic models if they want richer type validation.
 - A worker queue / job manager. Submissions are synchronous: submit a request, get a result (or an error). Concurrency is the consumer's concern.
-- Graceful degradation when a required worker capability is missing. **If a request requires a tool or MCP server the worker can't provide, the work fails outright.** No fallback to a different worker; no auto-retry without the capability. Per the parent "fail loudly on changed conditions" rule, capability checks happen once and fail loudly if invalidated.
+- Graceful degradation when a required worker capability is missing. **If a request requires a tool or MCP server the worker can't provide, the work fails outright.** No fallback to a different worker; no auto-retry without the capability. Per core's "fail loudly on changed conditions" rule, capability checks happen once and fail loudly if invalidated.
 
 ## Core concept: the work request contract
 
@@ -133,7 +133,7 @@ cache_control:
   determinism: deterministic_idempotent     # or non_deterministic; required
 ```
 
-**Capability requirements: hard preconditions.** If the listed tools or MCP servers aren't available at execution time, the worker fails the request before invoking the agent. No fallback, no skip. Per the parent "fail loudly on changed conditions" rule, capability is checked once at submit time; if a capability disappears mid-run, subsequent submits fail loudly.
+**Capability requirements: hard preconditions.** If the listed tools or MCP servers aren't available at execution time, the worker fails the request before invoking the agent. No fallback, no skip. Per core's "fail loudly on changed conditions" rule, capability is checked once at submit time; if a capability disappears mid-run, subsequent submits fail loudly.
 
 ### python_script worker
 
@@ -232,52 +232,19 @@ The work subsystem treats failure as a first-class outcome. Submission can raise
 
 The work subsystem never silently substitutes a different worker, never returns a partial result without raising, never retries on its own. All retry / fallback policy is the consumer's responsibility.
 
-## Show-your-work as cache
+## Show-your-work as cache (consumer view)
 
 Avoiding repetition of work when inputs haven't changed is a first-class principle of the work subsystem. The mechanism that records what happened (the audit trail) is the same mechanism that lets us skip re-doing identical work (the cache). One thing, two functions.
 
-Every successful `submit()` writes a `WorkRecord` keyed by the sha256 hash of the full WorkRequest yaml. On a subsequent `submit()` with the same request:
+From the consumer's point of view: every successful `submit()` is recorded; identical subsequent `submit()`s return the recorded result without re-invoking the worker; `CacheControl.bypass: true` forces a fresh call; `CacheControl.invalidate_if` declares additional freshness preconditions; `CacheControl.determinism` overrides per-request when the request's nature differs from the worker's default. Records are produced live (naturally, by any cache-missing submit) or promoted (`agent-glue work promote-record` lifts a live record into a cohort).
 
-- The submit pipeline computes the request_hash and looks up the cache directory for an existing `WorkRecord` at that key.
-- If a record is found AND any declared invalidation criteria still hold AND the worker is marked deterministic (the default) AND the request has no `bypass: true` set, return the cached `result`. The worker is never invoked.
-- Otherwise, dispatch to the worker, write/overwrite the record, return the result.
+The mechanical rules -- request_hash computation, lookup order, cache directory paths, the cohort-mode directory swap, the `show_work: never` plugin setting -- live in `work-system/ARCHITECTURE.md`. The cohort directory convention lives in top-level `ARCHITECTURE.md`.
 
-```
-<consumer_root>/.agent-glue-cache/
-  <request_hash>.yaml             # one file per unique request; full WorkRecord
-```
+## Cohort substrate (consumer view)
 
-In cohort mode (`submit(request, cohort=<name>)`), the lookup directory swaps to `cohorts/<name>/recordings/<worker_type>/<request_hash>.yaml`. Same lookup mechanism, same WorkRecord shape, different home. Cohort replay is just "point the cache at a different directory."
+A cohort replay is `submit(request, cohort=<name>)` for every WorkRequest the pipeline issues; the cache lookup hits the cohort's recordings directory instead of the live cache. Recordings are produced curated (hand-author a file) or harvested (`agent-glue work promote-record`). Strict vs lenient (fail on missing recording vs fall through to live) is a per-call mode.
 
-**Records are produced two ways:**
-
-- **Live -- naturally.** Any `submit()` that misses the cache and successfully invokes the worker writes a record. After one full run of a pipeline against live workers, the cache holds records for every call that pipeline made.
-- **Promoted -- `agent-glue work promote-record <request_hash> --to-cohort <name>`** copies a live cache record into a cohort's recordings directory. This is how a production run becomes a test fixture.
-
-**Worker determinism.** The default is deterministic; cache lookups are eligible. A worker may declare `Determinism: non_deterministic`, which forces every call to hit the worker (cache lookups never match for that worker). Records are still written for audit. The temperature-0 architectural constraint (parent ARCHITECTURE.md) keeps all LLM workers deterministic.
-
-**Per-request cache control.** A request may carry a `CacheControl` component:
-- `bypass: true` -> ignore cache, always invoke worker, overwrite record. Useful for "force a fresh result" workflows.
-- `invalidate_if: <criteria>` -> additional preconditions for the cache entry to be considered fresh (e.g. file mtime, env-var value). If criteria fail, treat as cache miss.
-
-**Disabling records entirely.** The plugin-level `show_work: never` setting suppresses all WorkRecord writes; this also disables cache (no records means no cache hits). For hot loops where records are noise. Default is `show_work: default`.
-
-## Cohort substrate
-
-A cohort is a directory of test fixtures:
-
-```
-cohorts/<cohort_name>/
-  recordings/                       # WorkRecords keyed by worker type + request hash
-    openrouter/<request_hash>.yaml
-    claude_agent/<request_hash>.yaml
-    python_script/<request_hash>.yaml
-  metadata.yaml
-```
-
-A cohort replay is just `submit(request, cohort=<name>)` for every WorkRequest the pipeline issues. The cache lookup hits the cohort directory instead of the live cache; recorded results are returned without invoking workers. Missing recordings either fail (strict mode) or fall through to live invocation (lenient).
-
-Recordings are produced curated (hand-author a file in the recordings directory) or harvested (`agent-glue work promote-record` from a live cache).
+The cohort directory shape lives in top-level `ARCHITECTURE.md`; the recordings file format is the same WorkRecord shape described in `work-system/ARCHITECTURE.md`.
 
 ## Yaml shape examples
 

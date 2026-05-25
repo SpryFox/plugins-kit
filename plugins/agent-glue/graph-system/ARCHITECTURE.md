@@ -1,6 +1,6 @@
-# agent-glue: Graph-System Architecture
+# graph-system: Architecture
 
-Entities, components, and systems specific to the graph subsystem. MVC + ECS framing comes from the parent ARCHITECTURE.md.
+Entities, components, and systems specific to the graph subsystem. Shared patterns are in `core/ARCHITECTURE.md` and not restated here.
 
 ## Entities
 
@@ -35,19 +35,7 @@ Component types referenced by graph-subsystem entities (authored in Phase 1):
 - Cohort substrate: `Fixtures`, `Expected`, `StartInput`, `FixtureRef`, `TerminalNode`, `TerminalOutput`, `TerminalState`, `CreatedAt`
 - Graph-level config: `Config`, `ShowWork` (also valid at node scope as a per-node override)
 
-Cross-cutting components used by both subsystems (`Name`, `Description`, `Timestamps`, `Errored`, `Status`, `SourceRunId`) live at the plugin level in `agent-glue/components/`. Subsystems reference them by name; neither subsystem depends on the other.
-
-## Yaml primitive vocabulary
-
-The model uses only these yaml primitives:
-
-- **scalars** -- strings, ints, bools, nulls
-- **lists** -- ordered sequences
-- **maps** -- key/value pairs
-- **named refs** -- bare strings interpreted as references to entities defined elsewhere (e.g. `in: ValidateIn` is a string interpreted as a contract name; the loader resolves it)
-- **path templates** -- strings with `{state.x}` / `{input.x}` substitutions; resolved at write time
-
-No custom yaml tags, no expressions, no code in yaml. A pure-yaml linter can validate the model structure without instantiating anything.
+The graph subsystem references the cross-cutting components from `core/components/` by name. The enumeration is in `core/DESIGN.md`.
 
 ## Worked example: one Node entity
 

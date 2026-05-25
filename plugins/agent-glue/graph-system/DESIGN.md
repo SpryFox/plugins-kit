@@ -11,7 +11,7 @@ A pipeline is declared as a `graph.yaml` file plus typed Pydantic contracts and 
 - **Design is a first-class artifact.** Graph topology and contracts at every boundary are declared in `graph.yaml` + Pydantic. What each node *does* (calls an LLM, reads config, declares outputs) is surfaced by the renderer from sidecar file presence — not redeclared in yaml.
 - **Test on real-shape data without production load.** Cohorts of harvested-or-curated fixtures replay deterministically with canned LLM responses.
 - **Forward-looking: cheap to scaffold the next pipeline.** Day 1 of a new system: write `graph.yaml` + contracts, render HTML, harvest a small cohort, iterate.
-- **Validates against two example pipelines.** A character animation pipeline (proposal-rework loop, per-item freshness, multi-writer canonical artifact) and a localization pipeline (parallel chunk fan-out, per-line iron contract, locked-term validator) — both built fresh on agent-glue as the kit's v1 validation surface.
+- **Real-pipeline validation is post-v1.** Example pipelines (character animation, localization) are planned separately once v1 ships; see top-level `IMPLEMENTATION-PLAN.md` for the post-v1 framing.
 - **Lightweight, mature, focused dependencies.** Pydantic (used fully), PyYAML, Jinja2, Mermaid (via Markdeep render). LLM calls delegated to `openrouter-kit` via bootstrap dependency.
 
 ## Non-goals
@@ -62,36 +62,15 @@ class Edge:
 
 No conditions. No predicates. No eval. Routing is decided by which discriminated-union variant the source node returned. If a node's output is `Result = Accepted | NeedsRetry | Rejected`, three edges from that node — one per variant — express all possible routing.
 
-### Disposition (iron contract)
+### Disposition dispatch
 
-Shipped as a primitive.
+The `Accepted | AcceptedWithAudit | Rejected` ADT is owned by core (see `core/DESIGN.md`). The graph runtime knows these three variants natively when dispatching:
 
-```python
-class Accepted(BaseModel, Generic[T]):
-    kind: Literal["accepted"] = "accepted"
-    value: T
+- `Accepted` -- proceed normally.
+- `AcceptedWithAudit` -- proceed but stamp audit metadata onto any audit collection declared in PipelineState.
+- `Rejected` -- route to a `Rejected`-targeted edge if one exists; otherwise halt this path. Halt is logged but never raises; the iron contract is "every input gets a recorded disposition."
 
-class AcceptedWithAudit(BaseModel, Generic[T]):
-    kind: Literal["accepted_with_audit"] = "accepted_with_audit"
-    value: T
-    audit_reason: str
-    audit_metadata: dict
-
-class Rejected(BaseModel):
-    kind: Literal["rejected"] = "rejected"
-    reason: str
-    metadata: dict
-
-Disposition = Accepted[T] | AcceptedWithAudit[T] | Rejected
-```
-
-LLM nodes return `Disposition[NodeOut]` by default. The runtime knows these variants natively:
-
-- `Accepted` — proceed normally; serialize cleanly.
-- `AcceptedWithAudit` — proceed but stamp audit metadata onto the run record (and any audit collection in PipelineState if declared).
-- `Rejected` — route to a `Rejected`-targeted edge if one exists; otherwise halt this path. Halt is logged but never raises; the iron contract is "every input gets a recorded disposition."
-
-Pipelines that need other variants compose plain Pydantic unions. The Disposition primitive is for the common case; it is not mandatory.
+LLM nodes default to returning `Disposition[NodeOut]`. Pipelines that need other variants compose plain Pydantic unions.
 
 ### PipelineState
 
@@ -377,9 +356,9 @@ Work-record promotion (lifting a `WorkRecord` from the live cache into a cohort'
 
 ## HTML render (one View)
 
-Renderers are Views in the MVC layering. agent-glue ships one View in v1 -- the HTML render described here -- but the architecture admits other Views (alternative renderers for different audiences, schema browsers, diff views) without changes to the Model or Controller. Renderers are downstream consumers of the entity catalog; nothing in the runtime depends on a specific renderer being present.
+Renderers are Views in the MVC layering. v1 ships only a stub render -- a minimal Markdeep+Mermaid page that draws the graph topology and per-node sidecar presence. The full design-artifact render described below is post-v1 (see top-level `IMPLEMENTATION-PLAN.md`); the architecture admits other Views (alternative renderers for different audiences, schema browsers, diff views) without changes to the Model or Controller. Renderers are downstream consumers of the entity catalog; nothing in the runtime depends on a specific renderer being present.
 
-A Markdeep document. The render reads `graph.yaml`, imports `contracts.py` to call `model_json_schema()` on every contract, reads `rules.yaml` and `prompt.md` from disk, and (optionally) reads the most-recent matching `WorkRecord`s from the cache for example I/O.
+**Post-v1 design-artifact render (sketch).** A Markdeep document. The render reads `graph.yaml`, imports `contracts.py` to call `model_json_schema()` on every contract, reads `rules.yaml` and `prompt.md` from disk, and (optionally) reads the most-recent matching `WorkRecord`s from the cache for example I/O.
 
 Structure:
 
@@ -399,24 +378,13 @@ Render tech: Markdeep (vanilla, no build), Mermaid (CDN), minimal hand-rolled JS
 
 ## Cohort substrate
 
-A cohort is a directory of test fixtures for a graph plus the work recordings needed to replay them deterministically:
+A cohort is a directory of test fixtures for a graph (Fixtures + optional ExpectedOutcomes) plus the work recordings needed to replay them deterministically. The directory shape lives in top-level `ARCHITECTURE.md`; the recordings file format and strict-vs-lenient submit semantics live in `work-system/DESIGN.md`.
 
-```
-graphs/<name>/cohorts/<cohort_name>/
-  cohort.yaml                                       # Cohort entity (Fixtures + Expected)
-  inputs/<fixture_id>.yaml                          # Fixture entities (StartInput + InitState)
-  expected/<fixture_id>.yaml                        # ExpectedOutcome entities (assertions)
-  recordings/<worker_type>/<request_hash>.yaml     # WorkRecord entities (cache dir for cohort mode)
-```
+**How fixtures are produced:** hand-author `inputs/<fixture_id>.yaml` (a Fixture entity) and optionally `expected/<fixture_id>.yaml` (an ExpectedOutcome entity).
 
-**How replay works.** `agent-glue replay <graph> --cohort <name>` runs every fixture against current code with the cohort's `recordings/` as the work-subsystem cache directory. Identical-request work submissions hit recordings; missing recordings either fail (strict) or fall through to live invocation (lenient). For each fixture with an `expected/<fixture_id>.yaml`, the run's terminal state is asserted against it. Drift becomes a test failure.
+**How recordings are produced:** see "show-your-work as cache" in `work-system/DESIGN.md`.
 
-**How recordings are produced:**
-
-- **Curated.** Hand-author a `recordings/<worker_type>/<request_hash>.yaml` file (a `WorkRecord` instance) for a specific test case.
-- **Harvested.** Run the pipeline live first (work records land in the live cache). Then `agent-glue work promote-record <request_hash> --to-cohort <name>` copies each desired record into the cohort.
-
-**How fixtures are produced:** hand-author `inputs/<fixture_id>.yaml` (Fixture entity) and optionally `expected/<fixture_id>.yaml` (ExpectedOutcome entity).
+**How replay works at the graph level:** `agent-glue replay <graph> --cohort <name>` runs every Fixture against current code with the cohort's recordings as the work-subsystem cache directory. For each fixture with an ExpectedOutcome, the run's terminal state is asserted against it. Drift becomes a test failure.
 
 This is the substrate that closes the "bugs only surface in forensic analysis on real data" gap: every production bug becomes a one-command regression test.
 
@@ -425,12 +393,6 @@ This is the substrate that closes the "bugs only surface in forensic analysis on
 Single-process, multi-threaded for parallel fan-out (`ThreadPoolExecutor`, max workers configurable in `config`). Accumulated `PipelineState` fields under fan-out get a `Lock` automatically; nodes update them via returned `StateDelta` and the runtime applies under lock.
 
 No async/await in v1. If a node wants async internally, it's free to use `asyncio.run` within its `execute`; the runtime treats the call synchronously.
-
-## After v1
-
-The kit ships when the two example pipelines (character animation, localization) run clean against their cohorts. Post-v1 work is driven by consumers: additional pipelines built on the kit will pressure-test the abstractions and surface either kit gaps (which become kit changes) or convention gaps (which become guidance in the skill). The deferred items in *Non-goals* re-enter scope only when a real consumer needs them; not before.
-
-The HTML render layer is the most obvious deferred concern. It moves from stub to real implementation once at least one consumer asks for the design artifact to be browseable beyond `graph.yaml` as text.
 
 ## Open questions
 
