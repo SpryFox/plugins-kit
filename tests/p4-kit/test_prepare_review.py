@@ -697,13 +697,11 @@ class TestFetchDescribe:
         assert out == pending_shelved
         assert mock.call_count == 2
 
-    def test_pending_unshelved_raises_with_shelve_hint(self):
-        """A pending CL with no shelved content gets a useful error.
+    def test_pending_unshelved_raises_pending_unshelved_error(self):
+        """A pending CL with no shelved content raises PendingUnshelvedError.
 
-        Synthesis of pending adds requires shelved content (@=<CL>); a
-        pending CL with no shelf cannot be reviewed. The error must point
-        the caller at `p4 shelve` rather than emitting a generic 'no
-        describe content' message.
+        Distinct from a generic `no describe content` failure so build_bundle
+        can react with auto-shelve + retry instead of propagating.
         """
         pending_unshelved = (
             "Change 144098 by user@client on 2026/01/01 12:00:00 *pending*\n"
@@ -725,7 +723,7 @@ class TestFetchDescribe:
             return (0, pending_unshelved, "")
 
         with patch.object(pr, "run_p4", side_effect=side):
-            with pytest.raises(ValueError, match=r"shelve.*144098"):
+            with pytest.raises(pr.PendingUnshelvedError):
                 pr.fetch_describe("144098")
 
 
@@ -1348,6 +1346,378 @@ class TestBuildBundle:
 
 
 # ---------------------------------------------------------------------------
+# fetch_shelf_fingerprint
+# ---------------------------------------------------------------------------
+
+
+class TestFetchShelfFingerprint:
+    def test_empty_when_p4_fails(self):
+        """`p4 fstat ... @=<CL>` with no shelf returns non-zero; treat as empty."""
+        with patch.object(pr, "run_p4", return_value=(1, "", "no such file(s)")):
+            assert pr.fetch_shelf_fingerprint("123") == {}
+
+    def test_parses_multi_file_shelf(self):
+        out = (
+            "... depotFile //depot/a.cpp\n"
+            "... headRev 3\n"
+            "... digest AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n"
+            "\n"
+            "... depotFile //depot/b.cpp\n"
+            "... headRev 5\n"
+            "... digest BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB\n"
+            "\n"
+        )
+        with patch.object(pr, "run_p4", return_value=(0, out, "")) as mock:
+            fp = pr.fetch_shelf_fingerprint("123")
+        assert fp == {
+            "//depot/a.cpp": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "//depot/b.cpp": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+        }
+        # Confirm the spec uses the shelved revspec.
+        assert mock.call_args[0][0] == ["-ztag", "fstat", "-Ol", "//...@=123"]
+
+    def test_delete_with_no_digest_recorded_as_empty(self):
+        """Shelved deletes have no digest; record as empty string so file presence still counts."""
+        out = (
+            "... depotFile //depot/gone.cpp\n"
+            "... headRev 7\n"
+            "... headAction delete\n"
+            "\n"
+        )
+        with patch.object(pr, "run_p4", return_value=(0, out, "")):
+            fp = pr.fetch_shelf_fingerprint("123")
+        assert fp == {"//depot/gone.cpp": ""}
+
+    def test_no_trailing_blank_line_still_captured(self):
+        """Last record may not end with blank line; must still be parsed."""
+        out = (
+            "... depotFile //depot/a.cpp\n"
+            "... digest AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        )
+        with patch.object(pr, "run_p4", return_value=(0, out, "")):
+            fp = pr.fetch_shelf_fingerprint("123")
+        assert fp == {"//depot/a.cpp": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
+
+
+# ---------------------------------------------------------------------------
+# auto_shelve_cl
+# ---------------------------------------------------------------------------
+
+
+class TestAutoShelveCl:
+    def test_shelve_failure_raises(self):
+        with patch.object(pr, "run_p4", return_value=(1, "", "perm denied")):
+            with pytest.raises(ValueError, match="p4 shelve -c 123 failed"):
+                pr.auto_shelve_cl("123")
+
+    def test_shelve_success_but_empty_shelf_raises(self):
+        """Pathological: shelve reports success but no shelved files appear."""
+        def side(args):
+            if args[0] == "shelve":
+                return (0, "Change 123 files shelved.\n", "")
+            return (0, "", "")  # fstat returns nothing -> empty fingerprint
+
+        with patch.object(pr, "run_p4", side_effect=side):
+            with pytest.raises(ValueError, match="no shelved files were found"):
+                pr.auto_shelve_cl("123")
+
+    def test_returns_post_shelve_fingerprint(self):
+        fstat_out = (
+            "... depotFile //depot/x.cpp\n"
+            "... digest ABCDEF0123456789ABCDEF0123456789\n"
+            "\n"
+        )
+
+        def side(args):
+            if args[0] == "shelve":
+                return (0, "Change 123 files shelved.\n", "")
+            return (0, fstat_out, "")
+
+        with patch.object(pr, "run_p4", side_effect=side) as mock:
+            fp = pr.auto_shelve_cl("123")
+        assert fp == {"//depot/x.cpp": "ABCDEF0123456789ABCDEF0123456789"}
+        # First call is the shelve, second is the fingerprint fstat.
+        assert mock.call_args_list[0][0][0] == ["shelve", "-c", "123"]
+        assert mock.call_args_list[1][0][0] == ["-ztag", "fstat", "-Ol", "//...@=123"]
+
+
+# ---------------------------------------------------------------------------
+# cleanup_auto_shelve
+# ---------------------------------------------------------------------------
+
+
+class TestCleanupAutoShelve:
+    def _write_bundle(self, tmp_path: Path, bundle: dict) -> Path:
+        bundle_dir = tmp_path / bundle["cl"]
+        bundle_dir.mkdir(parents=True, exist_ok=True)
+        (bundle_dir / "bundle.json").write_text(json.dumps(bundle), encoding="utf-8")
+        return bundle_dir
+
+    def test_missing_bundle_returns_1(self, tmp_path, capsys):
+        rc = pr.cleanup_auto_shelve(tmp_path / "nope")
+        assert rc == 1
+        assert "no bundle.json" in capsys.readouterr().err
+
+    def test_not_auto_shelved_silent_noop(self, tmp_path, capsys):
+        """auto_shelved=false means we did not create the shelf -- do nothing, silently."""
+        bundle_dir = self._write_bundle(
+            tmp_path,
+            {"cl": "123", "auto_shelved": False, "shelf_fingerprint": {}},
+        )
+        with patch.object(pr, "run_p4") as mock:
+            rc = pr.cleanup_auto_shelve(bundle_dir)
+        assert rc == 0
+        assert capsys.readouterr().err == ""
+        assert mock.call_count == 0  # no p4 calls at all
+
+    def test_fingerprint_match_triggers_delete(self, tmp_path, capsys):
+        bundle_dir = self._write_bundle(
+            tmp_path,
+            {
+                "cl": "123",
+                "auto_shelved": True,
+                "shelf_fingerprint": {"//depot/x.cpp": "DEADBEEF"},
+            },
+        )
+        fstat_out = (
+            "... depotFile //depot/x.cpp\n"
+            "... digest DEADBEEF\n"
+            "\n"
+        )
+
+        calls = []
+
+        def side(args):
+            calls.append(args)
+            if args[0] == "-ztag" and args[1] == "fstat":
+                return (0, fstat_out, "")
+            if args[:2] == ["shelve", "-d"]:
+                return (0, "Shelf deleted.\n", "")
+            return (0, "", "")
+
+        with patch.object(pr, "run_p4", side_effect=side):
+            rc = pr.cleanup_auto_shelve(bundle_dir)
+        assert rc == 0
+        assert any(c[:3] == ["shelve", "-d", "-c"] for c in calls)
+        assert "deleted auto-created shelf" in capsys.readouterr().err
+
+    def test_fingerprint_mismatch_skips_delete(self, tmp_path, capsys):
+        """Author reshelved with different content; leave their work alone."""
+        bundle_dir = self._write_bundle(
+            tmp_path,
+            {
+                "cl": "123",
+                "auto_shelved": True,
+                "shelf_fingerprint": {"//depot/x.cpp": "DEADBEEF"},
+            },
+        )
+        fstat_out = (
+            "... depotFile //depot/x.cpp\n"
+            "... digest CAFEBABE\n"
+            "\n"
+        )
+        calls = []
+
+        def side(args):
+            calls.append(args)
+            return (0, fstat_out, "")
+
+        with patch.object(pr, "run_p4", side_effect=side):
+            rc = pr.cleanup_auto_shelve(bundle_dir)
+        assert rc == 0
+        assert not any(c[:2] == ["shelve", "-d"] for c in calls)
+        assert "shelf changed" in capsys.readouterr().err
+
+    def test_fingerprint_extra_file_skips_delete(self, tmp_path, capsys):
+        """Author added a file to the shelf since we recorded it; don't delete."""
+        bundle_dir = self._write_bundle(
+            tmp_path,
+            {
+                "cl": "123",
+                "auto_shelved": True,
+                "shelf_fingerprint": {"//depot/x.cpp": "DEADBEEF"},
+            },
+        )
+        fstat_out = (
+            "... depotFile //depot/x.cpp\n"
+            "... digest DEADBEEF\n"
+            "\n"
+            "... depotFile //depot/y.cpp\n"
+            "... digest 12345678\n"
+            "\n"
+        )
+        calls = []
+
+        def side(args):
+            calls.append(args)
+            return (0, fstat_out, "")
+
+        with patch.object(pr, "run_p4", side_effect=side):
+            rc = pr.cleanup_auto_shelve(bundle_dir)
+        assert rc == 0
+        assert not any(c[:2] == ["shelve", "-d"] for c in calls)
+
+    def test_shelf_gone_noop(self, tmp_path, capsys):
+        """Author already submitted or deleted the shelf; nothing to do."""
+        bundle_dir = self._write_bundle(
+            tmp_path,
+            {
+                "cl": "123",
+                "auto_shelved": True,
+                "shelf_fingerprint": {"//depot/x.cpp": "DEADBEEF"},
+            },
+        )
+        calls = []
+
+        def side(args):
+            calls.append(args)
+            return (1, "", "no such file(s)")  # empty shelf
+
+        with patch.object(pr, "run_p4", side_effect=side):
+            rc = pr.cleanup_auto_shelve(bundle_dir)
+        assert rc == 0
+        assert not any(c[:2] == ["shelve", "-d"] for c in calls)
+        assert "already gone" in capsys.readouterr().err
+
+    def test_delete_failure_returns_1(self, tmp_path, capsys):
+        bundle_dir = self._write_bundle(
+            tmp_path,
+            {
+                "cl": "123",
+                "auto_shelved": True,
+                "shelf_fingerprint": {"//depot/x.cpp": "DEADBEEF"},
+            },
+        )
+        fstat_out = (
+            "... depotFile //depot/x.cpp\n"
+            "... digest DEADBEEF\n"
+            "\n"
+        )
+
+        def side(args):
+            if args[0] == "-ztag" and args[1] == "fstat":
+                return (0, fstat_out, "")
+            return (1, "", "shelf is locked")
+
+        with patch.object(pr, "run_p4", side_effect=side):
+            rc = pr.cleanup_auto_shelve(bundle_dir)
+        assert rc == 1
+        assert "shelf is locked" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# build_bundle — auto-shelve integration
+# ---------------------------------------------------------------------------
+
+
+class TestBuildBundleAutoShelve:
+    def _committed_describe(self) -> str:
+        """Minimal committed describe output for a hand-off to the rest of build_bundle."""
+        return (
+            "Change 1 by u@c on 2026/01/01 12:00:00\n"
+            "\n"
+            "\tdesc\n"
+            "\n"
+            "Affected files ...\n"
+            "\n"
+            "... //depot/new.py#1 add\n"
+            "\n"
+            "Differences ...\n"
+            "==== //depot/new.py#1 (text) ====\n"
+            "@@ -0,0 +1,1 @@\n"
+            "+hello\n"
+        )
+
+    def test_pending_unshelved_triggers_auto_shelve(self, tmp_path):
+        """build_bundle catches PendingUnshelvedError, shelves, retries, marks auto_shelved=true."""
+        shelved_describe = self._committed_describe()
+        shelve_calls = []
+        fstat_calls = 0
+
+        def fake_fetch_describe(cl):
+            # First call raises; second call (after auto-shelve) succeeds.
+            if not shelve_calls:
+                raise pr.PendingUnshelvedError("no shelf")
+            return shelved_describe, True
+
+        def fake_fingerprint(cl):
+            nonlocal fstat_calls
+            fstat_calls += 1
+            # 1st call: pre-shelve check -> empty (no race).
+            # 2nd call: post-shelve fingerprint.
+            if fstat_calls == 1:
+                return {}
+            return {"//depot/new.py": "DEADBEEF"}
+
+        def fake_auto_shelve(cl):
+            shelve_calls.append(cl)
+            return {"//depot/new.py": "DEADBEEF"}
+
+        with patch.object(pr, "fetch_describe", side_effect=fake_fetch_describe), \
+                patch.object(pr, "fetch_shelf_fingerprint", side_effect=fake_fingerprint), \
+                patch.object(pr, "auto_shelve_cl", side_effect=fake_auto_shelve), \
+                patch.object(pr, "resolve_local_paths", return_value={"//depot/new.py": None}), \
+                patch.object(pr, "get_workspace_root", return_value=None), \
+                patch.object(pr, "find_unreconciled", return_value=[]), \
+                patch.object(pr, "find_unresolved", return_value=[]):
+            bundle = pr.build_bundle("123", tmp_path / "bundle")
+
+        assert bundle["auto_shelved"] is True
+        assert bundle["shelf_fingerprint"] == {"//depot/new.py": "DEADBEEF"}
+        assert shelve_calls == ["123"]
+
+    def test_pre_shelve_race_skips_auto_shelve(self, tmp_path):
+        """If a shelf appears between PendingUnshelvedError and our re-check, don't auto-shelve."""
+        shelved_describe = self._committed_describe()
+        attempts = {"describe": 0, "shelve": 0}
+
+        def fake_fetch_describe(cl):
+            attempts["describe"] += 1
+            if attempts["describe"] == 1:
+                raise pr.PendingUnshelvedError("no shelf")
+            return shelved_describe, True
+
+        def fake_fingerprint(cl):
+            # Race: someone else shelved between the failed describe and our check.
+            return {"//depot/other.py": "FEEDFACE"}
+
+        def fake_auto_shelve(cl):
+            attempts["shelve"] += 1
+            return {}
+
+        with patch.object(pr, "fetch_describe", side_effect=fake_fetch_describe), \
+                patch.object(pr, "fetch_shelf_fingerprint", side_effect=fake_fingerprint), \
+                patch.object(pr, "auto_shelve_cl", side_effect=fake_auto_shelve), \
+                patch.object(pr, "resolve_local_paths", return_value={"//depot/new.py": None}), \
+                patch.object(pr, "get_workspace_root", return_value=None), \
+                patch.object(pr, "find_unreconciled", return_value=[]), \
+                patch.object(pr, "find_unresolved", return_value=[]):
+            bundle = pr.build_bundle("123", tmp_path / "bundle")
+
+        # We did NOT shelve; someone else owns this shelf.
+        assert attempts["shelve"] == 0
+        assert bundle["auto_shelved"] is False
+        assert bundle["shelf_fingerprint"] == {}
+
+    def test_normal_path_records_no_auto_shelve(self, tmp_path):
+        """When fetch_describe succeeds directly, no shelve happens and the bundle reflects that."""
+        shelved_describe = self._committed_describe()
+
+        with patch.object(pr, "fetch_describe", return_value=(shelved_describe, False)), \
+                patch.object(pr, "auto_shelve_cl") as shelve_mock, \
+                patch.object(pr, "fetch_shelf_fingerprint", return_value={}), \
+                patch.object(pr, "resolve_local_paths", return_value={"//depot/new.py": None}), \
+                patch.object(pr, "get_workspace_root", return_value=None), \
+                patch.object(pr, "find_unreconciled", return_value=[]), \
+                patch.object(pr, "find_unresolved", return_value=[]):
+            bundle = pr.build_bundle("123", tmp_path / "bundle")
+
+        assert shelve_mock.call_count == 0
+        assert bundle["auto_shelved"] is False
+        assert bundle["shelf_fingerprint"] == {}
+
+
+# ---------------------------------------------------------------------------
 # main — CLI
 # ---------------------------------------------------------------------------
 
@@ -1377,3 +1747,15 @@ class TestMain:
         assert json.loads(captured.out) == fake_bundle
         persisted = json.loads((reviews_root / "123" / "bundle.json").read_text())
         assert persisted == fake_bundle
+
+    def test_cleanup_routes_to_cleanup_auto_shelve(self, tmp_path):
+        bundle_dir = tmp_path / "bundle"
+        with patch.object(pr, "cleanup_auto_shelve", return_value=0) as mock:
+            rc = pr.main(["prepare_review.py", "--cleanup", str(bundle_dir)])
+        assert rc == 0
+        assert mock.call_args[0][0] == bundle_dir
+
+    def test_cleanup_without_bundle_dir_returns_2(self, capsys):
+        rc = pr.main(["prepare_review.py", "--cleanup"])
+        assert rc == 2
+        assert "Usage" in capsys.readouterr().err

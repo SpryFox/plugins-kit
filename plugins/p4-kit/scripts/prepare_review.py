@@ -85,8 +85,23 @@ Output schema:
          "matched_files": ["<local path>", ...],
          "rationale": "<optional prose, may be empty>",
          "line_no": <int>}
-      ]
+      ],
+      "auto_shelved": <bool>,
+      "shelf_fingerprint": {"<depot path>": "<md5 digest>", ...}
     }
+
+`auto_shelved` is true when this run executed `p4 shelve -c <CL>` to make the
+diff fetchable. `shelf_fingerprint` is the {depot: digest} map of the resulting
+shelf -- captured so a subsequent `--cleanup <bundle_dir>` invocation can verify
+the shelf still matches what we created before deleting it. Empty when
+`auto_shelved` is false (we did not create the shelf and must not touch it).
+
+Modes:
+- `prepare_review.py <CL>` -- gather context, emit bundle JSON on stdout.
+- `prepare_review.py --cleanup <bundle_dir>` -- read bundle.json, and if
+  `auto_shelved` is true and the live shelf fingerprint still matches, run
+  `p4 shelve -d -c <CL>`. Any mismatch (file added/removed/changed, shelf gone)
+  is a silent no-op -- the user's work is never overwritten.
 
 Stderr-only diagnostics. Non-zero exit on hard failure.
 """
@@ -240,6 +255,14 @@ def _is_pending(output: str) -> bool:
     return False
 
 
+class PendingUnshelvedError(ValueError):
+    """Raised when a pending CL has no shelved content to diff.
+
+    Distinct from a generic `no describe content` failure so callers (notably
+    `build_bundle`) can react with auto-shelve + retry instead of propagating.
+    """
+
+
 def fetch_describe(cl: str) -> tuple[str, bool]:
     """Return (`p4 describe -du` output, is_shelved) for CL.
 
@@ -249,7 +272,8 @@ def fetch_describe(cl: str) -> tuple[str, bool]:
     - Pending CLs are routed to the shelved (`-S`) describe with `is_shelved=True`
       so synthesis fetches via `@=<CL>`. Going through `#<rev>` would fail for
       pending adds because no submitted revision exists yet.
-    - Pending CLs that have not been shelved fail with a hint to shelve first.
+    - Pending CLs that have not been shelved raise PendingUnshelvedError so the
+      caller can auto-shelve and retry.
     """
     rc, out, _ = run_p4(["describe", "-du", cl])
     if rc == 0 and not _is_pending(out) and has_describe_content(out):
@@ -260,12 +284,61 @@ def fetch_describe(cl: str) -> tuple[str, bool]:
         return out_s, True
 
     if rc == 0 and _is_pending(out):
-        raise ValueError(
-            f"pending CL {cl} has no shelved content to review. "
-            f"Shelve the CL first so the review tool can read its diff: "
-            f"`p4 shelve -c {cl}`"
+        raise PendingUnshelvedError(
+            f"pending CL {cl} has no shelved content to review"
         )
     raise ValueError(f"no describe content found for CL {cl} (tried committed and shelved)")
+
+
+def fetch_shelf_fingerprint(cl: str) -> dict[str, str]:
+    """Return {depot_path: digest} for files currently shelved on CL.
+
+    Empty dict if no shelf exists. Uses `p4 -ztag fstat -Ol //...@=<CL>`;
+    `-Ol` forces the per-revision `digest` field so the fingerprint is a
+    content-hash of the shelved file (cheap — no content download).
+
+    Files shelved as deletes have no digest; recorded as empty string so the
+    file's presence in the shelf is still part of the fingerprint.
+    """
+    rc, out, _ = run_p4(["-ztag", "fstat", "-Ol", f"//...@={cl}"])
+    if rc != 0:
+        return {}
+    fingerprint: dict[str, str] = {}
+    current_depot: Optional[str] = None
+    current_digest: str = ""
+    for line in out.splitlines():
+        if line.startswith("... depotFile "):
+            current_depot = line[len("... depotFile "):].strip()
+        elif line.startswith("... digest "):
+            current_digest = line[len("... digest "):].strip()
+        elif line.strip() == "":
+            if current_depot:
+                fingerprint[current_depot] = current_digest
+            current_depot = None
+            current_digest = ""
+    if current_depot:
+        fingerprint[current_depot] = current_digest
+    return fingerprint
+
+
+def auto_shelve_cl(cl: str) -> dict[str, str]:
+    """Run `p4 shelve -c <cl>` and return the resulting shelf fingerprint.
+
+    Raises ValueError on shelve failure or if no shelved files appear afterward
+    (pathological — shouldn't happen since the caller only invokes this when
+    the CL has open files but no shelf).
+    """
+    rc, out, err = run_p4(["shelve", "-c", cl])
+    if rc != 0:
+        raise ValueError(
+            f"p4 shelve -c {cl} failed: {(err or out).strip() or '(no output)'}"
+        )
+    fingerprint = fetch_shelf_fingerprint(cl)
+    if not fingerprint:
+        raise ValueError(
+            f"p4 shelve -c {cl} reported success but no shelved files were found afterward"
+        )
+    return fingerprint
 
 
 def parse_description(describe_output: str) -> str:
@@ -731,8 +804,30 @@ def build_bundle(cl: str, bundle_dir: Path) -> dict:
     `bundle_dir`, `diff_chunks` index, and per-`changed_files` `chunk_index`
     -- the diff text itself is NOT inlined, so the bundle stays small enough
     for downstream stdout / consumer ingestion.
+
+    If the CL is pending with no shelved content, runs `p4 shelve -c <cl>` so
+    the diff is fetchable, records `auto_shelved=True` plus the resulting
+    shelf fingerprint, and expects a later `--cleanup <bundle_dir>` invocation
+    to delete the shelf iff its fingerprint still matches.
     """
-    describe, is_shelved = fetch_describe(cl)
+    auto_shelved = False
+    try:
+        describe, is_shelved = fetch_describe(cl)
+    except PendingUnshelvedError:
+        # Empty shelf is the trigger for auto-shelve. A race could have left a
+        # shelf in place between fetch_describe and now; if so, don't touch it
+        # -- re-run fetch_describe and use whatever shelved content arrived.
+        if fetch_shelf_fingerprint(cl):
+            describe, is_shelved = fetch_describe(cl)
+        else:
+            auto_shelve_cl(cl)
+            describe, is_shelved = fetch_describe(cl)
+            auto_shelved = True
+
+    # Fingerprint AFTER our last shelf-affecting operation so --cleanup compares
+    # against the exact shelf state we leave behind.
+    shelf_fingerprint = fetch_shelf_fingerprint(cl) if auto_shelved else {}
+
     description = parse_description(describe)
     actions = parse_file_actions(describe)
     diff = extract_diff(describe, actions, cl, is_shelved)
@@ -797,12 +892,73 @@ def build_bundle(cl: str, bundle_dir: Path) -> dict:
         "unreconciled": unreconciled,
         "unresolved": unresolved,
         "submit_gates": submit_gates,
+        "auto_shelved": auto_shelved,
+        "shelf_fingerprint": shelf_fingerprint,
     }
 
 
+def cleanup_auto_shelve(bundle_dir: Path) -> int:
+    """Delete the auto-created shelf for `bundle_dir`'s CL iff it still matches.
+
+    Reads bundle.json. If `auto_shelved` is false we did not create the shelf
+    and exit silently. Otherwise re-fingerprints the live shelf and compares
+    to the recorded fingerprint:
+      - exact match  -> `p4 shelve -d -c <cl>`, brief stderr confirmation.
+      - any mismatch -> leave the shelf alone, brief stderr explanation.
+      - shelf gone   -> nothing to delete, brief stderr note.
+
+    Deterministic: no inference, no force, no inferring author intent. The
+    user's shelved work is never overwritten.
+    """
+    bundle_path = bundle_dir / "bundle.json"
+    if not bundle_path.is_file():
+        print(
+            f"prepare_review --cleanup: no bundle.json in {bundle_dir}",
+            file=sys.stderr,
+        )
+        return 1
+    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    if not bundle.get("auto_shelved"):
+        return 0
+    cl = bundle["cl"]
+    recorded = bundle.get("shelf_fingerprint", {})
+    current = fetch_shelf_fingerprint(cl)
+    if not current:
+        print(
+            f"prepare_review: CL {cl} shelf already gone; nothing to clean up.",
+            file=sys.stderr,
+        )
+        return 0
+    if current != recorded:
+        print(
+            f"prepare_review: CL {cl} shelf changed since review prep; "
+            f"leaving in place (your work is preserved).",
+            file=sys.stderr,
+        )
+        return 0
+    rc, _, err = run_p4(["shelve", "-d", "-c", cl])
+    if rc != 0:
+        print(
+            f"prepare_review: p4 shelve -d -c {cl} failed: {err.strip() or '(no output)'}",
+            file=sys.stderr,
+        )
+        return 1
+    print(
+        f"prepare_review: deleted auto-created shelf for CL {cl}.",
+        file=sys.stderr,
+    )
+    return 0
+
+
 def main(argv: list[str]) -> int:
-    if len(argv) != 2:
-        print("Usage: prepare_review.py <CL>", file=sys.stderr)
+    if len(argv) == 3 and argv[1] == "--cleanup":
+        return cleanup_auto_shelve(Path(argv[2]))
+    if len(argv) != 2 or argv[1].startswith("-"):
+        print(
+            "Usage: prepare_review.py <CL>\n"
+            "       prepare_review.py --cleanup <bundle_dir>",
+            file=sys.stderr,
+        )
         return 2
     cl = argv[1]
     bundle_dir = DEFAULT_BUNDLE_ROOT / cl

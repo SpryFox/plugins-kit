@@ -40,11 +40,11 @@ technique_skill:
           input: "p4 -ztag changes -s pending -u $(p4 set -q P4USER | cut -d= -f2) -m 20"
           expected: A single integer CL number confirmed by the user.
         - n: 2
-          action: Run prepare_review.py to fetch the diff (with shelved fallback), partition the diff into chunked .diff fragments on disk, map ancestor CLAUDE.md files for each changed file, detect unreconciled files in the directories the CL touches, detect unresolved merges in the CL, and scan ancestor CLAUDE.md files for submit-gate reminders that apply to this CL.
+          action: Run prepare_review.py to fetch the diff (with shelved fallback; auto-shelves a pending CL with no existing shelf so the diff is fetchable), partition the diff into chunked .diff fragments on disk, map ancestor CLAUDE.md files for each changed file, detect unreconciled files in the directories the CL touches, detect unresolved merges in the CL, and scan ancestor CLAUDE.md files for submit-gate reminders that apply to this CL.
           tool: ${CLAUDE_PLUGIN_ROOT}/scripts/prepare_review.py
           input: "<CL>"
           expected: |
-            JSON with cl, description, bundle_dir, diff_chunks, changed_files, unique_claude_mds, unreconciled, unresolved, submit_gates. The raw diff text is NOT inline -- it lives in per-chunk files at `<bundle_dir>/<diff_chunks[i].path>` (paths are relative to bundle_dir). Each `changed_files` entry carries `chunk_index` pointing to the chunk that contains its diff.
+            JSON with cl, description, bundle_dir, diff_chunks, changed_files, unique_claude_mds, unreconciled, unresolved, submit_gates, auto_shelved, shelf_fingerprint. The raw diff text is NOT inline -- it lives in per-chunk files at `<bundle_dir>/<diff_chunks[i].path>` (paths are relative to bundle_dir). Each `changed_files` entry carries `chunk_index` pointing to the chunk that contains its diff. `auto_shelved=true` means prepare_review created the shelf and step 10 must clean it up.
           on_failure: Surface the stderr message to the user and stop. No retry.
         - n: 3
           action: |
@@ -104,6 +104,24 @@ technique_skill:
               informational, not a finding -- the CL is not submittable until the
               user runs `p4 resolve` on each entry, but the review still renders.
             Group the review body by file.
+        - n: 10
+          action: |
+            Run prepare_review.py --cleanup <bundle.bundle_dir> to delete the
+            auto-created shelf -- but only if step 2 set `bundle.auto_shelved = true`.
+            The script is deterministic: it re-fingerprints the live shelf and
+            deletes only on exact match; any mismatch (author reshelved, added
+            files, edited content, or already deleted) is a silent no-op so the
+            author's work is never overwritten.
+
+            ALWAYS run this step when `bundle.auto_shelved` is true, regardless
+            of review outcome -- even if the review found bugs, even if the
+            author wants to revisit findings, even if the rendering failed.
+            Skipping leaves an orphan shelf the author didn't ask for.
+
+            Skip this step entirely when `bundle.auto_shelved` is false (we did
+            not create the shelf and must not touch it).
+          tool: ${CLAUDE_PLUGIN_ROOT}/scripts/prepare_review.py
+          input: "--cleanup <bundle.bundle_dir>"
       checklist:
         - CL number resolved
         - Context bundled via prepare_review.py
@@ -115,6 +133,7 @@ technique_skill:
         - Validators launched in parallel (single message, N Agent calls), models picked from the profile's validator_models
         - Filtered to confirmed-only
         - Markdown rendered to chat (Submit checklist section prepended when gates applied; Unresolved merges section prepended when bundle.unresolved is non-empty)
+        - Auto-shelf cleanup invoked when bundle.auto_shelved is true (`prepare_review.py --cleanup <bundle_dir>`)
       gotchas:
         - Always quote the exact CLAUDE.md rule text when flagging a claude_md issue. If you cannot quote it verbatim, do not flag it.
         - Sequential reviewer or validator calls waste time. Reviewers run in one message with one concurrent Agent call per (reviewer × chunk) pair (R reviewers × K chunks). For a small CL (K=1) that's still 2 calls for data_only / 3 for code; for a large CL (K=N) it scales to R × N. Validators run in one message with N concurrent Agent calls.
@@ -128,6 +147,7 @@ technique_skill:
         - The submit-gates AskUserQuestion fires once, regardless of gate count. multiSelect bundles all gates into one prompt. Re-prompting per gate is rude and adds no value -- the author's response is final either way.
         - Unconfirmed submit gates are NOT errors. Render them with ✗ so they're visible, but do not block the review or refuse to render the rest.
         - Unresolved merges are NOT findings -- they do NOT go through reviewer or validator subagents. They are detected deterministically by prepare_review.py (`p4 resolve -n -c <CL>`) and rendered verbatim in a separate output section. The reviewers see the raw diff (including any conflict markers) and may legitimately flag bugs in it; the unresolved section is a separate informational warning to the user.
+        - Auto-shelf cleanup (step 10) must run whenever `bundle.auto_shelved` is true, no matter what happened in steps 3-9. The cleanup script is deterministic and safe (it only deletes the shelf when the live fingerprint exactly matches what we recorded), so there is no scenario where skipping it is the right call. Skipping leaves an orphan shelf the author didn't ask for.
   narration:
     note: Reviews involve long silent stretches (batched file reads, parallel subagents that take 30s+). Post one short status line per step using these templates verbatim, filling in the bracketed counts. Do not paraphrase, omit, or add extras.
     templates:
@@ -157,6 +177,10 @@ technique_skill:
         template: "Reviewers found no issues. Skipping validation."
       - when: "After step 7, before step 9"
         template: "Validators confirmed <Y> of <X>. Rendering review."
+      - when: "After step 2 (bundle.auto_shelved is true)"
+        template: "CL <CL> had no shelved content. Auto-shelved to fetch the diff -- will clean up after the review."
+      - when: "After step 9 (bundle.auto_shelved is true)"
+        template: "Cleaning up the auto-created shelf for CL <CL>."
     variables:
       "<CL>": "the changelist number"
       "<N>": "len(bundle.changed_files)"
