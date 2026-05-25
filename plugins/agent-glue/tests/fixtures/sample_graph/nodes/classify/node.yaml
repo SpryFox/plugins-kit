@@ -1,0 +1,14 @@
+type: Node
+components:
+  name:
+    name: classify
+  topology:
+    in: ClassifyIn
+    out: ClassifyResult
+  implementation:
+    module: impl
+    function: execute
+  prompt:
+    path: prompt.md
+  show_work:
+    value: always

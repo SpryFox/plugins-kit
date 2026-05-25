@@ -133,8 +133,16 @@ class TestIniSettingsUnion:
         override = {"ini_settings": [{"file": "a.ini", "section": "S", "settings": {"k2": "v2"}}]}
         result = merge_manifests(base, override)
         assert len(result["ini_settings"]) == 1
-        # settings dict replaced by override (shallow merge at array-entry level)
-        assert result["ini_settings"][0]["settings"] == {"k2": "v2"}
+        # Same-identity entries deep-merge so a user override can add or
+        # change individual ini keys without dropping ones the project set.
+        # Override still wins on conflicts at any leaf.
+        assert result["ini_settings"][0]["settings"] == {"k1": "v1", "k2": "v2"}
+
+    def test_same_file_section_override_wins_at_leaf(self):
+        base = {"ini_settings": [{"file": "a.ini", "section": "S", "settings": {"k1": "old"}}]}
+        override = {"ini_settings": [{"file": "a.ini", "section": "S", "settings": {"k1": "new"}}]}
+        result = merge_manifests(base, override)
+        assert result["ini_settings"][0]["settings"] == {"k1": "new"}
 
 
 class TestPypiPackagesUnion:
@@ -229,3 +237,99 @@ class TestMultiLayerMerge:
         assert git_tool["install"] == {"linux": "apt install git"}
         assert merged["path_entries"] == ["~/.local/bin"]
         assert merged["plugins"][0]["ref"] == "mk:p1"
+
+
+class TestNestedToolOverride:
+    """User overrides via personal bootstrap.json should deep-merge into
+    plugin tool entries, not blow away sibling fields. Documents the
+    contract surfaced in plugins/bootstrap/skills/bootstrap/references/
+    dependency-philosophy.md and tool-resolution-redesign.md.
+    """
+
+    def test_user_overrides_single_arch_url_without_dropping_others(self):
+        base = {
+            "tools": [{
+                "name": "jq",
+                "download": {
+                    "windows-amd64": {"url": "upstream/win", "sha256": "wsha"},
+                    "macos-arm64":   {"url": "upstream/mac", "sha256": "msha"},
+                    "ubuntu-amd64":  {"url": "upstream/lin", "sha256": "lsha"},
+                },
+                "install": {"windows": "winget jq", "macos": "brew install jq"},
+            }],
+        }
+        override = {
+            "tools": [{
+                "name": "jq",
+                "download": {
+                    "macos-arm64": {"url": "mymirror/jq", "sha256": "newsha"},
+                },
+            }],
+        }
+        merged = merge_manifests(base, override)
+        jq = next(t for t in merged["tools"] if t["name"] == "jq")
+        # Override won for the one key the user touched...
+        assert jq["download"]["macos-arm64"] == {"url": "mymirror/jq", "sha256": "newsha"}
+        # ...and the others survived intact.
+        assert jq["download"]["windows-amd64"] == {"url": "upstream/win", "sha256": "wsha"}
+        assert jq["download"]["ubuntu-amd64"] == {"url": "upstream/lin", "sha256": "lsha"}
+        # install commands also untouched.
+        assert jq["install"] == {"windows": "winget jq", "macos": "brew install jq"}
+
+    def test_user_overrides_only_url_without_dropping_sha(self):
+        """A user pointing at a personal mirror typically still uses the
+        upstream hash. Override at the leaf level should not require
+        re-specifying every sibling field."""
+        base = {
+            "tools": [{
+                "name": "jq",
+                "download": {
+                    "ubuntu-amd64": {"url": "upstream", "sha256": "abc"},
+                },
+            }],
+        }
+        override = {
+            "tools": [{
+                "name": "jq",
+                "download": {
+                    "ubuntu-amd64": {"url": "mymirror"},
+                },
+            }],
+        }
+        merged = merge_manifests(base, override)
+        jq = next(t for t in merged["tools"] if t["name"] == "jq")
+        assert jq["download"]["ubuntu-amd64"] == {"url": "mymirror", "sha256": "abc"}
+
+    def test_user_can_add_new_arch_key(self):
+        base = {
+            "tools": [{
+                "name": "jq",
+                "download": {"ubuntu-amd64": {"url": "u", "sha256": "s"}},
+            }],
+        }
+        override = {
+            "tools": [{
+                "name": "jq",
+                "download": {"ubuntu-arm64": {"url": "u2", "sha256": "s2"}},
+            }],
+        }
+        merged = merge_manifests(base, override)
+        jq = next(t for t in merged["tools"] if t["name"] == "jq")
+        assert set(jq["download"].keys()) == {"ubuntu-amd64", "ubuntu-arm64"}
+
+    def test_install_command_override_preserves_other_oses(self):
+        base = {
+            "tools": [{
+                "name": "git",
+                "install": {"windows": "winget git", "ubuntu": "apt install git"},
+            }],
+        }
+        override = {
+            "tools": [{
+                "name": "git",
+                "install": {"ubuntu": "snap install git"},
+            }],
+        }
+        merged = merge_manifests(base, override)
+        git = next(t for t in merged["tools"] if t["name"] == "git")
+        assert git["install"] == {"windows": "winget git", "ubuntu": "snap install git"}

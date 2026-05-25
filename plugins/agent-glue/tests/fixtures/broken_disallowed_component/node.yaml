@@ -1,0 +1,12 @@
+type: Node
+components:
+  name:
+    name: disallowed_comp
+  topology:
+    in: X
+    out: Y
+  implementation:
+    module: impl
+    function: execute
+  fixture_id:
+    id: not_allowed_on_node

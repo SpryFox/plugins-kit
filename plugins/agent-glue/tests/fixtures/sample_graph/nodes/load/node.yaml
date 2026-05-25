@@ -1,0 +1,12 @@
+type: Node
+components:
+  name:
+    name: load
+  description:
+    description: Read items from a source file.
+  topology:
+    in: LoadIn
+    out: LoadResult
+  implementation:
+    module: impl
+    function: execute

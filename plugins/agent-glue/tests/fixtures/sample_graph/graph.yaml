@@ -1,0 +1,16 @@
+type: Graph
+components:
+  name:
+    name: sample
+  description:
+    description: Tiny three-node graph used by the loader round-trip test.
+  start:
+    node: load
+  state_decl:
+    init:
+      run_id: str
+    accumulated:
+      audit: list[str]
+  config:
+    settings:
+      show_work: default

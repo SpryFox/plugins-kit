@@ -11,9 +11,25 @@ from collections import defaultdict
 
 
 def find_p4():
-    """Locate the p4 binary. Engine-bundled Pythons often have a sanitized PATH
-    on Windows that doesn't see Perforce's install dir, so we fall back to the
-    standard Windows install locations."""
+    """Locate the p4 binary.
+
+    Resolution order:
+      1. Path recorded by bootstrap (tool_paths.json) — most authoritative.
+      2. shutil.which('p4' / 'p4.exe') — covers fresh installs where
+         bootstrap hasn't recorded a path yet.
+      3. Standard Windows install locations — engine-bundled Pythons often
+         have a sanitized PATH that doesn't see Perforce's install dir.
+      4. Bare 'p4' — let subprocess error out informatively.
+
+    See docs/planning/bootstrap/tool-resolution-redesign.md.
+    """
+    try:
+        from bootstrap_lib import tool_paths
+        recorded = tool_paths.resolve(tool_paths.canonical_data_dir(), 'p4')
+        if recorded and os.path.isfile(recorded):
+            return recorded
+    except ImportError:
+        pass
     candidates = [
         shutil.which('p4'),
         shutil.which('p4.exe'),

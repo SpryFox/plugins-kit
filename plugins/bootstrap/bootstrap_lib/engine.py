@@ -608,6 +608,7 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
         name = tool_def["name"]
         install_cmds = tool_def.get("install", {})
         tool_install_path = tool_def.get("installPath")
+        download_def = _resolve_download_def(tool_def.get("download", {}), current_os)
         result = check_tool(name, install_cmds, current_os, install_path=tool_install_path)
 
         if result.passed:
@@ -615,6 +616,26 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
                 tool_paths.record(data_dir, result.name, result.path)
             ok_entries.append(f"{p}{result.name}: ok - {result.message}")
             continue
+
+        # Phase-2 path: prefer downloading our own copy to ~/.local/bin over
+        # shelling out to a system package manager. See
+        # docs/planning/bootstrap/tool-resolution-redesign.md.
+        if download_def and download_def.get("url") and download_def.get("sha256"):
+            from .downloader import download_and_install
+            dl = download_and_install(
+                name,
+                download_def["url"],
+                download_def["sha256"],
+                binary_name=download_def.get("binary_name"),
+                archive_path=download_def.get("archive_path"),
+                archive_type=download_def.get("archive_type"),
+            )
+            if dl.ok:
+                tool_paths.record(data_dir, name, dl.path)
+                tools_installed.append((name, f"downloaded to {dl.path}"))
+                continue
+            action_entries.append(f"{p}{name}: download failed - {dl.message}")
+            # Fall through to legacy install fallback below.
 
         install_state = "no_install_cmd"
         if result.install_cmd:
@@ -1246,6 +1267,7 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
         name = tool_def["name"]
         install_cmds = tool_def.get("install", {})
         tool_install_path = tool_def.get("installPath")
+        download_def = _resolve_download_def(tool_def.get("download", {}), current_os)
         result = check_tool(name, install_cmds, current_os, install_path=tool_install_path)
 
         if result.passed:
@@ -1253,6 +1275,26 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
                 tool_paths.record(data_dir, result.name, result.path)
             ok_entries.append(f"{prefix}{result.name}: ok - {result.message}")
             continue
+
+        # Phase-2 path: prefer downloading our own copy to ~/.local/bin over
+        # shelling out to a system package manager. See
+        # docs/planning/bootstrap/tool-resolution-redesign.md.
+        if download_def and download_def.get("url") and download_def.get("sha256"):
+            from .downloader import download_and_install
+            dl = download_and_install(
+                name,
+                download_def["url"],
+                download_def["sha256"],
+                binary_name=download_def.get("binary_name"),
+                archive_path=download_def.get("archive_path"),
+                archive_type=download_def.get("archive_type"),
+            )
+            if dl.ok:
+                tool_paths.record(data_dir, name, dl.path)
+                tools_installed.append((name, f"downloaded to {dl.path}"))
+                continue
+            action_entries.append(f"{prefix}{name}: download failed - {dl.message}")
+            # Fall through to legacy install fallback below.
 
         # Tool not found — attempt remediation if install command available
         install_state = "no_install_cmd"
@@ -1986,6 +2028,25 @@ def _read_new_log_entries(data_dir, start_time=None):
         return ""
 
     return "".join(new_lines).rstrip("\n")
+
+
+def _resolve_download_def(download_block, current_os):
+    """Pick the right download entry for this host.
+
+    Lookup order:
+      1. "<os>-<arch>" — e.g. "macos-arm64", "windows-amd64". Allows shipping
+         distinct binaries per architecture.
+      2. "<os>" — for tools whose binary doesn't vary by arch on this OS.
+
+    Returns the matching entry dict, or None if neither key is present.
+    """
+    if not isinstance(download_block, dict) or not download_block:
+        return None
+    from .platform_detect import detect_arch
+    arch_key = f"{current_os}-{detect_arch()}"
+    if arch_key in download_block:
+        return download_block[arch_key]
+    return download_block.get(current_os)
 
 
 def _clear_project_cooldown(data_dir, project_dir):

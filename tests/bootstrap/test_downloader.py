@@ -1,0 +1,195 @@
+"""Tests for bootstrap_lib/downloader.py.
+
+Uses file:// URLs to avoid network dependence. Each test builds the
+artifact it wants the downloader to fetch in a tmp_path, then points the
+downloader at it via a file:// URI.
+"""
+
+import hashlib
+import os
+import pathlib
+import sys
+import tarfile
+import zipfile
+
+import pytest
+
+from bootstrap_lib import downloader
+
+
+def _sha256_of(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(64 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _file_uri(path):
+    # pathlib.Path.as_uri normalizes Windows backslashes and adds the
+    # right drive-letter prefix for file:// URIs.
+    return pathlib.Path(path).resolve().as_uri()
+
+
+class TestSingleFileDownload:
+    def test_single_file_download_installs_at_target(self, tmp_path):
+        src = tmp_path / "jq-binary"
+        src.write_bytes(b"#!/bin/sh\necho jq stub\n")
+        sha = _sha256_of(src)
+
+        target_dir = tmp_path / "bin"
+        result = downloader.download_and_install(
+            "jq",
+            _file_uri(src),
+            sha,
+            target_dir=str(target_dir),
+        )
+        assert result.ok, result.message
+        assert os.path.isfile(result.path)
+        # Filename: "jq" on Unix, "jq.exe" on Windows.
+        expected = "jq.exe" if sys.platform == "win32" else "jq"
+        assert os.path.basename(result.path) == expected
+
+    def test_hash_mismatch_reports_failure(self, tmp_path):
+        src = tmp_path / "bad"
+        src.write_bytes(b"different bytes than expected")
+
+        target_dir = tmp_path / "bin"
+        result = downloader.download_and_install(
+            "tool",
+            _file_uri(src),
+            "0" * 64,  # known-wrong hash
+            target_dir=str(target_dir),
+        )
+        assert not result.ok
+        assert "sha256 mismatch" in result.message
+        # Nothing should land in target_dir.
+        assert not target_dir.exists() or list(target_dir.iterdir()) == []
+
+    def test_explicit_binary_name(self, tmp_path):
+        src = tmp_path / "raw"
+        src.write_bytes(b"payload")
+        sha = _sha256_of(src)
+
+        target_dir = tmp_path / "bin"
+        result = downloader.download_and_install(
+            "jqlang",
+            _file_uri(src),
+            sha,
+            binary_name="jq",
+            target_dir=str(target_dir),
+        )
+        assert result.ok
+        expected = "jq.exe" if sys.platform == "win32" else "jq"
+        assert os.path.basename(result.path) == expected
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits only")
+    def test_installed_file_is_executable(self, tmp_path):
+        src = tmp_path / "x"
+        src.write_bytes(b"#!/bin/sh\n")
+        sha = _sha256_of(src)
+        result = downloader.download_and_install(
+            "x", _file_uri(src), sha, target_dir=str(tmp_path / "bin"),
+        )
+        assert result.ok
+        mode = os.stat(result.path).st_mode
+        assert mode & 0o111  # user/group/other execute set
+
+
+class TestZipArchive:
+    def test_extracts_inner_path_from_zip(self, tmp_path):
+        # Build a zip containing bin/jq.
+        inner_payload = b"jq archive payload"
+        archive = tmp_path / "jq.zip"
+        with zipfile.ZipFile(archive, "w") as z:
+            z.writestr("bin/jq", inner_payload)
+            z.writestr("README.md", b"unused")
+        sha = _sha256_of(archive)
+
+        target_dir = tmp_path / "bin"
+        result = downloader.download_and_install(
+            "jq",
+            _file_uri(archive),
+            sha,
+            archive_path="bin/jq",
+            target_dir=str(target_dir),
+        )
+        assert result.ok, result.message
+        with open(result.path, "rb") as f:
+            assert f.read() == inner_payload
+
+    def test_missing_archive_path_for_archive_url_fails(self, tmp_path):
+        archive = tmp_path / "x.zip"
+        with zipfile.ZipFile(archive, "w") as z:
+            z.writestr("anything", b"x")
+        sha = _sha256_of(archive)
+        result = downloader.download_and_install(
+            "x", _file_uri(archive), sha,
+            target_dir=str(tmp_path / "bin"),
+            archive_type="zip",
+        )
+        assert not result.ok
+        assert "no archive_path" in result.message
+
+
+class TestTarGzArchive:
+    def test_extracts_inner_path_from_tar_gz(self, tmp_path):
+        inner_payload = b"gh archive payload"
+        archive = tmp_path / "gh.tar.gz"
+        # Build a real tar.gz with an inner file.
+        inner_file = tmp_path / "_staging" / "gh_2.0_linux_amd64" / "bin" / "gh"
+        inner_file.parent.mkdir(parents=True)
+        inner_file.write_bytes(inner_payload)
+        with tarfile.open(archive, "w:gz") as t:
+            t.add(inner_file, arcname="gh_2.0_linux_amd64/bin/gh")
+        sha = _sha256_of(archive)
+
+        target_dir = tmp_path / "bin"
+        result = downloader.download_and_install(
+            "gh",
+            _file_uri(archive),
+            sha,
+            archive_path="gh_2.0_linux_amd64/bin/gh",
+            target_dir=str(target_dir),
+        )
+        assert result.ok, result.message
+        with open(result.path, "rb") as f:
+            assert f.read() == inner_payload
+
+
+class TestArchiveTypeDetection:
+    @pytest.mark.parametrize("url,expected", [
+        ("https://example.com/x.zip", "zip"),
+        ("https://example.com/x.tar.gz", "tar.gz"),
+        ("https://example.com/x.tgz", "tar.gz"),
+        ("https://example.com/x.tar.xz", "tar.xz"),
+        ("https://example.com/x.tar", "tar"),
+        ("https://example.com/x.exe", None),
+        ("https://example.com/x", None),
+        ("https://example.com/x.zip?token=abc", "zip"),
+    ])
+    def test_archive_type_detection(self, url, expected):
+        assert downloader._detect_archive_type(url, None) == expected
+
+    def test_explicit_archive_type_overrides_detection(self):
+        assert downloader._detect_archive_type("https://example.com/x.exe", "tar.gz") == "tar.gz"
+
+
+class TestAtomicReplace:
+    def test_replaces_existing_file(self, tmp_path):
+        target_dir = tmp_path / "bin"
+        target_dir.mkdir()
+        existing = target_dir / ("jq.exe" if sys.platform == "win32" else "jq")
+        existing.write_bytes(b"old version")
+
+        src = tmp_path / "new"
+        new_payload = b"new version of jq"
+        src.write_bytes(new_payload)
+        sha = _sha256_of(src)
+
+        result = downloader.download_and_install(
+            "jq", _file_uri(src), sha, target_dir=str(target_dir),
+        )
+        assert result.ok
+        with open(result.path, "rb") as f:
+            assert f.read() == new_payload

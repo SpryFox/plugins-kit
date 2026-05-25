@@ -1,0 +1,10 @@
+type: Node
+components:
+  name:
+    name: wrong_type
+  topology:
+    in: X
+    out: Y
+  implementation:
+    module: impl
+    function: 42

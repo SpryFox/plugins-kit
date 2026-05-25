@@ -1,0 +1,7 @@
+type: Edge
+components:
+  source:
+    from_node: load
+    on_variant: Loaded
+  target:
+    to_node: classify

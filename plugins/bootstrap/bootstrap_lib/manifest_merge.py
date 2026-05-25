@@ -39,30 +39,29 @@ def _merge_arrays(base_list, override_list, identity_key=None, composite_fn=None
 
     key_fn = composite_fn if composite_fn else (lambda e: e.get(identity_key))
 
-    # Build ordered index of base entries
-    merged = []
-    index = {}
+    # Build ordered index of base entries. Same-identity entries are
+    # deep-merged (not shallow-updated) so users can override a single
+    # nested key (e.g. tools[name=jq].download[macos-arm64].url) without
+    # blowing away sibling keys. Override wins for scalar conflicts;
+    # nested dicts merge recursively.
+    merged = []  # list of (key, dict) tuples to preserve order
+    index = {}   # key -> position in `merged`
+
+    def _upsert(entry):
+        k = key_fn(entry)
+        if k in index:
+            pos = index[k]
+            merged[pos] = (k, _deep_merge_dicts(merged[pos][1], entry))
+        else:
+            index[k] = len(merged)
+            merged.append((k, dict(entry)))
+
     for entry in base_list:
-        k = key_fn(entry)
-        if k in index:
-            # Duplicate in base — merge into existing
-            index[k].update(entry)
-        else:
-            copy = dict(entry)
-            merged.append(copy)
-            index[k] = copy
-
-    # Merge override entries
+        _upsert(entry)
     for entry in override_list:
-        k = key_fn(entry)
-        if k in index:
-            index[k].update(entry)
-        else:
-            copy = dict(entry)
-            merged.append(copy)
-            index[k] = copy
+        _upsert(entry)
 
-    return merged
+    return [v for _, v in merged]
 
 
 def _deep_merge_dicts(base, override):

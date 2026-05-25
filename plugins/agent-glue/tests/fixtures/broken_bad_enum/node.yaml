@@ -1,0 +1,12 @@
+type: Node
+components:
+  name:
+    name: bad_enum
+  topology:
+    in: X
+    out: Y
+  implementation:
+    module: impl
+    function: execute
+  show_work:
+    value: maybe
