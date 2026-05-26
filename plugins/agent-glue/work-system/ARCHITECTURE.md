@@ -38,6 +38,8 @@ The work subsystem references the cross-cutting components from `core/components
 
 Every successful `submit()` writes a `WorkRecord` keyed by `request_hash` (sha256 of the full WorkRequest yaml: input + output_schema + worker_type + worker_config + capability_requirement). The record carries an `inputs_hash` sibling computed from just the inputs the worker actually consumed -- by default this equals `request_hash`, but a worker may declare a narrower hash (e.g. excluding `max_tokens` if it doesn't affect output) in its `DefaultConfig`.
 
+The cache key is derived from request inputs only; worker code version is NOT part of the key in v1. If a consumer edits a `python_script` worker's body without changing the WorkRequest yaml, the cache still hits. Code-version-aware invalidation is a post-v1 candidate if a consumer surfaces a concrete bug from this; consumers who want to force a fresh call after a code edit use `CacheControl: bypass: true` per request.
+
 On the next `submit()` with the same `request_hash`:
 
 - Look up the existing `WorkRecord` in the configured cache directory.
@@ -46,13 +48,13 @@ On the next `submit()` with the same `request_hash`:
 
 This collapses what would otherwise be two mechanisms (audit log + cache) into one. Records exist *because* we want to skip re-running work; the audit trail is a free side effect of caching.
 
-**Cache directory selection.** In normal operation, records live at `<consumer_root>/.agent-glue-cache/<request_hash>.yaml`. In cohort mode, `submit(request, cohort=<name>)` points the cache lookup at `cohorts/<name>/recordings/<worker_type>/<request_hash>.yaml` instead. Same lookup, same record shape, different directory.
+**Cache directory selection.** In normal operation, records live at `<consumer_root>/.agent-glue-cache/<request_hash>.yaml`. In cohort mode, `submit(request, cohort=<name>)` points the cache **lookup** (the read) at `cohorts/<name>/recordings/<worker_type>/<request_hash>.yaml` instead. Cache **writes** always go to the live cache regardless of mode -- show-your-work is integral, so every successful submit() produces a live cache record even when reads were satisfied from a cohort. The cohort directory holds curated or promoted recordings; the live cache holds the full audit trail of everything actually run.
 
 **Worker determinism.** The default `Determinism: deterministic` makes cache lookups eligible. A worker may declare `Determinism: non_deterministic`, in which case cache lookups never match (every call hits the worker) but records are still written for audit. The temperature-zero constraint (below) keeps all LLM workers deterministic; this knob exists for hypothetical future workers (e.g. a "random sample" worker) that genuinely cannot be cached.
 
 **Per-request overrides.** A WorkRequest may carry a `CacheControl` component:
-- `bypass: true` -> ignore cache, always invoke worker, overwrite record.
-- `invalidate_if: <criteria>` -> additional preconditions that must hold for the cached record to be considered fresh (e.g. file mtime, env-var value). If the criteria fail, treat as cache miss.
+- `bypass: true` -> ignore the cache lookup, always invoke the worker, **and still write the fresh record** to the live cache (so the next non-bypass submission can hit it). Bypass means "skip the read this time," not "skip both read and write."
+- `invalidate_if: <criteria>` -> additional preconditions that must hold for the cached record to be considered fresh (e.g. file mtime, env-var value). If the criteria fail, treat as cache miss; the worker runs and the record is written normally.
 
 **Disabling records entirely.** A plugin-level setting (`show_work: never`) suppresses all WorkRecord writes; this also disables cache (no records means no cache hits). Default is `show_work: default`.
 

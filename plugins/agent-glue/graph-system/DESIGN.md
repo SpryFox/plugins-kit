@@ -118,6 +118,8 @@ The runtime is a single Python function. ~100-150 LOC.
 
 If a node's output is `list[Variant]` and its outgoing edge for that variant has `parallel: true`, the runtime invokes the downstream slice once per list element, with each element as the input to the next node. Sub-runs share the same `PipelineState` (with appropriate locking on accumulated fields). Results converge at the next node whose input contract expects a list.
 
+**Concurrency limit is per-node**, configured on the edge via `ParallelSpec.max_workers`. There is no global concurrency limit in v1; each fan-out edge controls its own downstream parallelism. Consumers with provider-side rate limits (e.g. an LLM API that caps concurrent requests) set `max_workers` on the relevant edge to stay under the cap.
+
 This covers the localization example's chunk-level fan-out (one downstream call per chunk). It does NOT cover shapes like the character animation example's per-line freshness, where a *subset* of a list (the stale lines) is passed to a *single* downstream call that needs whole-list context (predecessor relationships, depth ordering). That pattern is just "subset-as-input-to-one-call" — plain Pydantic contract, no fan-out primitive involved. Use `parallel: true` only when each element is genuinely independent.
 
 ## Per-graph layout (in consuming project)
@@ -294,6 +296,8 @@ The kit imposes no schema on `llm.yaml`. Whatever the `openrouter_kit.client` re
 ## Canonical artifacts
 
 A node may declare `outputs:` in `graph.yaml` -- the runtime writes the declared file after the node's output validates. These are the pipeline's *durable product* consumed by other pipelines and tools (e.g. the localization example's translation sidecars consumed by downstream audit aggregators; the character animation example's brief YAML consumed by subsequent runs as prior-state input).
+
+**v1 supports one canonical output per node.** The `Outputs` component's schema permits a list, but v1 honors only a single entry per node; nodes that need to emit multiple distinct artifact shapes in one execution wrap them in their own `format: managed` writer. Multiple-outputs-per-node is a post-v1 candidate if a consumer surfaces a concrete need.
 
 ```yaml
 nodes:

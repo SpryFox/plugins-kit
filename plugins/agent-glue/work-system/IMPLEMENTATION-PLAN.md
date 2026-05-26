@@ -37,10 +37,10 @@ Add the WorkRecord cache that turns audit and cache into one mechanism. The work
 
 **Deliverables:**
 
-- `agent_glue_lib/work/hashing.py` -- canonicalize a WorkRequest, compute its sha256 (`request_hash`); compute `inputs_hash` (equals request_hash by default; worker may declare narrower).
-- `agent_glue_lib/work/cache.py` -- WorkRecord read/write; cache directory abstraction (live cache vs cohort recordings is just a directory swap).
-- `submit()` is updated to: compute request_hash, look up cache, return cached result on hit (when worker is `deterministic` and request has no `CacheControl.bypass`), otherwise dispatch and write the record on success.
-- `CacheControl.bypass: true` honored; `CacheControl.determinism: non_deterministic` skips the cache lookup and still writes the record.
+- `agent_glue_lib/work/hashing.py` -- canonicalize a WorkRequest, compute its sha256 (`request_hash`); compute `inputs_hash` (equals request_hash by default; worker may declare narrower). The cache key derives from request inputs only; worker code version is NOT part of the key.
+- `agent_glue_lib/work/cache.py` -- WorkRecord read/write. Read directory is swappable (live cache vs cohort recordings); writes always go to the live cache regardless of mode.
+- `submit()` is updated to: compute request_hash, look up cache (in the configured read directory), return cached result on hit (when worker is `deterministic` and request has no `CacheControl.bypass`), otherwise dispatch and write the record to the live cache on success.
+- `CacheControl.bypass: true` honored: skip the read, run the worker, AND write the fresh record (so the next non-bypass submission can hit it). `CacheControl.determinism: non_deterministic` skips the cache lookup and still writes the record.
 - `show_work: never` plugin setting suppresses all writes (and disables cache as a side effect).
 
 **After this:** the product can submit identical WorkRequests and the second submission returns a cached result without re-invoking the worker. The cache directory holds inspectable yaml records that double as audit log. Hand-authored records in a cohort directory replay deterministically.
@@ -80,7 +80,7 @@ Make python_script's shell-out pattern first-class and capture it in WorkRecord 
 
 - `agent_glue_lib/work/side_effects.py` -- helpers to build a SideEffects record (file-written, tool-used, subprocess-invoked facets).
 - `agent_glue_lib/work/helpers/run_subprocess.py` -- runs a command, captures stdout/stderr/exit-code, returns the result + a pre-populated SideEffects record describing what the function did.
-- python_script worker accepts `config.consumes_dirs` and `config.produces_dirs`; cache invalidation auto-derives from `consumes_dirs` mtimes when these are present.
+- python_script worker accepts `config.consumes_dirs` and `config.produces_dirs` (literal directory paths only in v1, no glob patterns); cache invalidation auto-derives from `consumes_dirs` mtimes when these are present.
 
 **After this:** a python_script worker that shells out to an external command (Unreal commandlet, build tool, p4 command) produces a WorkRecord that a reviewer can read end-to-end: the function called, the cmd run, the files written, the dirs the function depended on, and the determinism declaration. Enough to assess cache correctness without inspecting the function body.
 
@@ -101,7 +101,7 @@ Wire the cohort-mode cache directory swap and the full work-side CLI.
 
 **Deliverables:**
 
-- `submit(request, cohort=<name>)` swaps the cache lookup to the cohort's recordings directory; strict mode fails on missing recordings, lenient falls through to live invocation.
+- `submit(request, cohort=<name>)` swaps the cache READ to the cohort's recordings directory; writes still go to the live cache (per the show-your-work-as-cache rules in ARCHITECTURE.md). Strict mode fails on missing recordings, lenient falls through to live invocation.
 - `agent-glue work promote-record <request_hash> --to-cohort <name>` copies a live cache record into a cohort's recordings dir.
 - `agent-glue work submit <request.yaml>`, `agent-glue work submit ... --cohort <name>`, `agent-glue work submit ... --bypass-cache`, `agent-glue work list-workers`.
 - All CLI commands are thin facades over `agent_glue_lib.work`.

@@ -53,7 +53,7 @@ plugins/agent-glue/
 
   claude-work-queue/             # standalone primitive: queue + signal + execute-and-report
     CLAUDE.md / DESIGN.md / ARCHITECTURE.md / IMPLEMENTATION-PLAN.md
-    components/ / entities/      # (populated when the three open design questions are answered)
+    components/ / entities/      # (populated in the first claude-work-queue implementation increment)
 
   work-system/                   # worker-agnostic do-a-unit-of-work abstraction with show-your-work-as-cache
     CLAUDE.md / DESIGN.md / ARCHITECTURE.md / IMPLEMENTATION-PLAN.md

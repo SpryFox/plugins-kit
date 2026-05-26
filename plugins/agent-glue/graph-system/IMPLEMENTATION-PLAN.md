@@ -59,7 +59,7 @@ Honor `ParallelSpec` on edges so a node whose output is `list[Variant]` can disp
 
 **Deliverables:**
 
-- Runtime detects `parallel: true` edges; dispatches the downstream slice once per list element via `ThreadPoolExecutor` (`max_workers` from the component or graph Config).
+- Runtime detects `parallel: true` edges; dispatches the downstream slice once per list element via `ThreadPoolExecutor` with `max_workers` taken from `ParallelSpec.max_workers` on the edge (per-node configuration; no global concurrency limit in v1).
 - Accumulated `PipelineState` fields get a lock; nodes' returned `StateDelta`s are applied under lock.
 - Lists of `Disposition[T]` route per-element to the matching variant edge (mixed-disposition list: each element to its own target).
 
@@ -71,7 +71,7 @@ Make node-declared artifacts a first-class part of a run.
 
 **Deliverables:**
 
-- Runtime evaluates `Outputs` components after node output validation; renders each `OutputArtifactSpec.path` via Jinja2 with `state.x` and `input.x` substitutions; writes the artifact in the declared `format` (yaml, json, text); `format: managed` leaves the write to the node's own code and only verifies the path exists.
+- Runtime evaluates a node's `Outputs` component after node output validation. The component's `artifacts` field is a list at the schema level, but v1 honors only a single artifact entry per node; multiple outputs is a post-v1 candidate. The artifact's `path` is rendered via Jinja2 with `state.x` and `input.x` substitutions; the artifact is written in the declared `format` (yaml, json, text); `format: managed` leaves the write to the node's own code and only verifies the path exists.
 - Nodes that read prior runs' canonical outputs as inputs do so via normal `Path.read_text` -- the runtime is silent on the read side.
 
 **After this:** the product can declare and write durable artifacts from a node's output. A consumer pipeline can produce sidecar files that other tools (or other pipelines) read as input.

@@ -24,9 +24,9 @@ Two entity-shaped concepts that stay Python-backed because `impl.py` consumes th
 
 ## Components
 
-Component schemas live as yaml files in `./components/` (authored in Phase 1 alongside the loader). Each file declares one component's `kind`, its fields, and their types. Presence is the signal -- an entity has a component or it doesn't.
+Component schemas live as yaml files in `./components/`. Each file declares one component's `kind`, its fields, and their types. Presence is the signal -- an entity has a component or it doesn't.
 
-Component types referenced by graph-subsystem entities (authored in Phase 1):
+Component types referenced by graph-subsystem entities:
 
 - Identity-shaped: `Version`, `FixtureId`
 - Graph topology: `Start`, `Topology`, `Source`, `Target`, `ParallelSpec`, `Implementation`

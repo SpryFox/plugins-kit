@@ -166,8 +166,8 @@ worker:
   type: python_script
   config:
     function: my_pipeline.workers.gather_loc_strings
-    consumes_dirs: [Source/, Config/Localization/]    # kit auto-derives cache invalidation: any mtime change in these dirs invalidates the cached record
-    produces_dirs: [Content/Localization/]            # kit knows the function writes here; cohort-replay refuses to skip the function if produces_dirs are in scope
+    consumes_dirs: [Source/, Config/Localization/]    # literal directory paths in v1 (no glob patterns); kit auto-derives cache invalidation from mtime changes
+    produces_dirs: [Content/Localization/]            # literal directory paths in v1; kit knows the function writes here; cohort-replay refuses to skip the function if produces_dirs are in scope
 cache_control:
   determinism: deterministic_idempotent               # the gather commandlet produces the same archive given the same source state, so cache hits are safe when consumes_dirs haven't changed
 ```
