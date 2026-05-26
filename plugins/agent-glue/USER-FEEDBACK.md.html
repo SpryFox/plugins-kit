@@ -1,6 +1,6 @@
 # agent-glue: User Feedback
 
-Anonymized findings from users of related systems who reviewed the agent-glue design with adoption in mind. Per the user-anonymity convention in `CLAUDE.md`, users are named by their role only; no employer / project / file-path details are recorded here.
+Anonymized findings from users of related systems who reviewed the agent-glue design with adoption in mind. Per the user-anonymity convention in `CLAUDE.md.html`, users are named by their role only; no employer / project / file-path details are recorded here.
 
 ## Users represented
 
@@ -19,7 +19,7 @@ Net: adopt for the substrate, keep the rest as consumer business logic that sits
 
 ### claude-work-queue design (now locked)
 
-Both users independently arrived at the same answers for claude-work-queue's three open design questions. The matching reasoning is captured here for completeness; the locked decisions live in `claude-work-queue/DESIGN.md`.
+Both users independently arrived at the same answers for claude-work-queue's three open design questions. The matching reasoning is captured here for completeness; the locked decisions live in `claude-work-queue/DESIGN.md.html`.
 
 - **Queue storage: file-based on disk.** Both users need cross-process accessibility (external LLM-subprocess invocations dropping results back into the queue; bulk runners drafting hundreds of items from a shell script with no Python dependency; sessions handing off work to other sessions across restarts). SQLite would force every external writer through a Python API and break the "yaml all the way down" substrate the rest of the kit commits to. In-memory was a non-starter for both because the bulk runs outlive any single session.
 - **Signaling: Stop-hook with re-prompt.** Both users have long-running orchestrators that push items mid-session and need them picked up promptly. Session-start-only signaling misses mid-session adds; external-trigger-per-item is too expensive (launches a fresh session per item). Stop-hook + same script at session-start gets both cases with one mechanism.
@@ -102,7 +102,11 @@ Beyond the six post-v1 candidates above, the second feedback round surfaced addi
 
 ## Where the consumer reviews land in the v1 plan
 
-- **claude-work-queue/DESIGN.md** -- the three locked design decisions are recorded; rationale references this document. The subsystem itself is deferred to post-v1 (see below); the design remains valid for when implementation begins.
-- **Top-level IMPLEMENTATION-PLAN.md** -- post-v1 candidate ordering above is referenced as the recommended priority order for post-v1 work. v1 increments are unchanged in scope: no feature was reordered within v1, no feature was added, and no post-v1 candidate moved ahead of any v1 increment. One v1-scoped subsystem (claude-work-queue) plus the work-system increment that depends on it (*claude_inference + claude_agent workers*) were deferred to post-v1 by user decision after the second feedback round, on the rationale that openrouter covers v1's LLM-call need.
+- **claude-work-queue/DESIGN.md.html** -- the three locked design decisions are recorded; rationale references this document. The subsystem itself is deferred to post-v1 (see below); the design remains valid for when implementation begins.
+- **Top-level IMPLEMENTATION-PLAN.md.html** -- post-v1 candidate ordering above is referenced as the recommended priority order for post-v1 work. v1 increments are unchanged in scope: no feature was reordered within v1, no feature was added, and no post-v1 candidate moved ahead of any v1 increment. One v1-scoped subsystem (claude-work-queue) plus the work-system increment that depends on it (*claude_inference + claude_agent workers*) were deferred to post-v1 by user decision after the second feedback round, on the rationale that openrouter covers v1's LLM-call need.
 - **Suggested-features section above** -- six reviewer-suggested features that are not in any plan today. Promotion decisions are future work.
 - **Raw reviews** -- the full consumer reviews (which name specific code paths and consumer-project artifacts) are session-private working notes outside the plugin tree, per the user-anonymity convention.
+
+
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'medium'};</script>
+<!-- Markdeep: --><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js?" charset="utf-8"></script>

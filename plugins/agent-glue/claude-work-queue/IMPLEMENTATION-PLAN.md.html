@@ -2,7 +2,7 @@
 
 **Status: deferred to post-v1.** No implementation work happens against this subsystem during v1. The four increments below remain accurate as the eventual build plan; the design is locked. See the top-level IMPLEMENTATION-PLAN's *Out of scope for v1* section for the deferral rationale.
 
-Increments build a file-based queue + Stop-hook-driven signal + open-to-any-writer consumer API. The three design decisions are locked (see `claude-work-queue/DESIGN.md`).
+Increments build a file-based queue + Stop-hook-driven signal + open-to-any-writer consumer API. The three design decisions are locked (see `claude-work-queue/DESIGN.md.html`).
 
 ## Queue storage
 
@@ -11,7 +11,7 @@ Build the on-disk substrate that holds work items and their results.
 **Deliverables:**
 
 - `WorkItem` and `WorkItemResult` entity-type yamls in `entities/`; per-component schemas in `components/` (Prompt, InputPayload, ResultSchema, WorkItemId, RequestedAt, CompletedAt; Errored from core).
-- `agent_glue_lib/claude_work_queue/storage.py` -- read/write WorkItem and WorkItemResult yamls against a `<queue_root>` directory; handles the `pending/` / `in_progress/` / `done/` directory layout described in DESIGN.md.
+- `agent_glue_lib/claude_work_queue/storage.py` -- read/write WorkItem and WorkItemResult yamls against a `<queue_root>` directory; handles the `pending/` / `in_progress/` / `done/` directory layout described in DESIGN.md.html.
 - `agent_glue_lib/claude_work_queue/claim.py` -- atomic claim by `os.rename`-ing a WorkItem from `pending/` to `in_progress/`; failed claims (two consumers racing) surface as a typed exception; the first successful rename wins.
 - Pytest unit tests covering: write -> read round-trip, ordered pickup by timestamp prefix, atomic claim under simulated race, claim of non-existent item raises clearly, listing pending items.
 
@@ -48,7 +48,11 @@ Wrap the storage + signaling + execute-and-report into the `submit / wait / resu
 **Deliverables:**
 
 - `agent_glue_lib/claude_work_queue/__init__.py` exposes `submit(prompt, input=None, schema=None, queue_root=None) -> item_id`, `wait(item_id, timeout=None) -> WorkItemResult`, `result(item_id) -> WorkItemResult | None`, and the typed errors (`SchemaViolation`, `TimedOut`, `ItemNotFound`).
-- Documentation in claude-work-queue/CLAUDE.md naming the wire format as stable: a producer that writes a WorkItem yaml directly into `pending/` is a first-class consumer.
+- Documentation in claude-work-queue/CLAUDE.md.html naming the wire format as stable: a producer that writes a WorkItem yaml directly into `pending/` is a first-class consumer.
 - Smoke test: full round-trip with the queue running in-process (test fixture seeds the hook with a deterministic responder); identical round-trip with the queue running cross-process (a subprocess writes the item, the in-test consumer reads the result).
 
 **After this:** any caller -- the work subsystem's claude_inference / claude_agent worker submitters, a scheduled cron-style runner, a shell script, an external program -- can drive the queue through a single documented API. The work subsystem can start building its claude-worker increment against this surface.
+
+
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'medium'};</script>
+<!-- Markdeep: --><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js?" charset="utf-8"></script>

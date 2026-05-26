@@ -9,8 +9,8 @@ Build the loader, validator, cross-cutting components, and Disposition primitive
 **Deliverables:**
 
 - `pyproject.toml` declaring the agent-glue Python package (deps: pydantic, pyyaml, jinja2, jsonschema).
-- `agent_glue_lib/core/` package with `catalog.py`, `loader.py`, `validator.py`, `disposition.py`, `dispatch.py` -- behavior is specified in `core/DESIGN.md` ("Loader behavior", "Validator behavior", and "Variant dispatch" sections).
-- The cross-cutting component schemas in `core/components/` (enumerated in `core/DESIGN.md`).
+- `agent_glue_lib/core/` package with `catalog.py`, `loader.py`, `validator.py`, `disposition.py`, `dispatch.py` -- behavior is specified in `core/DESIGN.md.html` ("Loader behavior", "Validator behavior", and "Variant dispatch" sections).
+- The cross-cutting component schemas in `core/components/` (enumerated in `core/DESIGN.md.html`).
 - Pre-commit hook script that loads the kit + every example pipeline's instance yamls and exits nonzero if `validate_all` returns errors.
 - Pytest tests covering loader edge cases (missing required fields, unknown components, name resolution failures, round-trip identity for the sample fixtures, structurally broken instances rejected with the expected error messages).
 
@@ -23,3 +23,7 @@ After this increment exists, the other three subsystems can build their entity t
 - Per-component `version:` field if the team ever wants explicit schema versioning. The current posture is to use git shas instead.
 - `type: ref` in field schemas with a typed `ref_kind` (e.g. contract name, function dotted-path, sibling-entity name) so the loader can validate reference targets structurally rather than waiting for runtime to fail. Useful once any subsystem hits a class of ref bugs the runtime catches too late.
 - A second renderer for the entity catalog as a browsable HTML schema doc.
+
+
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'medium'};</script>
+<!-- Markdeep: --><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js?" charset="utf-8"></script>

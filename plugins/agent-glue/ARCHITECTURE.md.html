@@ -1,6 +1,6 @@
 # agent-glue: Architecture
 
-The cross-subsystem interfaces and the dependency graph. Shared architectural patterns live in `core/ARCHITECTURE.md`; subsystem-specific patterns live in each subsystem's ARCHITECTURE.md.
+The cross-subsystem interfaces and the dependency graph. Shared architectural patterns live in `core/ARCHITECTURE.md.html`; subsystem-specific patterns live in each subsystem's ARCHITECTURE.md.html.
 
 **Visual companion:** [architecture.html](architecture.html) -- interactive dependency-graph diagram with dark/light toggle and image export. Same content as the ASCII graph below; the HTML version distinguishes v1-active subsystems from the deferred claude-work-queue + claude-workers slot visually.
 
@@ -70,3 +70,7 @@ graphs/<name>/cohorts/<cohort_name>/
 ```
 
 Cohort recordings reuse the work subsystem's record format and lookup mechanism -- cohort-mode at `submit()` time just points the cache directory at the cohort's `recordings/`. No separate "cohort recording" entity; recordings are WorkRecords in a different home. This is the single concrete coupling between the graph subsystem's cohort substrate and the work subsystem's cache substrate.
+
+
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'medium'};</script>
+<!-- Markdeep: --><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js?" charset="utf-8"></script>

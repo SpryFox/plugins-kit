@@ -11,7 +11,7 @@ A pipeline is declared as a `graph.yaml` file plus typed Pydantic contracts and 
 - **Design is a first-class artifact.** Graph topology and contracts at every boundary are declared in `graph.yaml` + Pydantic. What each node *does* (calls an LLM, reads config, declares outputs) is surfaced by the renderer from sidecar file presence — not redeclared in yaml.
 - **Test on real-shape data without production load.** Cohorts of harvested-or-curated fixtures replay deterministically with canned LLM responses.
 - **Forward-looking: cheap to scaffold the next pipeline.** Day 1 of a new system: write `graph.yaml` + contracts, render HTML, harvest a small cohort, iterate.
-- **Real-pipeline validation is post-v1.** Example pipelines (character animation, localization) are planned separately once v1 ships; see top-level `IMPLEMENTATION-PLAN.md` for the post-v1 framing.
+- **Real-pipeline validation is post-v1.** Example pipelines (character animation, localization) are planned separately once v1 ships; see top-level `IMPLEMENTATION-PLAN.md.html` for the post-v1 framing.
 - **Lightweight, mature, focused dependencies.** Pydantic (used fully), PyYAML, Jinja2, Mermaid (via Markdeep render). LLM calls delegated to `openrouter-kit` via bootstrap dependency.
 
 ## Non-goals
@@ -64,7 +64,7 @@ No conditions. No predicates. No eval. Routing is decided by which discriminated
 
 ### Disposition dispatch
 
-The `Accepted | AcceptedWithAudit | Rejected` ADT is owned by core (see `core/DESIGN.md`). The graph runtime knows these three variants natively when dispatching:
+The `Accepted | AcceptedWithAudit | Rejected` ADT is owned by core (see `core/DESIGN.md.html`). The graph runtime knows these three variants natively when dispatching:
 
 - `Accepted` -- proceed normally.
 - `AcceptedWithAudit` -- proceed but stamp audit metadata onto any audit collection declared in PipelineState.
@@ -356,11 +356,11 @@ agent-glue validate <graph_path>            Check graph.yaml + contracts.py cons
                                             of every node has an outgoing edge or is terminal)
 ```
 
-Work-record promotion (lifting a `WorkRecord` from the live cache into a cohort's recordings dir) uses `agent-glue work promote-record` -- see work-system/DESIGN.md.
+Work-record promotion (lifting a `WorkRecord` from the live cache into a cohort's recordings dir) uses `agent-glue work promote-record` -- see work-system/DESIGN.md.html.
 
 ## HTML render (one View)
 
-Renderers are Views in the MVC layering. v1 ships only a stub render -- a minimal Markdeep+Mermaid page that draws the graph topology and per-node sidecar presence. The full design-artifact render described below is post-v1 (see top-level `IMPLEMENTATION-PLAN.md`); the architecture admits other Views (alternative renderers for different audiences, schema browsers, diff views) without changes to the Model or Controller. Renderers are downstream consumers of the entity catalog; nothing in the runtime depends on a specific renderer being present.
+Renderers are Views in the MVC layering. v1 ships only a stub render -- a minimal Markdeep+Mermaid page that draws the graph topology and per-node sidecar presence. The full design-artifact render described below is post-v1 (see top-level `IMPLEMENTATION-PLAN.md.html`); the architecture admits other Views (alternative renderers for different audiences, schema browsers, diff views) without changes to the Model or Controller. Renderers are downstream consumers of the entity catalog; nothing in the runtime depends on a specific renderer being present.
 
 **Post-v1 design-artifact render (sketch).** A Markdeep document. The render reads `graph.yaml`, imports `contracts.py` to call `model_json_schema()` on every contract, reads `rules.yaml` and `prompt.md` from disk, and (optionally) reads the most-recent matching `WorkRecord`s from the cache for example I/O.
 
@@ -382,11 +382,11 @@ Render tech: Markdeep (vanilla, no build), Mermaid (CDN), minimal hand-rolled JS
 
 ## Cohort substrate
 
-A cohort is a directory of test fixtures for a graph (Fixtures + optional ExpectedOutcomes) plus the work recordings needed to replay them deterministically. The directory shape lives in top-level `ARCHITECTURE.md`; the recordings file format and strict-vs-lenient submit semantics live in `work-system/DESIGN.md`.
+A cohort is a directory of test fixtures for a graph (Fixtures + optional ExpectedOutcomes) plus the work recordings needed to replay them deterministically. The directory shape lives in top-level `ARCHITECTURE.md.html`; the recordings file format and strict-vs-lenient submit semantics live in `work-system/DESIGN.md.html`.
 
 **How fixtures are produced:** hand-author `inputs/<fixture_id>.yaml` (a Fixture entity) and optionally `expected/<fixture_id>.yaml` (an ExpectedOutcome entity).
 
-**How recordings are produced:** see "show-your-work as cache" in `work-system/DESIGN.md`.
+**How recordings are produced:** see "show-your-work as cache" in `work-system/DESIGN.md.html`.
 
 **How replay works at the graph level:** `agent-glue replay <graph> --cohort <name>` runs every Fixture against current code with the cohort's recordings as the work-subsystem cache directory. For each fixture with an ExpectedOutcome, the run's terminal state is asserted against it. Drift becomes a test failure.
 
@@ -402,3 +402,7 @@ No async/await in v1. If a node wants async internally, it's free to use `asynci
 
 None outstanding. Cohort directory location is locked at `graphs/<name>/cohorts/` (inside the graph). Path-template engine is locked at Jinja2 (same engine as `prompt.md`).
 
+
+
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'medium'};</script>
+<!-- Markdeep: --><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js?" charset="utf-8"></script>

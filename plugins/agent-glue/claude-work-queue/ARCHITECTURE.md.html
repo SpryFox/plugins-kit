@@ -1,6 +1,6 @@
 # claude-work-queue: Architecture
 
-Shared patterns are in `core/ARCHITECTURE.md`.
+Shared patterns are in `core/ARCHITECTURE.md.html`.
 
 ## Entities
 
@@ -32,7 +32,7 @@ The queue is a directory on disk:
     <item_id>.result.yaml
 ```
 
-Default `<queue_root>` is `<consumer_root>/.claude-work-queue/`. The directory layout, the atomic-claim mechanism (rename from `pending/` to `in_progress/`), and the consumer API are detailed in DESIGN.md.
+Default `<queue_root>` is `<consumer_root>/.claude-work-queue/`. The directory layout, the atomic-claim mechanism (rename from `pending/` to `in_progress/`), and the consumer API are detailed in DESIGN.md.html.
 
 ## Cross-subsystem interface
 
@@ -48,3 +48,7 @@ status = result(item_id)
 ```
 
 The work subsystem's claude_inference and claude_agent worker submitters call this surface; other consumers (a CI script, a scheduled job, a hand-rolled tool, a shell command writing directly into `pending/`) use the same surface or the documented wire format.
+
+
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'medium'};</script>
+<!-- Markdeep: --><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js?" charset="utf-8"></script>

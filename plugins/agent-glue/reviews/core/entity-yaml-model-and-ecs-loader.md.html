@@ -2,7 +2,7 @@
 
 ## Scope
 
-The single v1 increment of the **core** subsystem. Builds the loader, validator, cross-cutting components, Disposition primitive, and variant-dispatch primitive that the other subsystems compose on. Defined in `/d/dev/plugins-kit/plugins/agent-glue/core/IMPLEMENTATION-PLAN.md`. v1 acceptance criterion (from that plan): *the kit loads every component schema and entity-type definition shipped by every subsystem; hand-authored entity-instance yamls round-trip cleanly through `loader.load_instances` -> `dump_instance`; the pre-commit hook rejects an intentionally broken entity-component reference and accepts the shipped sample fixtures.*
+The single v1 increment of the **core** subsystem. Builds the loader, validator, cross-cutting components, Disposition primitive, and variant-dispatch primitive that the other subsystems compose on. Defined in `/d/dev/plugins-kit/plugins/agent-glue/core/IMPLEMENTATION-PLAN.md.html`. v1 acceptance criterion (from that plan): *the kit loads every component schema and entity-type definition shipped by every subsystem; hand-authored entity-instance yamls round-trip cleanly through `loader.load_instances` -> `dump_instance`; the pre-commit hook rejects an intentionally broken entity-component reference and accepts the shipped sample fixtures.*
 
 ## Automated tests
 
@@ -127,11 +127,15 @@ print(result)
 
 **Design + architecture docs for this increment:**
 
-- `/d/dev/plugins-kit/plugins/agent-glue/core/IMPLEMENTATION-PLAN.md` -- this increment's deliverables and acceptance criterion.
-- `/d/dev/plugins-kit/plugins/agent-glue/core/DESIGN.md` -- yaml-entity-model dialect (top-level + component schema + instance shape), cross-cutting components catalog, Disposition primitive, variant dispatch, loader behavior, validator behavior.
-- `/d/dev/plugins-kit/plugins/agent-glue/core/ARCHITECTURE.md` -- MVC + ECS framing, Pydantic-at-the-yaml-boundary, yaml primitive vocabulary, failure-as-first-class-outcome, fail-loudly, pre-commit consistency, no-backwards-compatibility, scripts-as-facades, package cohesion, TDD posture.
-- `/d/dev/plugins-kit/plugins/agent-glue/core/CLAUDE.md` -- core subsystem index + internal lib layout.
+- `/d/dev/plugins-kit/plugins/agent-glue/core/IMPLEMENTATION-PLAN.md.html` -- this increment's deliverables and acceptance criterion.
+- `/d/dev/plugins-kit/plugins/agent-glue/core/DESIGN.md.html` -- yaml-entity-model dialect (top-level + component schema + instance shape), cross-cutting components catalog, Disposition primitive, variant dispatch, loader behavior, validator behavior.
+- `/d/dev/plugins-kit/plugins/agent-glue/core/ARCHITECTURE.md.html` -- MVC + ECS framing, Pydantic-at-the-yaml-boundary, yaml primitive vocabulary, failure-as-first-class-outcome, fail-loudly, pre-commit consistency, no-backwards-compatibility, scripts-as-facades, package cohesion, TDD posture.
+- `/d/dev/plugins-kit/plugins/agent-glue/core/CLAUDE.md.html` -- core subsystem index + internal lib layout.
 
 ## What this doc is not
 
-Not a tutorial for the loader API, not a per-function reference, not the design. The design lives in core/DESIGN.md; the architecture lives in core/ARCHITECTURE.md; this doc is the verification surface.
+Not a tutorial for the loader API, not a per-function reference, not the design. The design lives in core/DESIGN.md.html; the architecture lives in core/ARCHITECTURE.md.html; this doc is the verification surface.
+
+
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'medium'};</script>
+<!-- Markdeep: --><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js?" charset="utf-8"></script>

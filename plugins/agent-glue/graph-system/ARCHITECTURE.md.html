@@ -1,6 +1,6 @@
 # graph-system: Architecture
 
-Entities, components, and systems specific to the graph subsystem. Shared patterns are in `core/ARCHITECTURE.md` and not restated here.
+Entities, components, and systems specific to the graph subsystem. Shared patterns are in `core/ARCHITECTURE.md.html` and not restated here.
 
 **Visual companion:** [runtime.html](runtime.html) -- per-node execution lifecycle with the three Disposition branches (Accepted / AcceptedWithAudit / Rejected), the clean-terminal treatment for an unmatched variant, and the fan-out subsystem (ParallelSpec + accumulated-state lock) shown below the main flow.
 
@@ -37,7 +37,7 @@ Component types referenced by graph-subsystem entities:
 - Cohort substrate: `Fixtures`, `Expected`, `StartInput`, `FixtureRef`, `TerminalNode`, `TerminalOutput`, `TerminalState`, `CreatedAt`
 - Graph-level config: `Config`, `ShowWork` (also valid at node scope as a per-node override)
 
-The graph subsystem references the cross-cutting components from `core/components/` by name. The enumeration is in `core/DESIGN.md`.
+The graph subsystem references the cross-cutting components from `core/components/` by name. The enumeration is in `core/DESIGN.md.html`.
 
 ## Worked example: one Node entity
 
@@ -124,3 +124,7 @@ Each system has a single read/write contract over the model. No system knows abo
 ## Open questions
 
 1. **Renderer-readable component-presence query.** The renderer derives node visualization from "which components does this entity have?" Worth a small helper in the loader (`entity.has("prompt")`) vs. just checking dict keys directly. Lean helper for discoverability. Finalize when the renderer is built (Phase 9).
+
+
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'medium'};</script>
+<!-- Markdeep: --><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js?" charset="utf-8"></script>

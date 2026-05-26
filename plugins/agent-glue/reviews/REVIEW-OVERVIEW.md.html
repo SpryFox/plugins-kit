@@ -1,6 +1,6 @@
 # agent-glue: Review Overview
 
-Landing page for the per-increment review docs. Each increment in the v1 plan lands with a matching review doc under `reviews/<subsystem>/<increment-slug>.md` (convention defined in the top-level `IMPLEMENTATION-PLAN.md` *Review protocol* section). This index lists what has been authored so far.
+Landing page for the per-increment review docs. Each increment in the v1 plan lands with a matching review doc under `reviews/<subsystem>/<increment-slug>.md` (convention defined in the top-level `IMPLEMENTATION-PLAN.md.html` *Review protocol* section). This index lists what has been authored so far.
 
 A review doc gives a reviewer a runnable verification surface for a single increment: how to run its automated tests, how to drive it by hand to see it work, and links to the schemas and design docs that explain what the increment is. It does **not** restate the design.
 
@@ -10,7 +10,7 @@ Increments are listed in their subsystem's IMPLEMENTATION-PLAN document order. A
 
 ### core
 
-- [x] [Entity-yaml model + ECS loader](core/entity-yaml-model-and-ecs-loader.md)
+- [x] [Entity-yaml model + ECS loader](core/entity-yaml-model-and-ecs-loader.md.html)
 
 ### work-system
 
@@ -35,7 +35,7 @@ Increments are listed in their subsystem's IMPLEMENTATION-PLAN document order. A
 
 ## Deferred to post-v1
 
-Deferred increments do not have review docs until they are promoted into a v1 wave. The deferral rationale lives in the top-level `IMPLEMENTATION-PLAN.md` *Out of scope for v1* section.
+Deferred increments do not have review docs until they are promoted into a v1 wave. The deferral rationale lives in the top-level `IMPLEMENTATION-PLAN.md.html` *Out of scope for v1* section.
 
 - claude-work-queue (all four increments: Queue storage, Signaling, Execute-and-report loop, Consumer API).
 - work-system: claude_inference + claude_agent workers.
@@ -45,3 +45,7 @@ Deferred increments do not have review docs until they are promoted into a v1 wa
 - **Reviewing v1 progress.** Scan the checkboxes; an unchecked increment is either not started or not review-doc'd yet.
 - **Reviewing a specific increment.** Click through to its review doc and follow the *Automated tests* and *User-exercise walkthrough* sections.
 - **Adding a review doc.** A new increment's review doc lands in the same CL as the increment. Check its box here at the same time. The doc's filename slug is the increment title lowercased with non-alphanumeric runs collapsed to single hyphens.
+
+
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'medium'};</script>
+<!-- Markdeep: --><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js?" charset="utf-8"></script>

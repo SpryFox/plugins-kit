@@ -52,7 +52,7 @@ Add the first inference worker, wrapping openrouter-kit's client.
 **Deliverables:**
 
 - `agent_glue_lib/work/workers/openrouter.py` -- imports openrouter-kit's client, packages the request input + `config.system_prompt` as an LLM call, parses the response back into a structured yaml output, populates Metadata (tokens, duration, model).
-- Temperature handling per the temperature-zero constraint (see `work-system/ARCHITECTURE.md`): the worker derives the temperature from `CacheControl.determinism` and rejects requests that supply a `temperature` key in the worker config.
+- Temperature handling per the temperature-zero constraint (see `work-system/ARCHITECTURE.md.html`): the worker derives the temperature from `CacheControl.determinism` and rejects requests that supply a `temperature` key in the worker config.
 - `CacheControl.determinism: non_deterministic` honored: worker switches to a non-zero temperature (default 0.7) and `submit()` skips the cache lookup (writes the record for audit, but no read).
 - Worker registered in `agent_glue_lib.work.__init__`.
 
@@ -87,7 +87,7 @@ Wire the cohort-mode cache directory swap and the full work-side CLI.
 
 **Deliverables:**
 
-- `submit(request, cohort=<name>)` swaps the cache READ to the cohort's recordings directory; writes still go to the live cache (per the show-your-work-as-cache rules in ARCHITECTURE.md). Strict mode fails on missing recordings, lenient falls through to live invocation.
+- `submit(request, cohort=<name>)` swaps the cache READ to the cohort's recordings directory; writes still go to the live cache (per the show-your-work-as-cache rules in ARCHITECTURE.md.html). Strict mode fails on missing recordings, lenient falls through to live invocation.
 - `agent-glue work promote-record <request_hash> --to-cohort <name>` copies a live cache record into a cohort's recordings dir.
 - `agent-glue work submit <request.yaml>`, `agent-glue work submit ... --cohort <name>`, `agent-glue work submit ... --bypass-cache`, `agent-glue work list-workers`.
 - All CLI commands are thin facades over `agent_glue_lib.work`.
@@ -109,3 +109,7 @@ The two Claude-backed workers. Both dispatch through the claude-work-queue primi
 - Both workers registered in `agent_glue_lib.work.__init__`.
 
 **After this (when promoted):** the product can complete LLM-backed work via Claude Code's own subagent runtime, with or without tools, with cache + audit. The work subsystem then supports all four worker types originally scoped for v1.
+
+
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'medium'};</script>
+<!-- Markdeep: --><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js?" charset="utf-8"></script>

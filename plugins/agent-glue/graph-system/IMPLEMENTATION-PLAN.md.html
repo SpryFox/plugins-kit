@@ -96,10 +96,14 @@ Full graph-side CLI plus a placeholder for the render layer.
 
 - `agent-glue new <name>` -- scaffolds a graph in `./graphs/<name>/`.
 - `agent-glue run <graph_path>` -- runs on a single input from CLI args.
-- `agent-glue render <graph_path>` -- emits a stub HTML (Markdeep + Mermaid) describing the graph topology and the per-node sidecar presence (rules.yaml, prompt.md, declared outputs). Stub means it renders the graph correctly but is not the full design-artifact render described in graph-system/DESIGN.md.
+- `agent-glue render <graph_path>` -- emits a stub HTML (Markdeep + Mermaid) describing the graph topology and the per-node sidecar presence (rules.yaml, prompt.md, declared outputs). Stub means it renders the graph correctly but is not the full design-artifact render described in graph-system/DESIGN.md.html.
 - `agent-glue validate <graph_path>` -- shipped earlier; included here for the CLI surface map.
 - `agent-glue replay <graph_path> --cohort <name>` -- shipped earlier; included here.
 - `agent-glue promote-fixture ...` -- shipped earlier; included here.
 - All CLI commands are thin facades over `agent_glue_lib.graph`.
 
 **After this:** the graph subsystem is operable end-to-end from the command line. v1 of agent-glue is complete; both example pipelines (separately planned, post-v1) can now be built on the kit.
+
+
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'medium'};</script>
+<!-- Markdeep: --><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js?" charset="utf-8"></script>

@@ -16,7 +16,7 @@ A consumer interacts with the primitive at two boundaries: pushing items (`submi
 
 ## Design decisions
 
-Three structural decisions were open during early design; both consumer reviews converged on the same answers (see `USER-FEEDBACK.md`). These are now locked.
+Three structural decisions were open during early design; both consumer reviews converged on the same answers (see `USER-FEEDBACK.md.html`). These are now locked.
 
 ### Queue storage: file-based on disk
 
@@ -111,3 +111,7 @@ The Errored component is the cross-cutting one from core; result-schema validati
 - Distributed queues across machines (the queue is single-machine; cross-machine handoff is a future concern).
 - Worker pool autoscaling (one Claude per item is the conceptual model; multiple parallel Claude sessions is a future concern).
 - Streaming partial results back to the requester before the work is fully done.
+
+
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'medium'};</script>
+<!-- Markdeep: --><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js?" charset="utf-8"></script>

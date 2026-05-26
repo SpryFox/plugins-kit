@@ -130,7 +130,7 @@ result = dispatch(variant, handlers={
 
 The primitive reads the variant's discriminator field (`kind` by convention) and calls the matching handler with the variant value. If no handler matches and no `default` is supplied, it raises a typed `NoHandlerForVariant` error.
 
-The graph runtime uses this primitive internally to route on Edge `Source.on_variant`. Consumers that want the same dispatch shape inside a single worker's post-processing (e.g. routing per-line `Disposition` results without instantiating a graph) call `dispatch` directly. Per the package cohesion principles in `core/ARCHITECTURE.md`, the dispatch logic lives in one place and serves both call sites.
+The graph runtime uses this primitive internally to route on Edge `Source.on_variant`. Consumers that want the same dispatch shape inside a single worker's post-processing (e.g. routing per-line `Disposition` results without instantiating a graph) call `dispatch` directly. Per the package cohesion principles in `core/ARCHITECTURE.md.html`, the dispatch logic lives in one place and serves both call sites.
 
 ## Loader behavior
 
@@ -151,4 +151,8 @@ Three layers, all returning a flat list of error strings (empty list = success):
 - **Instance shape** -- every instance declares a known entity type, satisfies the type's required components, restricts itself to allowed components, and every component value matches its schema (required fields present, types match, enum values in the allowed set, list items / map values typed correctly, no unknown fields).
 - **Combined** -- both of the above, run together; this is what the pre-commit hook calls.
 
-Pre-commit hook semantics, plus the broader posture on schema versioning and backward compatibility, live in ARCHITECTURE.md.
+Pre-commit hook semantics, plus the broader posture on schema versioning and backward compatibility, live in ARCHITECTURE.md.html.
+
+
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'medium'};</script>
+<!-- Markdeep: --><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js?" charset="utf-8"></script>

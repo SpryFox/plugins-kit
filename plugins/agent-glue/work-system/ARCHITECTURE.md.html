@@ -1,6 +1,6 @@
 # work-system: Architecture
 
-Entities, components, and systems specific to the work subsystem. Shared patterns are in `core/ARCHITECTURE.md` and not restated here.
+Entities, components, and systems specific to the work subsystem. Shared patterns are in `core/ARCHITECTURE.md.html` and not restated here.
 
 **Visual companions:**
 
@@ -35,7 +35,7 @@ Component types referenced by work-subsystem entities:
 - Worker definition: `WorkerType`, `ProvidedCapabilities`, `Submitter`, `DefaultConfig`, `Determinism` (values: `deterministic` / `requires_declaration`)
 - Record shape: `RequestHash`, `InputsHash`, `Request`, `Result`, `WorkerRef`, `RecordedAt`, `Attribution`, `InvalidationCriteria`
 
-The work subsystem references the cross-cutting components from `core/components/` by name (e.g. `SourceRunId` on a WorkRecord). The enumeration is in `core/DESIGN.md`.
+The work subsystem references the cross-cutting components from `core/components/` by name (e.g. `SourceRunId` on a WorkRecord). The enumeration is in `core/DESIGN.md.html`.
 
 `SystemPrompt` is **not** a top-level component -- it lives inside `WorkerSelection.config` because it's a worker-specific concept. LLM workers require it; non-LLM workers (e.g. `python_script`) don't have one.
 
@@ -77,7 +77,7 @@ JSON Schema (authored as yaml) is the OutputSchema vocabulary -- it's just yaml;
 
 ## Worked example: a Worker entity instance
 
-All four worker entities ship **with no `DefaultConfig` component** -- per the *Demand choices; default only to guide* principle in `core/ARCHITECTURE.md`, every meaningful config field (model, max_tokens, agent_type, timeout_s, function, system_prompt) is the consumer's choice and must appear in each WorkRequest's `WorkerSelection.config`. The kit has no kit-wide preference for any specific value of these fields. (The `DefaultConfig` component remains in the schema for hypothetical workers that ship a *strongly-encouraged* default the kit wants to guide consumers toward; no shipped worker uses it today.)
+All four worker entities ship **with no `DefaultConfig` component** -- per the *Demand choices; default only to guide* principle in `core/ARCHITECTURE.md.html`, every meaningful config field (model, max_tokens, agent_type, timeout_s, function, system_prompt) is the consumer's choice and must appear in each WorkRequest's `WorkerSelection.config`. The kit has no kit-wide preference for any specific value of these fields. (The `DefaultConfig` component remains in the schema for hypothetical workers that ship a *strongly-encouraged* default the kit wants to guide consumers toward; no shipped worker uses it today.)
 
 The openrouter worker, composed of components:
 
@@ -92,7 +92,7 @@ components:
   # no `default_config` -> request must supply model, max_tokens, system_prompt
   # no `provided_capabilities` -> openrouter provides no tools or MCP servers
   # no `determinism` component -> default deterministic (cacheable). temperature is NOT a configurable field;
-  # it is fixed at 0 by the worker (architectural constraint per work-system/ARCHITECTURE.md temperature-zero section).
+  # it is fixed at 0 by the worker (architectural constraint per work-system/ARCHITECTURE.md.html temperature-zero section).
 ```
 
 The claude_agent worker (deferred to post-v1; entity-type design shown for completeness):
@@ -200,3 +200,7 @@ The work subsystem exposes one entry point -- `submit(request, cohort=None, bypa
 ## Open questions
 
 - **Cache directory location for live runs.** Default `<consumer_root>/.agent-glue-cache/` proposed. Confirm vs. alternatives (e.g. `<consumer_root>/.cache/agent-glue/`, or under `~/.cache/agent-glue/<consumer_path_hash>/`). Lean `<consumer_root>/.agent-glue-cache/` for git-localness (consumer can gitignore, share via shelved work, etc.).
+
+
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'medium'};</script>
+<!-- Markdeep: --><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js?" charset="utf-8"></script>

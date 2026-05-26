@@ -1,6 +1,6 @@
 # core: Architecture
 
-The architectural patterns every subsystem inherits. Subsystem-specific patterns live in the relevant subsystem's ARCHITECTURE.md.
+The architectural patterns every subsystem inherits. Subsystem-specific patterns live in the relevant subsystem's ARCHITECTURE.md.html.
 
 ## MVC + ECS
 
@@ -34,7 +34,7 @@ agent-glue uses **Jinja2 as the single template engine, kit-wide**. There are no
 
 Concretely:
 
-- **Where templates appear in the kit.** Anywhere a subsystem accepts user-authored text that may include variables: graph-system canonical-output `path:` fields, graph-system Node `Prompt` sidecars, work-system LLM `system_prompt` config. Each subsystem documents its template inputs in its own DESIGN.md.
+- **Where templates appear in the kit.** Anywhere a subsystem accepts user-authored text that may include variables: graph-system canonical-output `path:` fields, graph-system Node `Prompt` sidecars, work-system LLM `system_prompt` config. Each subsystem documents its template inputs in its own DESIGN.md.html.
 - **Polymorphic value shape.** Wherever a template appears in a yaml config, the field accepts either a literal string (rendered as a no-substitution Jinja template) or a structured `{template: <path>, vars: {<k>: <v>}}` (file-backed template with explicit vars). The kit infers which by type; no separate `_template` / `_vars` keys, no discriminator field. A field that has no variables is just a string; a field with variables is a map. Symmetric with the graph-system's existing Prompt sidecar pattern.
 - **Composition.** Jinja's standard mechanisms cover composition: `{% include 'partials/glossary.j2' %}` for file include, `{% extends 'base.j2' %}` + `{% block %}` for inheritance, `{% import 'macros.j2' as m %}` for parameterized snippets. Consumers compose freely; the kit takes no opinion on directory layout for `.j2` files beyond "relative to the consuming entity's directory."
 - **Escape valve.** A consumer who wants a different template engine renders externally, then passes the result to the kit as a literal string. No kit-level mechanism is needed for this.
@@ -55,7 +55,7 @@ Defaults exist to **guide users down a path we strongly endorse**, not to fill i
 
 The rationale is operational: the kit's primary consumer is a persistent LLM (Claude Code, an external subagent, an autonomous runner). LLMs respond to specific error messages by introspecting and supplying the missing input -- "you must declare `worker.type`" gets a correct `worker.type` on the next call, whereas a silent default produces silent wrong behavior. Demanding the choice routes the model's attention to the place where the consumer's intent matters. Human consumers benefit from the same posture for the same reason: the missing field is a prompt to think, not a hole the kit silently fills.
 
-**Authoring rule.** Every default the kit ships must appear in the relevant DESIGN.md or settings doc with: (1) the default value, (2) the reason this is the path the kit recommends, (3) how to deviate. A default without all three is a bug in the design, not just the docs -- it means we silently shipped a choice we should have demanded.
+**Authoring rule.** Every default the kit ships must appear in the relevant DESIGN.md.html or settings doc with: (1) the default value, (2) the reason this is the path the kit recommends, (3) how to deviate. A default without all three is a bug in the design, not just the docs -- it means we silently shipped a choice we should have demanded.
 
 This principle composes with *Failure as a first-class outcome* (the missing-field error is the typed failure the consumer responds to) and *Fail loudly on changed conditions* (a default that becomes invalid is a changed condition; the kit raises, not papers over).
 
@@ -109,3 +109,7 @@ In practice:
 - **What we don't do.** Test-the-test ceremony for trivial getters, mock everything for unit purity at the cost of integration coverage, write tests just because a coverage tool complains. The signal is "would this test have caught something useful?" If no, don't write it.
 
 The pre-commit hook is part of this loop: it runs the structural-consistency validator on every commit so that schema drift never reaches main.
+
+
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'medium'};</script>
+<!-- Markdeep: --><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js?" charset="utf-8"></script>

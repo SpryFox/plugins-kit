@@ -2,7 +2,7 @@
 
 The **work subsystem** of agent-glue. Worker-agnostic abstraction for "do a unit of work."
 
-This document describes the full design. Build increments and acceptance criteria live in `work-system/IMPLEMENTATION-PLAN.md`.
+This document describes the full design. Build increments and acceptance criteria live in `work-system/IMPLEMENTATION-PLAN.md.html`.
 
 ## TL;DR
 
@@ -35,7 +35,7 @@ The work subsystem ships **exactly four worker types** -- no open extension surf
 | `claude_inference` | Claude Code subagent dispatch with tools disabled | No | No | deferred to post-v1 |
 | `claude_agent` | Claude Code subagent dispatch with tools + MCP enabled | Yes (multi-step) | Yes | deferred to post-v1 |
 
-Detailed `When to use / How it fulfills / Determinism / Config / Capability rules` sections for each worker live in *Workers* below. The two deferred types are documented because the design is locked; their implementation is deferred per the top-level `IMPLEMENTATION-PLAN.md` *Out of scope for v1* section. When a `WorkRequest` selects a deferred worker before its v1 wave lands, `submit()` raises `WorkerNotAvailable` -- the same typed failure used for an unregistered worker type.
+Detailed `When to use / How it fulfills / Determinism / Config / Capability rules` sections for each worker live in *Workers* below. The two deferred types are documented because the design is locked; their implementation is deferred per the top-level `IMPLEMENTATION-PLAN.md.html` *Out of scope for v1* section. When a `WorkRequest` selects a deferred worker before its v1 wave lands, `submit()` raises `WorkerNotAvailable` -- the same typed failure used for an unregistered worker type.
 
 Worker selection in a request uses `worker.type` and is restricted to this set; an unknown value raises at submit time. The CLI's `agent-glue work list-workers` reports the currently-registered subset (in v1, that's two; post-v1 wave brings the other two).
 
@@ -87,7 +87,7 @@ A worker is a Python module that knows how to fulfill a WorkRequest. The worker 
 
 **Determinism:** defaults to `deterministic` (cached, temperature 0). A request that sets `CacheControl.determinism: non_deterministic` is accepted; the worker switches to a non-zero temperature (default 0.7) and the cache lookup is skipped. Temperature itself is NOT a user-facing config field -- it's derived from the declared determinism. To force a fresh call without changing determinism, use `CacheControl.bypass: true`.
 
-**Config (every field is required; the kit ships no defaults here per the *Demand choices; default only to guide* principle in `core/ARCHITECTURE.md`):**
+**Config (every field is required; the kit ships no defaults here per the *Demand choices; default only to guide* principle in `core/ARCHITECTURE.md.html`):**
 ```yaml
 worker:
   type: openrouter
@@ -108,7 +108,7 @@ worker:
 
 **Determinism:** same rules as openrouter (default `deterministic` + temp 0; `non_deterministic` override -> non-zero temp + skip cache; `CacheControl.bypass: true` to force re-run without changing determinism).
 
-**Config (every field is required; the kit ships no defaults here per the *Demand choices; default only to guide* principle in `core/ARCHITECTURE.md`):**
+**Config (every field is required; the kit ships no defaults here per the *Demand choices; default only to guide* principle in `core/ARCHITECTURE.md.html`):**
 ```yaml
 worker:
   type: claude_inference
@@ -130,7 +130,7 @@ worker:
 
 **Determinism: `requires_declaration`.** The consumer must declare per-request via `CacheControl.determinism` whether the specific work is `deterministic_idempotent` (cacheable -- e.g. "create file X with content Y if it doesn't exist," which is idempotent) or `non_deterministic` (not cacheable -- e.g. "summarize the current state of the repo," whose output depends on facts outside the request). Submit raises if the declaration is missing. No silent default; the consumer knows their work's nature, the kit doesn't guess.
 
-**Config (every field is required; the kit ships no defaults here per the *Demand choices; default only to guide* principle in `core/ARCHITECTURE.md`):**
+**Config (every field is required; the kit ships no defaults here per the *Demand choices; default only to guide* principle in `core/ARCHITECTURE.md.html`):**
 ```yaml
 worker:
   type: claude_agent
@@ -231,7 +231,7 @@ Pure utility, no kit-internal coupling. Consumers compose it however they want; 
 
 ## Worker selection
 
-Every WorkRequest must declare `worker.type` explicitly; the submit pipeline raises `WorkerNotAvailable` if it is missing or names an unregistered worker. There is no system default worker -- per the core principle *Demand choices; default only to guide* (`core/ARCHITECTURE.md`), the worker selection is a meaningful choice the consumer must state. The kit cannot know whether a given request is best served by `openrouter` (third-party LLM, cost per token) or `python_script` (free, pure-function, no network) or one of the deferred Claude-backed workers.
+Every WorkRequest must declare `worker.type` explicitly; the submit pipeline raises `WorkerNotAvailable` if it is missing or names an unregistered worker. There is no system default worker -- per the core principle *Demand choices; default only to guide* (`core/ARCHITECTURE.md.html`), the worker selection is a meaningful choice the consumer must state. The kit cannot know whether a given request is best served by `openrouter` (third-party LLM, cost per token) or `python_script` (free, pure-function, no network) or one of the deferred Claude-backed workers.
 
 Consumers can pass a `worker:` override at submission time programmatically, separate from what's in the WorkRequest yaml -- useful for testing one pipeline against different workers. The override must still name an explicit worker type; there is no implicit default at any layer.
 
@@ -252,17 +252,17 @@ Avoiding repetition of work when inputs haven't changed is a first-class princip
 
 From the consumer's point of view: every successful `submit()` is recorded; identical subsequent `submit()`s return the recorded result without re-invoking the worker; `CacheControl.bypass: true` forces a fresh call; `CacheControl.invalidate_if` declares additional freshness preconditions; `CacheControl.determinism` overrides per-request when the request's nature differs from the worker's default. Records are produced live (naturally, by any cache-missing submit) or promoted (`agent-glue work promote-record` lifts a live record into a cohort).
 
-The mechanical rules -- request_hash computation, lookup order, cache directory paths, the cohort-mode directory swap, the `show_work: never` plugin setting -- live in `work-system/ARCHITECTURE.md`. The cohort directory convention lives in top-level `ARCHITECTURE.md`.
+The mechanical rules -- request_hash computation, lookup order, cache directory paths, the cohort-mode directory swap, the `show_work: never` plugin setting -- live in `work-system/ARCHITECTURE.md.html`. The cohort directory convention lives in top-level `ARCHITECTURE.md.html`.
 
 ## Cohort substrate (consumer view)
 
 A cohort replay is `submit(request, cohort=<name>)` for every WorkRequest the pipeline issues; the cache lookup hits the cohort's recordings directory instead of the live cache. Recordings are produced curated (hand-author a file) or harvested (`agent-glue work promote-record`). Strict vs lenient (fail on missing recording vs fall through to live) is a per-call mode.
 
-The cohort directory shape lives in top-level `ARCHITECTURE.md`; the recordings file format is the same WorkRecord shape described in `work-system/ARCHITECTURE.md`.
+The cohort directory shape lives in top-level `ARCHITECTURE.md.html`; the recordings file format is the same WorkRecord shape described in `work-system/ARCHITECTURE.md.html`.
 
 ## System prompt templating
 
-LLM-backed workers (`openrouter`, plus the deferred `claude_inference` / `claude_agent`) treat `config.system_prompt` as a **template field**, governed by the kit-wide *Templating* pattern in `core/ARCHITECTURE.md`. Two shapes are accepted and the worker auto-detects which:
+LLM-backed workers (`openrouter`, plus the deferred `claude_inference` / `claude_agent`) treat `config.system_prompt` as a **template field**, governed by the kit-wide *Templating* pattern in `core/ARCHITECTURE.md.html`. Two shapes are accepted and the worker auto-detects which:
 
 ```yaml
 # Shape 1: literal string. Rendered as a no-substitution Jinja template (renders as itself).
@@ -422,7 +422,7 @@ except CapabilityUnavailable as e:
 
 ## Settings
 
-The work subsystem has three kit-level settings. Every one of them is a documented default per the *Demand choices; default only to guide* principle in `core/ARCHITECTURE.md` -- the default exists because the kit has a strong preference, and the documentation gives the reason. There is no `default_worker` setting; worker selection is a meaningful per-request choice and must be stated explicitly (see *Worker selection* above).
+The work subsystem has three kit-level settings. Every one of them is a documented default per the *Demand choices; default only to guide* principle in `core/ARCHITECTURE.md.html` -- the default exists because the kit has a strong preference, and the documentation gives the reason. There is no `default_worker` setting; worker selection is a meaningful per-request choice and must be stated explicitly (see *Worker selection* above).
 
 ```yaml
 cache_directory: .agent-glue-cache    # default; see rationale below
@@ -447,3 +447,7 @@ This is the entire surface that consumers see. The same `submit()` API works for
 1. **Side-effect schema.** `WorkResult.side_effects` will have a structured shape (file-written-with-path, tool-used-with-args, mcp-call-with-server-and-tool). Define when the claude_agent worker actually populates it; premature design without a concrete writer.
 2. **Streaming.** Some LLM calls stream tokens. The current submission API is synchronous-only. Streaming could land later as `submit_stream()` returning an iterator. Defer until a consumer needs it.
 
+
+
+<style class="fallback">body{visibility:hidden}</style><script>markdeepOptions={tocStyle:'medium'};</script>
+<!-- Markdeep: --><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js?" charset="utf-8"></script>
