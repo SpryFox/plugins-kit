@@ -72,6 +72,8 @@ JSON Schema (authored as yaml) is the OutputSchema vocabulary -- it's just yaml;
 
 ## Worked example: a Worker entity instance
 
+All four worker entities ship **with no `DefaultConfig` component** -- per the *Demand choices; default only to guide* principle in `core/ARCHITECTURE.md`, every meaningful config field (model, max_tokens, agent_type, timeout_s, function, system_prompt) is the consumer's choice and must appear in each WorkRequest's `WorkerSelection.config`. The kit has no kit-wide preference for any specific value of these fields. (The `DefaultConfig` component remains in the schema for hypothetical workers that ship a *strongly-encouraged* default the kit wants to guide consumers toward; no shipped worker uses it today.)
+
 The openrouter worker, composed of components:
 
 ```yaml
@@ -82,15 +84,13 @@ components:
   submitter:
     module: agent_glue_lib.work.workers.openrouter
     function: submit
-  default_config:
-    model: claude-sonnet-4-6
-    max_tokens: 4096
-    # NOTE: temperature is NOT a configurable field -- it is fixed at 0 by the worker (architectural constraint).
-  # no `provided_capabilities` component -> openrouter provides no tools or MCP servers
-  # no `determinism` component -> default deterministic (cacheable)
+  # no `default_config` -> request must supply model, max_tokens, system_prompt
+  # no `provided_capabilities` -> openrouter provides no tools or MCP servers
+  # no `determinism` component -> default deterministic (cacheable). temperature is NOT a configurable field;
+  # it is fixed at 0 by the worker (architectural constraint per work-system/ARCHITECTURE.md temperature-zero section).
 ```
 
-The claude_agent worker:
+The claude_agent worker (deferred to post-v1; entity-type design shown for completeness):
 
 ```yaml
 type: Worker
@@ -103,9 +103,7 @@ components:
   provided_capabilities:
     tools: [Read, Write, Edit, Grep, Bash, Glob]
     mcp_servers: [<dynamically discovered from environment>]
-  default_config:
-    agent_type: general-purpose
-    timeout_s: 600
+  # no `default_config` -> request must supply agent_type, timeout_s, system_prompt
   # no `determinism` component -> default deterministic. Caching a claude_agent call means subsequent
   # identical requests return the recorded result without redoing the file edits or tool calls. This
   # is the correct caching semantic: the work was done once; the result describes the new state.
@@ -113,7 +111,7 @@ components:
 
 The `provided_capabilities.mcp_servers` is dynamic -- what the worker can offer depends on the running environment's MCP configuration. The capability check at submit-time intersects `request.capability_requirement.mcp_servers` with `worker.provided_capabilities.mcp_servers` (as discovered at that moment). Missing entries -> `CapabilityUnavailable`. Per core's "fail loudly on changed conditions" rule, this check happens ONCE at submit time and fails loudly if invalidated mid-run; no graceful degradation.
 
-The claude_inference worker (no tools enabled):
+The claude_inference worker (deferred to post-v1; no tools enabled):
 
 ```yaml
 type: Worker
@@ -123,11 +121,9 @@ components:
   submitter:
     module: agent_glue_lib.work.workers.claude_inference
     function: submit
-  default_config:
-    agent_type: general-purpose
-    timeout_s: 120
   determinism:
     value: deterministic         # hardcoded; CacheControl.determinism overrides are rejected
+  # no `default_config` -> request must supply agent_type, timeout_s, system_prompt
   # no `provided_capabilities` -> no tools, no MCP
 ```
 

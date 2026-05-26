@@ -24,13 +24,40 @@ The model uses only these yaml primitives:
 - Lists: ordered sequences.
 - Maps: key/value pairs.
 - Named refs: bare strings interpreted as references to entities defined elsewhere (e.g. `in: ValidateIn` is a string interpreted as a contract name; a subsystem-specific loader resolves it).
-- Path templates: strings with Jinja2 substitutions; resolved at write time. Used by the graph subsystem only.
+- Templates: strings with Jinja2 substitutions; resolved at render time. Used wherever the kit accepts user-authored text that may include variables -- canonical-output path templates (graph-system), node user-prompt sidecars (graph-system), LLM system prompts (work-system). See *Templating* below for the unified rule.
 
 No custom yaml tags, no expressions, no eval. A pure-yaml linter can validate the model structure without instantiating anything.
+
+## Templating
+
+agent-glue uses **Jinja2 as the single template engine, kit-wide**. There are no other template syntaxes, no second engine for "simple" cases, and no plain-string-with-`{key}`-substitutions side path. Plain text is the degenerate case of a Jinja template -- a string with no `{{ }}` renders as itself -- so a single rendering pass handles both literal strings and parameterized templates uniformly.
+
+Concretely:
+
+- **Where templates appear in the kit.** Anywhere a subsystem accepts user-authored text that may include variables: graph-system canonical-output `path:` fields, graph-system Node `Prompt` sidecars, work-system LLM `system_prompt` config. Each subsystem documents its template inputs in its own DESIGN.md.
+- **Polymorphic value shape.** Wherever a template appears in a yaml config, the field accepts either a literal string (rendered as a no-substitution Jinja template) or a structured `{template: <path>, vars: {<k>: <v>}}` (file-backed template with explicit vars). The kit infers which by type; no separate `_template` / `_vars` keys, no discriminator field. A field that has no variables is just a string; a field with variables is a map. Symmetric with the graph-system's existing Prompt sidecar pattern.
+- **Composition.** Jinja's standard mechanisms cover composition: `{% include 'partials/glossary.j2' %}` for file include, `{% extends 'base.j2' %}` + `{% block %}` for inheritance, `{% import 'macros.j2' as m %}` for parameterized snippets. Consumers compose freely; the kit takes no opinion on directory layout for `.j2` files beyond "relative to the consuming entity's directory."
+- **Escape valve.** A consumer who wants a different template engine renders externally, then passes the result to the kit as a literal string. No kit-level mechanism is needed for this.
+- **What we don't ship.** No template registry, no shared partial directory at the kit level, no kit-defined macros. Each subsystem's templates are scoped to that subsystem's instance directories. If a cross-cutting partial set becomes useful, it's a post-v1 candidate, not a v1 mechanism.
+
+This is a single-template-engine kit by deliberate choice (CCP -- one reason to change template behavior, one module to update; CRP -- a consumer who learns Jinja for one part of agent-glue gets every other part for free).
 
 ## Failure as a first-class outcome
 
 Both the structural ADTs (Disposition's three variants) and the subsystem-specific failure shapes (the work subsystem's `WorkerNotAvailable`, `CapabilityUnavailable`, `OutputSchemaViolation`, `WorkerError`) express the same philosophy: never silently substitute, never auto-retry without consumer instruction, never return a partial result without raising. A subsystem's job is to surface what happened in a typed shape; what to do about it is the consumer's decision.
+
+## Demand choices; default only to guide
+
+Defaults exist to **guide users down a path we strongly endorse**, not to fill in information the user neglected to provide. The two cases are different in posture and intent, and the kit treats them differently:
+
+- **Meaningful choice with no strong kit-level preference -> require the user to state it.** No silent fallback, no implicit value. The kit raises a typed error naming the missing field. Examples: the worker type on a WorkRequest, the model name on an LLM worker, the timeout on a long-running worker, the agent_type on a Claude-backed worker. The kit cannot know what the right value is for the consumer's task; demanding the choice surfaces it.
+- **Strong kit preference for the path we want most users on -> default to it, document the default, document the reason.** The user can deviate, but only by stating their deviation explicitly. Example: `show_work: default` is on by default because the kit is designed *around* the show-your-work-as-cache mechanism; we want most users on the show-your-work path and want deviation to be a deliberate, named act. The default's existence is itself a design statement.
+
+The rationale is operational: the kit's primary consumer is a persistent LLM (Claude Code, an external subagent, an autonomous runner). LLMs respond to specific error messages by introspecting and supplying the missing input -- "you must declare `worker.type`" gets a correct `worker.type` on the next call, whereas a silent default produces silent wrong behavior. Demanding the choice routes the model's attention to the place where the consumer's intent matters. Human consumers benefit from the same posture for the same reason: the missing field is a prompt to think, not a hole the kit silently fills.
+
+**Authoring rule.** Every default the kit ships must appear in the relevant DESIGN.md or settings doc with: (1) the default value, (2) the reason this is the path the kit recommends, (3) how to deviate. A default without all three is a bug in the design, not just the docs -- it means we silently shipped a choice we should have demanded.
+
+This principle composes with *Failure as a first-class outcome* (the missing-field error is the typed failure the consumer responds to) and *Fail loudly on changed conditions* (a default that becomes invalid is a changed condition; the kit raises, not papers over).
 
 ## Fail loudly on changed conditions
 

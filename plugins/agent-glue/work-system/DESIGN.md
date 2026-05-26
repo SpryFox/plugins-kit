@@ -87,15 +87,14 @@ A worker is a Python module that knows how to fulfill a WorkRequest. The worker 
 
 **Determinism:** defaults to `deterministic` (cached, temperature 0). A request that sets `CacheControl.determinism: non_deterministic` is accepted; the worker switches to a non-zero temperature (default 0.7) and the cache lookup is skipped. Temperature itself is NOT a user-facing config field -- it's derived from the declared determinism. To force a fresh call without changing determinism, use `CacheControl.bypass: true`.
 
-**Config (system_prompt required):**
+**Config (every field is required; the kit ships no defaults here per the *Demand choices; default only to guide* principle in `core/ARCHITECTURE.md`):**
 ```yaml
 worker:
   type: openrouter
   config:
-    model: claude-sonnet-4-6
-    max_tokens: 4096
-    system_prompt: |
-      Instructions for the LLM. Required.
+    model: <required>            # e.g. anthropic/claude-sonnet-4.5, openai/gpt-5; no default
+    max_tokens: <required>       # response token cap; no default (affects cost + truncation behavior)
+    system_prompt: <required>    # literal string or {template: <path>, vars: {...}} -- see Templating below
     # temperature: NOT configurable -- derived from CacheControl.determinism by the worker.
 ```
 
@@ -109,15 +108,14 @@ worker:
 
 **Determinism:** same rules as openrouter (default `deterministic` + temp 0; `non_deterministic` override -> non-zero temp + skip cache; `CacheControl.bypass: true` to force re-run without changing determinism).
 
-**Config (system_prompt required):**
+**Config (every field is required; the kit ships no defaults here per the *Demand choices; default only to guide* principle in `core/ARCHITECTURE.md`):**
 ```yaml
 worker:
   type: claude_inference
   config:
-    agent_type: general-purpose
-    timeout_s: 120
-    system_prompt: |
-      Instructions for the LLM. Required.
+    agent_type: <required>       # which Claude Code subagent type to dispatch (e.g. general-purpose, Explore)
+    timeout_s: <required>        # max wall-clock; no default
+    system_prompt: <required>    # literal string or {template: <path>, vars: {...}} -- see Templating below
     # tools are NOT enabled for this worker -- by design.
     # temperature: NOT configurable -- derived from CacheControl.determinism by the worker.
 ```
@@ -132,15 +130,14 @@ worker:
 
 **Determinism: `requires_declaration`.** The consumer must declare per-request via `CacheControl.determinism` whether the specific work is `deterministic_idempotent` (cacheable -- e.g. "create file X with content Y if it doesn't exist," which is idempotent) or `non_deterministic` (not cacheable -- e.g. "summarize the current state of the repo," whose output depends on facts outside the request). Submit raises if the declaration is missing. No silent default; the consumer knows their work's nature, the kit doesn't guess.
 
-**Config (system_prompt required):**
+**Config (every field is required; the kit ships no defaults here per the *Demand choices; default only to guide* principle in `core/ARCHITECTURE.md`):**
 ```yaml
 worker:
   type: claude_agent
   config:
-    agent_type: general-purpose
-    timeout_s: 600
-    system_prompt: |
-      Instructions for the agent. Required.
+    agent_type: <required>       # which Claude Code subagent type to dispatch
+    timeout_s: <required>        # max wall-clock; agent runs are long, so this matters
+    system_prompt: <required>    # literal string or {template: <path>, vars: {...}} -- see Templating below
   requires:
     tools: [Read, Write, Bash]
     mcp_servers: [unreal-engine]
@@ -234,7 +231,9 @@ Pure utility, no kit-internal coupling. Consumers compose it however they want; 
 
 ## Worker selection
 
-If a WorkRequest has a `worker:` block, that worker is used. If not, the runtime falls back to a system default (configured in settings). Consumers can also pass a `worker:` override at submission time programmatically, separate from what's in the WorkRequest yaml — useful for testing one pipeline against different workers.
+Every WorkRequest must declare `worker.type` explicitly; the submit pipeline raises `WorkerNotAvailable` if it is missing or names an unregistered worker. There is no system default worker -- per the core principle *Demand choices; default only to guide* (`core/ARCHITECTURE.md`), the worker selection is a meaningful choice the consumer must state. The kit cannot know whether a given request is best served by `openrouter` (third-party LLM, cost per token) or `python_script` (free, pure-function, no network) or one of the deferred Claude-backed workers.
+
+Consumers can pass a `worker:` override at submission time programmatically, separate from what's in the WorkRequest yaml -- useful for testing one pipeline against different workers. The override must still name an explicit worker type; there is no implicit default at any layer.
 
 ## Failure modes
 
@@ -260,6 +259,42 @@ The mechanical rules -- request_hash computation, lookup order, cache directory 
 A cohort replay is `submit(request, cohort=<name>)` for every WorkRequest the pipeline issues; the cache lookup hits the cohort's recordings directory instead of the live cache. Recordings are produced curated (hand-author a file) or harvested (`agent-glue work promote-record`). Strict vs lenient (fail on missing recording vs fall through to live) is a per-call mode.
 
 The cohort directory shape lives in top-level `ARCHITECTURE.md`; the recordings file format is the same WorkRecord shape described in `work-system/ARCHITECTURE.md`.
+
+## System prompt templating
+
+LLM-backed workers (`openrouter`, plus the deferred `claude_inference` / `claude_agent`) treat `config.system_prompt` as a **template field**, governed by the kit-wide *Templating* pattern in `core/ARCHITECTURE.md`. Two shapes are accepted and the worker auto-detects which:
+
+```yaml
+# Shape 1: literal string. Rendered as a no-substitution Jinja template (renders as itself).
+worker:
+  type: openrouter
+  config:
+    model: anthropic/claude-sonnet-4.5
+    max_tokens: 4096
+    system_prompt: |
+      You are a translator. Return YAML matching the requested shape.
+```
+
+```yaml
+# Shape 2: file-backed template with explicit vars. Rendered through Jinja at submit time.
+worker:
+  type: openrouter
+  config:
+    model: anthropic/claude-sonnet-4.5
+    max_tokens: 4096
+    system_prompt:
+      template: prompts/translate_system.j2
+      vars:
+        target_language: es
+        glossary_terms:
+          - { source: "warp gate", target: "puerta de salto" }
+```
+
+The `template:` path is consumer-root-relative. The `vars:` map is passed as the Jinja render context; the template can use the standard mechanisms -- `{{ target_language }}`, `{% include 'partials/style_guide.j2' %}`, `{% extends 'base_system.j2' %}` + `{% block instructions %}`, `{% import 'macros.j2' as m %}` -- without kit-imposed restrictions. The fully-rendered string is what enters the request_hash, so changing a template or any `vars` value invalidates cache (as it should).
+
+Workers that don't take a system prompt (`python_script`) ignore the field; setting it raises a typed validation error.
+
+A consumer who wants a different template engine renders externally and passes the result as the literal-string shape. No additional kit mechanism is required for this case.
 
 ## Yaml shape examples
 
@@ -287,7 +322,8 @@ output_schema:
 worker:
   type: openrouter
   config:
-    model: claude-sonnet-4-6
+    model: anthropic/claude-sonnet-4.5
+    max_tokens: 4096
     system_prompt: |
       You are a translator. Given a list of English phrases, return YAML
       with each phrase translated to the target language. Use the exact
@@ -386,16 +422,19 @@ except CapabilityUnavailable as e:
 
 ## Settings
 
-```yaml
-default_worker:
-  type: openrouter
-  config:
-    model: claude-sonnet-4-6
+The work subsystem has three kit-level settings. Every one of them is a documented default per the *Demand choices; default only to guide* principle in `core/ARCHITECTURE.md` -- the default exists because the kit has a strong preference, and the documentation gives the reason. There is no `default_worker` setting; worker selection is a meaningful per-request choice and must be stated explicitly (see *Worker selection* above).
 
-cache_directory: .agent-glue-cache           # where live WorkRecords are stored (relative to consumer root)
-cohort_directory: ./cohorts                  # where to look for cohort recordings
-show_work: default                           # default | never (never suppresses all WorkRecord writes; also disables cache)
+```yaml
+cache_directory: .agent-glue-cache    # default; see rationale below
+cohort_directory: ./cohorts           # default; see rationale below
+show_work: default                    # default | never; see rationale below
 ```
+
+**`cache_directory: .agent-glue-cache`** -- consumer-root-relative path where live WorkRecords are stored. The kit-wide convention is a hidden dot-directory at the consumer's root so a consumer can `.gitignore` it cleanly, share it via shelved work, and find it from any tool that walks the consumer tree. Deviating is rare; we want every consumer's cache findable in the same place.
+
+**`cohort_directory: ./cohorts`** -- consumer-root-relative path where curated cohort recordings live. The kit-wide convention is a visible top-level directory because cohorts are first-class test artifacts -- they get reviewed, diffed, and checked in. Deviating is rare for the same kit-wide-findability reason.
+
+**`show_work: default`** -- the kit is designed *around* the show-your-work-as-cache mechanism; we want most consumers on the show-your-work path because it produces the audit trail that makes cohort replay, regression detection, and forensic debugging possible. `never` is the explicit opt-out (suppresses all WorkRecord writes; also disables cache, since the records are the cache). Deviation is a deliberate, named act.
 
 ## Consumers
 
