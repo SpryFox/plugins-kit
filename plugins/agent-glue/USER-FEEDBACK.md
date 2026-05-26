@@ -25,7 +25,42 @@ Both users independently arrived at the same answers for claude-work-queue's thr
 - **Signaling: Stop-hook with re-prompt.** Both users have long-running orchestrators that push items mid-session and need them picked up promptly. Session-start-only signaling misses mid-session adds; external-trigger-per-item is too expensive (launches a fresh session per item). Stop-hook + same script at session-start gets both cases with one mechanism.
 - **Writer scope: open to any writer.** The wire format being human-authorable lets external producers (CI jobs, shell scripts, scheduled runs, hand-rolled tools) drop items in without spinning up a Claude SDK dependency. This was the explicit driver for the dialog system user (designer bulk runs) and the loc system user (subprocess-spawned per-chunk Claude calls).
 
-## Gaps surfaced (post-v1 candidates)
+## Per-feature use signals (second feedback round)
+
+A follow-up round asked both users to mark each of the 27 features (21 v1 + 6 post-v1 candidates) as use / would-not-use / unsure. Headline numbers:
+
+| | Use | Would-not-use | Unsure |
+|---|---|---|---|
+| Loc system user | 19 | 4 | 1 |
+| Dialog system user | 17 | 6 | 4 |
+
+**Universal use (both reviewers, no qualifiers, no questions):** features 1, 6, 7, 8, 10, 11, 12, 14, 15, 16, 17, 20 (v1) and 24, 25, 26, 27 (post-v1 candidates).
+
+**Split votes:**
+
+- claude-work-queue (features 2-5): dialog uses, loc skips. Kept in v1 because the claude workers (10) -- which both reviewers use -- depend on it.
+- openrouter worker (9): loc uses, dialog skips. Kept in v1 (one strong-use consumer is enough; build cost is low).
+- Cohort recording (13): loc unsure (has its own corpus), dialog uses (regression-harness gap). Kept in v1.
+- Parameterized graphs (23, post-v1): loc requires for multi-language matrix, dialog passes (one pipeline shape).
+
+**Two conditional unsures that drove the post-v1 reorder:** dialog's verdict on v1 features 18 (fan-out) and 19 (canonical outputs) is "would-not-use without post-v1 features 27 and 25 respectively." Both 27 and 25 are also two-reviewer-strong-use post-v1 candidates -- so they sort to the top of the post-v1 list (see ordering below).
+
+Raw second-round responses are session-private working notes outside the plugin tree.
+
+## Recommended post-v1 candidate ordering
+
+Constraint: post-v1 candidates may not leapfrog any v1 increment. Within that bound, ordering by use-signal strength and v1-feature-unblocking effect:
+
+1. **Hand-edit-preserving YAML round-trip (was item 25).** Two-reviewer use; unblocks v1 feature 19 (canonical outputs) for the dialog user's most important artifact.
+2. **GroupedSequentialFanOut (was item 27).** Two-reviewer use; unblocks v1 feature 18 (fan-out) for the dialog user's primary production path.
+3. **Multi-source freshness keys (was item 26).** Two-reviewer use; replaces hand-rolled freshness logic for both consumers.
+4. **WorkRecord aggregator API (was item 24).** Two-reviewer use; enables corpus-wide views both reviewers explicitly want.
+5. **Domain-shaped output validation hook (was item 22).** Loc strong-use; dialog conditional on where the hook runs.
+6. **Parameterized graphs (was item 23).** Loc strong-use; dialog passes.
+
+The per-reviewer descriptions below capture the original rationale for each candidate. The numbering in those descriptions is from the per-reviewer perspective and predates the combined ordering above.
+
+## Gaps surfaced (post-v1 candidates, per-reviewer rationale)
 
 None of the items below are v1 blockers. They are framed by the reviewers as "things that would shift the adoption calculus from break-even to clearly worth it" -- worth tracking for post-v1 prioritization.
 
@@ -48,5 +83,5 @@ None of the items below are v1 blockers. They are framed by the reviewers as "th
 ## Where the consumer reviews land in the v1 plan
 
 - **claude-work-queue/DESIGN.md** -- the three locked design decisions are recorded; rationale references this document.
-- **Post-v1 candidates list** in top-level `IMPLEMENTATION-PLAN.md` -- the six gaps above are out of v1 scope and tracked there as candidate post-v1 increments.
+- **Top-level IMPLEMENTATION-PLAN.md** -- post-v1 candidate ordering above is referenced as the recommended priority order for post-v1 work. v1 increments are unchanged: no feature was reordered within v1, no feature was added, and no post-v1 candidate moved ahead of any v1 increment.
 - **Raw reviews** -- the full consumer reviews (which name specific code paths and consumer-project artifacts) are session-private working notes outside the plugin tree, per the user-anonymity convention.
