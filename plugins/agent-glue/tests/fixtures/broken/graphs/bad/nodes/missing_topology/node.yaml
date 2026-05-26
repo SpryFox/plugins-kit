@@ -1,0 +1,7 @@
+type: Node
+components:
+  name:
+    name: missing_topology
+  implementation:
+    module: impl
+    function: execute
