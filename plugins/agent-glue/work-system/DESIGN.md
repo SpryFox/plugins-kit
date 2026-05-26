@@ -14,7 +14,7 @@ A **work request** is a contract: yaml input + JSON-Schema-shaped output schema 
 - **Yaml as the substrate.** Inputs are yaml. Outputs are yaml. Output schemas are JSON Schema authored as yaml (validated via the `jsonschema` Python package). Records are yaml.
 - **Avoiding repetition is first-class.** Every successful work call writes a `WorkRecord` keyed by request hash. The next identical request returns the cached result without invoking the worker. Show-your-work is the audit; the cache is the same record consulted at lookup. One mechanism, two functions.
 - **Cacheability is a per-worker decision.** Inference workers (openrouter, claude_inference) default to deterministic+cacheable (temp 0) but may be overridden per-request to non_deterministic, in which case the worker uses a non-zero temperature internally and skips cache lookups. Side-effect-capable workers (claude_agent, python_script) have no default -- the consumer must declare per-request whether the specific work is `deterministic_idempotent` (cacheable) or `non_deterministic` (not cacheable). The kit fails loudly if a side-effect-capable worker receives a request without a determinism declaration.
-- **Pluggable workers.** Adding a worker is registering a Python module with the worker registry. No core changes needed.
+- **Closed worker set, small worker interface.** The kit ships a fixed enumerated set of worker types (see *Worker types (the closed set)* below). Each worker is a Python module that registers with the worker registry at import time; the *registration mechanism* is small enough that adding a new worker type is a focused piece of work -- but the *decision* to add one is a deliberate kit-level change, not a consumer-extension point.
 
 ## Non-goals
 
@@ -24,6 +24,21 @@ A **work request** is a contract: yaml input + JSON-Schema-shaped output schema 
 - A worker queue / job manager. Submissions are synchronous: submit a request, get a result (or an error). Concurrency is the consumer's concern.
 - Graceful degradation when a required worker capability is missing. **If a request requires a tool or MCP server the worker can't provide, the work fails outright.** No fallback to a different worker; no auto-retry without the capability. Per core's "fail loudly on changed conditions" rule, capability checks happen once and fail loudly if invalidated.
 
+## Worker types (the closed set)
+
+The work subsystem ships **exactly four worker types** -- no open extension surface, no "other types" escape hatch. Adding a fifth worker type is a deliberate kit-level change (new entity-type yaml + new submitter module + new test + a v1/post-v1 plan entry), not a configuration toggle. The four are:
+
+| Type | Run via | Stateful? | Tools / MCP? | v1 status |
+|---|---|---|---|---|
+| `openrouter` | OpenRouter HTTP API (any supported model) | No | No | v1 |
+| `python_script` | Imports and calls a dotted-name Python function; may shell out via subprocess | No (per-call) | No | v1 |
+| `claude_inference` | Claude Code subagent dispatch with tools disabled | No | No | deferred to post-v1 |
+| `claude_agent` | Claude Code subagent dispatch with tools + MCP enabled | Yes (multi-step) | Yes | deferred to post-v1 |
+
+Detailed `When to use / How it fulfills / Determinism / Config / Capability rules` sections for each worker live in *Workers* below. The two deferred types are documented because the design is locked; their implementation is deferred per the top-level `IMPLEMENTATION-PLAN.md` *Out of scope for v1* section. When a `WorkRequest` selects a deferred worker before its v1 wave lands, `submit()` raises `WorkerNotAvailable` -- the same typed failure used for an unregistered worker type.
+
+Worker selection in a request uses `worker.type` and is restricted to this set; an unknown value raises at submit time. The CLI's `agent-glue work list-workers` reports the currently-registered subset (in v1, that's two; post-v1 wave brings the other two).
+
 ## Core concept: the work request contract
 
 A **WorkRequest** has three required parts plus worker selection:
@@ -32,7 +47,7 @@ A **WorkRequest** has three required parts plus worker selection:
 input: <arbitrary yaml structure>           # the data the worker should operate on
 output_schema: <yaml-schema reference>      # what shape the result must take
 worker:                                      # optional; defaults to system default
-  type: openrouter | claude_agent | <other worker types>
+  type: openrouter | python_script | claude_inference | claude_agent
   config:                                    # worker-specific config
     system_prompt: <string>                  # required by LLM workers; absent for non-LLM workers
     # ...other worker-specific config
