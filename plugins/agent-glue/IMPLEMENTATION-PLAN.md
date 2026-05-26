@@ -1,5 +1,7 @@
 # agent-glue: Implementation Plan (parallel-track coordinator)
 
+**Visual companion:** [implementation-plan.html](implementation-plan.html) -- v1 roadmap as a 3-swimlane diagram (core / work-system / graph-system), every v1 increment labelled in document order, the single cross-subsystem gate (work-system's *Show-your-work-as-cache substrate* -> graph-system's *submit() integration*), and the deferred increments shown below the active row. Same content as the prose below; the visual is faster to scan when re-orienting between sessions.
+
 This plan coordinates parallel development across the v1 subsystems. It does not duplicate increment content -- each subsystem's named increments live in that subsystem's IMPLEMENTATION-PLAN.md. This document defines: which tracks can develop independently, where the dependency edges land, what the v1 definition of done is, and what is post-v1.
 
 Read this alongside the active subsystem IMPLEMENTATION-PLAN.md documents (`core/`, `work-system/`, `graph-system/`) and the matching DESIGN.md + ARCHITECTURE.md docs. The claude-work-queue subsystem is designed and shipped as documentation in v1 but its implementation is deferred to post-v1 (see *Out of scope for v1* below); read `claude-work-queue/DESIGN.md` if you need the locked design, but no v1 work happens against it. Doc-reading responsibilities are in the top-level `CLAUDE.md`.

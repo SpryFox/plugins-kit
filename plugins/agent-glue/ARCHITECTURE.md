@@ -2,6 +2,8 @@
 
 The cross-subsystem interfaces and the dependency graph. Shared architectural patterns live in `core/ARCHITECTURE.md`; subsystem-specific patterns live in each subsystem's ARCHITECTURE.md.
 
+**Visual companion:** [architecture.html](architecture.html) -- interactive dependency-graph diagram with dark/light toggle and image export. Same content as the ASCII graph below; the HTML version distinguishes v1-active subsystems from the deferred claude-work-queue + claude-workers slot visually.
+
 ## Subsystem dependency graph
 
 ```
