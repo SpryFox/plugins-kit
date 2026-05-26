@@ -9,7 +9,7 @@ Build the loader, validator, cross-cutting components, and Disposition primitive
 **Deliverables:**
 
 - `pyproject.toml` declaring the agent-glue Python package (deps: pydantic, pyyaml, jinja2, jsonschema).
-- `agent_glue_lib/core/` package with `catalog.py`, `loader.py`, `validator.py`, `disposition.py` -- behavior is specified in `core/DESIGN.md` ("Loader behavior" and "Validator behavior" sections).
+- `agent_glue_lib/core/` package with `catalog.py`, `loader.py`, `validator.py`, `disposition.py`, `dispatch.py` -- behavior is specified in `core/DESIGN.md` ("Loader behavior", "Validator behavior", and "Variant dispatch" sections).
 - The cross-cutting component schemas in `core/components/` (enumerated in `core/DESIGN.md`).
 - Pre-commit hook script that loads the kit + every example pipeline's instance yamls and exits nonzero if `validate_all` returns errors.
 - Pytest tests covering loader edge cases (missing required fields, unknown components, name resolution failures, round-trip identity for the sample fixtures, structurally broken instances rejected with the expected error messages).

@@ -18,6 +18,7 @@ agent_glue_lib/core/
   loader.py         # yaml-to-Catalog reader; named-ref resolution; round-trip dump
   validator.py      # structural consistency: kit + per-instance
   disposition.py    # Disposition primitive
+  dispatch.py       # variant-dispatch library function (used by graph runtime; usable directly by any consumer)
 ```
 
 ## Where to find things

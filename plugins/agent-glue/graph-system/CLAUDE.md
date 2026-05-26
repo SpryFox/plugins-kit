@@ -18,7 +18,7 @@ agent_glue_lib/graph/
   render.py             # Markdeep + Mermaid HTML render (stub initially)
 ```
 
-The `Disposition` primitive lives in core (`agent_glue_lib.core.disposition`); the graph runtime imports and dispatches on it natively.
+The `Disposition` primitive lives in core (`agent_glue_lib.core.disposition`); the graph runtime imports and dispatches on it natively. The variant-dispatch logic itself also lives in core (`agent_glue_lib.core.dispatch`) and is callable directly by any consumer that wants discriminated-union branching without instantiating a graph.
 
 ## Where to find things
 

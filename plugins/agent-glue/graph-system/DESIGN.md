@@ -110,7 +110,7 @@ Algorithm:
    - Merge `StateDelta` into `PipelineState`.
    - If `serialize`: write `runs/<run_id>/<node_name>/{input.yaml,output.yaml,ctx_before.yaml,ctx_after.yaml,llm.yaml}`.
    - Inspect output variant; find the matching `Edge` (or edges, for fan-out); dispatch.
-4. When no outgoing edge exists, the path terminates. Multiple terminal nodes are fine.
+4. When no outgoing edge exists for the produced variant, the path **terminates cleanly** -- this is the v1 semantic, not a runtime error. The runtime logs the terminal variant and stops walking; if multiple paths are active (fan-out), the others continue. This makes "give up cleanly" expressible without an explicit terminal edge: a `propose -> validate -> dispatch(Valid | NeedsRetry | Exhausted)` sub-graph that wants `Exhausted` to mean "stop trying, report what we have" simply omits the edge for the `Exhausted` variant. The iron contract holds because the variant itself is the recorded disposition; the missing edge is a routing convenience, not a missing decision.
 
 The runtime is a single Python function. ~100-150 LOC.
 

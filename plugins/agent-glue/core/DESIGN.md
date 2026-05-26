@@ -114,6 +114,24 @@ The pattern: "every input gets a recorded disposition; failures are first-class 
 
 The graph subsystem's variant dispatch knows the three Disposition variants natively (an edge can target `Accepted`, `AcceptedWithAudit`, or `Rejected` by name). Subsystems that want different outcome shapes compose plain Pydantic discriminated unions; Disposition is for the common case, not mandatory.
 
+## Variant dispatch
+
+A library primitive for branching on the variant of a discriminated-union output. Shipped by core; importable from any subsystem.
+
+```python
+from agent_glue_lib.core.dispatch import dispatch
+
+result = dispatch(variant, handlers={
+    "accepted": handle_accepted,
+    "accepted_with_audit": handle_audit,
+    "rejected": handle_rejected,
+})
+```
+
+The primitive reads the variant's discriminator field (`kind` by convention) and calls the matching handler with the variant value. If no handler matches and no `default` is supplied, it raises a typed `NoHandlerForVariant` error.
+
+The graph runtime uses this primitive internally to route on Edge `Source.on_variant`. Consumers that want the same dispatch shape inside a single worker's post-processing (e.g. routing per-line `Disposition` results without instantiating a graph) call `dispatch` directly. Per the package cohesion principles in `core/ARCHITECTURE.md`, the dispatch logic lives in one place and serves both call sites.
+
 ## Loader behavior
 
 The loader is the single boundary between yaml-on-disk and the Python systems. It:

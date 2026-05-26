@@ -35,7 +35,8 @@ Walk a graph, call nodes, dispatch on output variants. No fan-out, no work-subsy
 **Deliverables:**
 
 - `agent_glue_lib/graph/runtime.py` -- given a graph + a start input + an init state, instantiates PipelineState, walks the graph from the Start node: validates input against `Topology.in`, calls the node's `Implementation`, validates output against `Topology.out`, merges any StateDelta, inspects the output variant, finds the matching Edge via `Source.on_variant`, dispatches.
-- Halt cleanly at terminals (no outgoing edge for the produced variant); multiple terminal nodes are fine.
+- Halt cleanly at terminals: a node returning a variant with no matching outgoing edge is a clean terminal (the runtime logs and stops walking that path; not a runtime error). Multiple terminal nodes are fine.
+- Variant dispatch is implemented by calling `agent_glue_lib.core.dispatch.dispatch` rather than by hand-coded `isinstance` branching; the same primitive is available to consumers outside the graph runtime.
 - Pure in-impl node work: nodes whose `execute` does its own computation work end-to-end. Nodes that try to delegate via `submit()` raise (the work-subsystem integration is the next increment).
 
 **After this:** the product can run a graph whose nodes do their own work in Python. Variant dispatch is exercised; the iron contract holds (every input gets a recorded disposition). A graph of pure computation (loaders, validators, format converters) runs end-to-end.
