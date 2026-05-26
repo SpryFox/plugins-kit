@@ -66,6 +66,24 @@ No other inter-subsystem dependencies exist in v1. Within each subsystem, sequen
 - **Acceptance criteria are observable.** Every increment's "after this" line is a behavior the v1 plugin can perform that it could not before. A track is "at" an increment when the matching test (or the absence of a regression) is green.
 - **No backporting.** Per the no-backwards-compatibility-in-development convention (`core/ARCHITECTURE.md`), an increment that changes a downstream consumer's expectations is applied in a single CL across all affected subsystems.
 
+## Review protocol
+
+Every increment lands with a matching **review doc** that lets a reviewer (the user, a future agent, or a second pair of eyes) verify the increment did what it said it would. The implementation is not considered shippable until the review doc exists alongside the code.
+
+**Location.** Review docs live under `reviews/<subsystem>/<increment-slug>.md`, where `<subsystem>` mirrors the subsystem directory name (e.g. `core/`, `work-system/`, `graph-system/`) and `<increment-slug>` is the increment title lowercased with non-alphanumeric runs collapsed to single hyphens. Example: the core subsystem's *Entity-yaml model + ECS loader* increment is documented at `reviews/core/entity-yaml-model-and-ecs-loader.md`.
+
+**Per-increment doc contents.** Each review doc has these sections, in order:
+
+1. **Scope** -- one paragraph naming the increment, the subsystem, the matching IMPLEMENTATION-PLAN section, and the v1 acceptance criterion this increment lands.
+2. **Automated tests** -- exact commands the reviewer runs to exercise the test surface for this increment, what passing looks like, and where the tests live on disk. If the increment ships its own test directory, name it. If it relies on a shared runner, say which.
+3. **User-exercise walkthrough** -- the minimum sequence of CLI calls / Python invocations / yaml files a reviewer types or writes by hand to make the increment do its job and produce inspectable output. The walkthrough must be runnable cold by a reviewer with the kit checked out and the venv active. Include the expected output (or its shape) so the reviewer can tell whether the increment is behaving.
+4. **Schemas + documentation** -- absolute (unix-style) paths to every yaml schema the increment introduces or depends on, plus links to the subsystem's CLAUDE.md / DESIGN.md / ARCHITECTURE.md / IMPLEMENTATION-PLAN.md sections that explain the increment's design.
+5. **What this doc is not** -- a one-line scope-limit so a reviewer doesn't expect a tutorial or a per-API reference. The review doc is a verification surface, not the design.
+
+**Review-overview index doc.** `reviews/REVIEW-OVERVIEW.md` is the landing page. It lists every per-increment review doc as it is authored, grouped by subsystem and ordered by IMPLEMENTATION-PLAN document order. Reviewing the kit's progress against v1 starts with this file.
+
+**Authoring discipline.** A new review doc is part of the same CL that lands its increment. The doc references the actual on-disk paths the increment produced (no placeholders, no future paths). Deferred increments do not get review docs until they are promoted into a v1 wave.
+
 ## v1 definition of done
 
 v1 ships when **every active v1 subsystem** has reached the end of its own IMPLEMENTATION-PLAN. Concretely:
