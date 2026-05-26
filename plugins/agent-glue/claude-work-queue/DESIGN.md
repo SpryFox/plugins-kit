@@ -35,7 +35,7 @@ The queue lives in a known directory; each work item is a yaml file. Pending ite
 
 Default `<queue_root>` is `<consumer_root>/.claude-work-queue/`. A consumer may override per-call.
 
-Rationale: cross-process accessibility (the queue is writable by any program with filesystem access -- shell scripts, scheduled jobs, subprocess-spawned `claude -p` invocations, hand-rolled tools); yaml-readable (matches the rest of agent-glue's "yaml all the way down" substrate; queue items can be inspected via `cat` / `grep` / `diff`); survives session restarts (long-running batches can be paused and resumed across separate Claude Code sessions); the WorkItem yaml carries enough context that someone unfamiliar with the originating session can pick up the item.
+Rationale: cross-process accessibility (the queue is writable by any program with filesystem access -- shell scripts, scheduled jobs, external LLM-subprocess invocations, hand-rolled tools); yaml-readable (matches the rest of agent-glue's "yaml all the way down" substrate; queue items can be inspected via `cat` / `grep` / `diff`); survives session restarts (long-running batches can be paused and resumed across separate Claude Code sessions); the WorkItem yaml carries enough context that someone unfamiliar with the originating session can pick up the item.
 
 ### Signaling: Stop-hook with re-prompt
 
@@ -49,7 +49,7 @@ Rationale: picks up items added at any point in a session (a session-start-only 
 
 The queue's wire format (one yaml file per item, with documented field names and a stable on-disk layout) is human-authorable. Any program that can write a yaml file with the right shape into `<queue_root>/pending/` is a valid producer: a Python script using the consumer API, a shell command writing a yaml literal, a CI job invoking `cat > pending/<id>.yaml`, a different Claude Code session, an external scheduler.
 
-Rationale: the primitive's value comes from being a general inbox for Claude work; restricting writes to Python-only API consumers (as SQLite-with-API would have done) would force every external writer through a Python dependency and would block use cases like "bulk runner in a shell script drops 200 items, leaves Claude to process them" or "subprocess-spawned `claude -p` invocations drop their results back into the queue for the orchestrator to pick up." File-based + open-writer keeps that surface flat.
+Rationale: the primitive's value comes from being a general inbox for Claude work; restricting writes to Python-only API consumers (as SQLite-with-API would have done) would force every external writer through a Python dependency and would block use cases like "bulk runner in a shell script drops 200 items, leaves Claude to process them" or "an external LLM-subprocess writes its result yaml back to the queue dir for an orchestrator to pick up." File-based + open-writer keeps that surface flat.
 
 ## How the work subsystem consumes this
 
