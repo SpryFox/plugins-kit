@@ -2,6 +2,11 @@
 
 Entities, components, and systems specific to the work subsystem. Shared patterns are in `core/ARCHITECTURE.md` and not restated here.
 
+**Visual companions:**
+
+- [submit-lifecycle.html](submit-lifecycle.html) -- the submit() pipeline as a 5-band lifecycle diagram (hash + read, hit short-circuit, miss + dispatch, validate + write + return, and a variants band for `CacheControl.bypass` / `non_deterministic` / cohort mode). Same algorithm as the *Show-your-work as cache* section below; the visual is faster to follow for cache-decision questions.
+- [cache-substrate.html](cache-substrate.html) -- WorkRecord lifecycle as a dataflow: producer -> submit() -> live cache (always-write) / cohort recordings (read-swap), with the WorkRecord shape, cache-lookup decision tree, and cohort directory layout shown side-by-side. Covers the show-your-work-as-cache mechanism end-to-end.
+
 The work subsystem owns the show-your-work mechanism, which doubles as the disk cache. Records written for audit are the same records consulted for cache hits; one mechanism serves both purposes. See the *Show-your-work as cache* section below.
 
 Worker selection is "find a worker whose components satisfy the request's `CapabilityRequirement`." Capability requirements on the request side are matched against the worker entity's `ProvidedCapabilities` component. Adding a worker type is registering the worker module + declaring its components; the matching logic is unchanged.

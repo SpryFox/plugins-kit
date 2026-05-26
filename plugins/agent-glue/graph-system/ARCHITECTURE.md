@@ -2,6 +2,8 @@
 
 Entities, components, and systems specific to the graph subsystem. Shared patterns are in `core/ARCHITECTURE.md` and not restated here.
 
+**Visual companion:** [runtime.html](runtime.html) -- per-node execution lifecycle with the three Disposition branches (Accepted / AcceptedWithAudit / Rejected), the clean-terminal treatment for an unmatched variant, and the fan-out subsystem (ParallelSpec + accumulated-state lock) shown below the main flow.
+
 ## Entities
 
 Entity type definitions live as yaml files in `./entities/`. Each file declares one entity type, the components it may carry (required + optional), and where instances are stored in a consuming project. The yaml is the source of truth; the loader reads it at startup to populate the entity catalog.
