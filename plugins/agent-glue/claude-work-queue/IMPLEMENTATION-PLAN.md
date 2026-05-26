@@ -1,5 +1,7 @@
 # claude-work-queue: Implementation Plan
 
+**Status: deferred to post-v1.** No implementation work happens against this subsystem during v1. The four increments below remain accurate as the eventual build plan; the design is locked. See the top-level IMPLEMENTATION-PLAN's *Out of scope for v1* section for the deferral rationale.
+
 Increments build a file-based queue + Stop-hook-driven signal + open-to-any-writer consumer API. The three design decisions are locked (see `claude-work-queue/DESIGN.md`).
 
 ## Queue storage

@@ -38,7 +38,7 @@ A follow-up round asked both users to mark each of the 27 features (21 v1 + 6 po
 
 **Split votes:**
 
-- claude-work-queue (features 2-5): dialog uses, loc skips. Kept in v1 because the claude workers (10) -- which both reviewers use -- depend on it.
+- claude-work-queue (features 2-5): dialog uses, loc skips. **Deferred to post-v1** by user decision after this round (see *Where the consumer reviews land* below). The claude workers (feature 10), which both reviewers marked use, are deferred to the same post-v1 wave because they dispatch through the queue's consumer API. The openrouter worker covers v1's LLM-call need; the Claude-backed worker path adds substrate value (tool / MCP use, in-process Claude inference) but does not unblock a v1 consumer use case.
 - openrouter worker (9): loc uses, dialog skips. Kept in v1 (one strong-use consumer is enough; build cost is low).
 - Cohort recording (13): loc unsure (has its own corpus), dialog uses (regression-harness gap). Kept in v1.
 - Parameterized graphs (23, post-v1): loc requires for multi-language matrix, dialog passes (one pipeline shape).
@@ -102,7 +102,7 @@ Beyond the six post-v1 candidates above, the second feedback round surfaced addi
 
 ## Where the consumer reviews land in the v1 plan
 
-- **claude-work-queue/DESIGN.md** -- the three locked design decisions are recorded; rationale references this document.
-- **Top-level IMPLEMENTATION-PLAN.md** -- post-v1 candidate ordering above is referenced as the recommended priority order for post-v1 work. v1 increments are unchanged: no feature was reordered within v1, no feature was added, and no post-v1 candidate moved ahead of any v1 increment.
+- **claude-work-queue/DESIGN.md** -- the three locked design decisions are recorded; rationale references this document. The subsystem itself is deferred to post-v1 (see below); the design remains valid for when implementation begins.
+- **Top-level IMPLEMENTATION-PLAN.md** -- post-v1 candidate ordering above is referenced as the recommended priority order for post-v1 work. v1 increments are unchanged in scope: no feature was reordered within v1, no feature was added, and no post-v1 candidate moved ahead of any v1 increment. One v1-scoped subsystem (claude-work-queue) plus the work-system increment that depends on it (*claude_inference + claude_agent workers*) were deferred to post-v1 by user decision after the second feedback round, on the rationale that openrouter covers v1's LLM-call need.
 - **Suggested-features section above** -- six reviewer-suggested features that are not in any plan today. Promotion decisions are future work.
 - **Raw reviews** -- the full consumer reviews (which name specific code paths and consumer-project artifacts) are session-private working notes outside the plugin tree, per the user-anonymity convention.

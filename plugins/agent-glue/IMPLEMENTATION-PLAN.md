@@ -1,45 +1,36 @@
 # agent-glue: Implementation Plan (parallel-track coordinator)
 
-This plan coordinates parallel development across the four subsystems. It does not duplicate increment content -- each subsystem's named increments live in that subsystem's IMPLEMENTATION-PLAN.md. This document defines: which tracks can develop independently, where the dependency edges land, what the v1 definition of done is, and what is post-v1.
+This plan coordinates parallel development across the v1 subsystems. It does not duplicate increment content -- each subsystem's named increments live in that subsystem's IMPLEMENTATION-PLAN.md. This document defines: which tracks can develop independently, where the dependency edges land, what the v1 definition of done is, and what is post-v1.
 
-Read this alongside the four subsystem IMPLEMENTATION-PLAN.md documents (`core/`, `claude-work-queue/`, `work-system/`, `graph-system/`) and the matching DESIGN.md + ARCHITECTURE.md docs. Doc-reading responsibilities are in the top-level `CLAUDE.md`.
+Read this alongside the active subsystem IMPLEMENTATION-PLAN.md documents (`core/`, `work-system/`, `graph-system/`) and the matching DESIGN.md + ARCHITECTURE.md docs. The claude-work-queue subsystem is designed and shipped as documentation in v1 but its implementation is deferred to post-v1 (see *Out of scope for v1* below); read `claude-work-queue/DESIGN.md` if you need the locked design, but no v1 work happens against it. Doc-reading responsibilities are in the top-level `CLAUDE.md`.
 
 ## Parallel development tracks
 
-Four tracks. Each is owned by a subsystem; each can develop independently against its dependencies. Within a track, the named increments in that subsystem's IMPLEMENTATION-PLAN.md proceed in document order (no numeric phase labels; the order is the order they appear).
+Three tracks for v1. Each is owned by a subsystem; each can develop independently against its dependencies. Within a track, the named increments in that subsystem's IMPLEMENTATION-PLAN.md proceed in document order (no numeric phase labels; the order is the order they appear).
 
 ### Track: core
 
 **Owner:** core subsystem. **Depends on:** nothing.
 
-Single increment: *Entity-yaml model + ECS loader* (see `core/IMPLEMENTATION-PLAN.md`). Builds the loader + validator + cross-cutting components + Disposition primitive that the other three subsystems compose on.
+Single increment: *Entity-yaml model + ECS loader* (see `core/IMPLEMENTATION-PLAN.md`). Builds the loader + validator + cross-cutting components + Disposition primitive that the other subsystems compose on.
 
 **Unblocks:** every other track. Until this increment lands, no other subsystem can run its own loader-dependent increments.
 
-### Track: claude-work-queue
-
-**Owner:** claude-work-queue subsystem. **Depends on:** core (for the entity-yaml loader and the cross-cutting Errored component).
-
-Four increments in dependency order: *Queue storage*, *Signaling*, *Execute-and-report loop*, *Consumer API* (see `claude-work-queue/IMPLEMENTATION-PLAN.md`). All design decisions are locked (file-based storage + Stop-hook signaling + open-to-any-writer scope); see `claude-work-queue/DESIGN.md` and `USER-FEEDBACK.md`.
-
-**Unblocks:** the work-system's `claude_inference + claude_agent workers` increment (see Dependency edges below). Until claude-work-queue completes its *Execute-and-report loop* increment, work-system cannot register the two claude-backed workers.
-
 ### Track: work-system
 
-**Owner:** work-system subsystem. **Depends on:** core (loader, cross-cutting components). Partially depends on claude-work-queue (see Dependency edges).
+**Owner:** work-system subsystem. **Depends on:** core (loader, cross-cutting components).
 
-Eight increments in dependency order (see `work-system/IMPLEMENTATION-PLAN.md`):
+Seven v1 increments in dependency order (see `work-system/IMPLEMENTATION-PLAN.md`):
 
 1. *WorkRequest contract + JSON Schema validation*
 2. *Submit pipeline + python_script worker*
 3. *Show-your-work-as-cache substrate*
 4. *openrouter worker*
-5. *claude_inference + claude_agent workers* (depends on claude-work-queue's *Execute-and-report loop*)
-6. *SideEffects + structured shell-out helper*
-7. *InvalidationCriteria + sub-element hashing helper*
-8. *Cohort recording substrate + CLI*
+5. *SideEffects + structured shell-out helper*
+6. *InvalidationCriteria + sub-element hashing helper*
+7. *Cohort recording substrate + CLI*
 
-The first four can develop in parallel with claude-work-queue once core is done. The fifth waits on claude-work-queue; the remaining three depend only on previous work-system increments.
+All seven can develop sequentially once core is done; no inter-subsystem dependencies on claude-work-queue in v1 (the *claude_inference + claude_agent workers* increment is deferred to post-v1 -- see *Out of scope for v1* below).
 
 **Unblocks:** the graph-system's `submit() integration` increment (see Dependency edges).
 
@@ -58,17 +49,16 @@ Eight increments in dependency order (see `graph-system/IMPLEMENTATION-PLAN.md`)
 7. *Cohort replay + ExpectedOutcome assertions*
 8. *CLI surface for graph + stub HTML render*
 
-The first three can develop in parallel with both claude-work-queue and the first half of work-system, gated only on core. The fourth waits on work-system reaching its cache substrate; the remaining four depend only on previous graph-system increments.
+The first three can develop in parallel with the first half of work-system, gated only on core. The fourth waits on work-system reaching its cache substrate; the remaining four depend only on previous graph-system increments.
 
 ## Dependency edges (the gates that close parallel work)
 
-Three concrete gates:
+Two concrete gates in v1:
 
 1. **Everyone -> core's *Entity-yaml model + ECS loader*.** Until core completes, no other subsystem can land any increment. This is the only single-point-of-blocking edge in the plan.
-2. **work-system's *claude_inference + claude_agent workers* -> claude-work-queue's *Execute-and-report loop*.** The two Claude-backed worker submitters dispatch through the queue's consumer API; the API surface lands in the queue's third increment. The first four work-system increments do not touch this edge.
-3. **graph-system's *submit() integration* -> work-system's *Show-your-work-as-cache substrate*.** Nodes that delegate work need `submit()` to provide cached, audited dispatch; the cache substrate lands in the work-system's third increment. The first three graph-system increments do not touch this edge.
+2. **graph-system's *submit() integration* -> work-system's *Show-your-work-as-cache substrate*.** Nodes that delegate work need `submit()` to provide cached, audited dispatch; the cache substrate lands in the work-system's third increment. The first three graph-system increments do not touch this edge.
 
-No other inter-subsystem dependencies exist. Within each subsystem, sequential dependence is captured by the document order in its own IMPLEMENTATION-PLAN.md.
+No other inter-subsystem dependencies exist in v1. Within each subsystem, sequential dependence is captured by the document order in its own IMPLEMENTATION-PLAN.md.
 
 ## Coordination practices
 
@@ -78,12 +68,13 @@ No other inter-subsystem dependencies exist. Within each subsystem, sequential d
 
 ## v1 definition of done
 
-v1 ships when **every** subsystem has reached the end of its own IMPLEMENTATION-PLAN. Concretely:
+v1 ships when **every active v1 subsystem** has reached the end of its own IMPLEMENTATION-PLAN. Concretely:
 
 - **core:** the *Entity-yaml model + ECS loader* increment is complete; the pre-commit hook validates the kit and every example pipeline.
-- **claude-work-queue:** all four increments are complete; the work subsystem's claude workers dispatch through the queue end-to-end with the locked file-based / Stop-hook / open-writer design.
-- **work-system:** all eight increments are complete; all four worker types submit with the correct cache + audit semantics; the work-side CLI is operable.
+- **work-system:** all seven v1 increments are complete; the three v1 worker types (python_script, openrouter, and any future-deferred claude workers excluded) submit with the correct cache + audit semantics; the work-side CLI is operable. The *claude_inference + claude_agent workers* increment is deferred -- see *Out of scope for v1*.
 - **graph-system:** all eight increments are complete; graphs run end-to-end; cohort replay works; the stub HTML render emits without crashing; the graph-side CLI is operable.
+
+claude-work-queue ships only as design + schema-less stubs in v1; no implementation lands. See *Out of scope for v1* below.
 
 No partial shipping. The plugin is not published to the marketplace until all of the above hold.
 
@@ -91,6 +82,7 @@ No partial shipping. The plugin is not published to the marketplace until all of
 
 These are intentionally not part of v1. They become candidates once v1 ships.
 
+- **claude-work-queue subsystem (all four increments) + work-system's *claude_inference + claude_agent workers* increment.** Deferred to post-v1 by user decision. Rationale: the openrouter worker covers v1's LLM-call needs; the Claude-backed worker path adds substrate value (tool / MCP use, in-process Claude inference) without unblocking any v1 consumer use case. The locked design (file-based queue + Stop-hook signaling + open-writer scope) remains valid and the subsystem's design docs ship as part of v1; only the Python implementation is deferred. The work-system's deferred increment dispatches through the queue's consumer API, so it ships in the same post-v1 wave as claude-work-queue's four increments.
 - **Example consumer pipelines.** Two example pipelines (character animation, localization) are intended as the first real consumers of agent-glue but are not part of v1. They get their own detailed plans when v1 is ready and they are set up to validate the kit's surface against real workloads.
 - **Extraction to standalone plugins.** Several subsystems and adapters could plausibly move out of agent-glue into their own plugins in the plugins-kit marketplace -- the claude-work-queue primitive (broadly useful beyond this kit), the worker submitters that wrap external services (the openrouter-worker registration could move into openrouter-kit alongside its client), claude-workers as a sibling. v1 develops everything in-tree to keep the iteration loop tight; extraction decisions wait for the in-tree shape to settle.
 - **The richer HTML render.** v1 ships a stub. The full design-artifact render described in `graph-system/DESIGN.md` (sidecar-driven color coding, schema-rendered contracts, latest-WorkRecord example I/O) lands when a consumer needs the design artifact to be browseable beyond `graph.yaml` as text.

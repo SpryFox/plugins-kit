@@ -2,7 +2,7 @@
 
 Work-system increments, in dependency order. Each increment leaves the product able to do something it could not do before; that "after this" line is the acceptance criterion. Names, not numbers; order is the order this document presents them in.
 
-Work-system depends on **core**. The two claude workers additionally depend on **claude-work-queue**; that dependency is called out at the relevant increment.
+Work-system depends on **core**. The two claude workers additionally depend on **claude-work-queue**; that increment is deferred to post-v1 (see *Deferred to post-v1* at the bottom of this document) per the top-level IMPLEMENTATION-PLAN.
 
 ## WorkRequest contract + JSON Schema validation
 
@@ -58,20 +58,6 @@ Add the first inference worker, wrapping openrouter-kit's client.
 
 **After this:** the product can complete LLM-backed work via OpenRouter, with cache + audit. Identical prompts hit cache; intentionally-fresh prompts use `CacheControl.bypass` or `determinism: non_deterministic`.
 
-## claude_inference + claude_agent workers
-
-Add the two Claude-backed workers. Both dispatch through the claude-work-queue primitive.
-
-**Depends on:** claude-work-queue's "Execute-and-report loop" increment being complete.
-
-**Deliverables:**
-
-- `agent_glue_lib/work/workers/claude_inference.py` -- builds a queue work item with the request input + `config.system_prompt`, submits to claude-work-queue with tools disabled, waits for the result, validates against the request's OutputSchema, surfaces a WorkResult. Same determinism rules as openrouter (default `deterministic`; `non_deterministic` overrides allowed; rejects CapabilityRequirement that asks for tools or MCP servers).
-- `agent_glue_lib/work/workers/claude_agent.py` -- builds a queue work item with tools and MCP servers enabled per CapabilityRequirement; intersection check against the running environment's ProvidedCapabilities fails loudly via `CapabilityUnavailable`. `Determinism: requires_declaration` enforced -- submit raises if the request lacks `CacheControl.determinism`.
-- Both workers registered in `agent_glue_lib.work.__init__`.
-
-**After this:** the product can complete LLM-backed work via Claude Code's own subagent runtime, with or without tools, with cache + audit. The work subsystem now supports all four worker types that ship in v1.
-
 ## SideEffects + structured shell-out helper
 
 Make python_script's shell-out pattern first-class and capture it in WorkRecord audit data.
@@ -107,3 +93,19 @@ Wire the cohort-mode cache directory swap and the full work-side CLI.
 - All CLI commands are thin facades over `agent_glue_lib.work`.
 
 **After this:** the work subsystem is operable end-to-end from the command line. A live run produces records; promote-record lifts the interesting ones into a cohort; `agent-glue work submit --cohort` replays from the cohort. This is the surface the graph subsystem will compose into pipeline replay.
+
+## Deferred to post-v1
+
+### claude_inference + claude_agent workers
+
+The two Claude-backed workers. Both dispatch through the claude-work-queue primitive; this increment ships together with the four claude-work-queue increments in the same post-v1 wave (see top-level IMPLEMENTATION-PLAN's *Out of scope for v1*).
+
+**Depends on:** claude-work-queue's "Execute-and-report loop" increment being complete.
+
+**Deliverables (when promoted):**
+
+- `agent_glue_lib/work/workers/claude_inference.py` -- builds a queue work item with the request input + `config.system_prompt`, submits to claude-work-queue with tools disabled, waits for the result, validates against the request's OutputSchema, surfaces a WorkResult. Same determinism rules as openrouter (default `deterministic`; `non_deterministic` overrides allowed; rejects CapabilityRequirement that asks for tools or MCP servers).
+- `agent_glue_lib/work/workers/claude_agent.py` -- builds a queue work item with tools and MCP servers enabled per CapabilityRequirement; intersection check against the running environment's ProvidedCapabilities fails loudly via `CapabilityUnavailable`. `Determinism: requires_declaration` enforced -- submit raises if the request lacks `CacheControl.determinism`.
+- Both workers registered in `agent_glue_lib.work.__init__`.
+
+**After this (when promoted):** the product can complete LLM-backed work via Claude Code's own subagent runtime, with or without tools, with cache + audit. The work subsystem then supports all four worker types originally scoped for v1.
