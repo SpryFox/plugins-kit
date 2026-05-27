@@ -122,9 +122,11 @@ claude --plugin-dir ~/Dev/plugins-kit/plugins/my-plugin
 
 **Definition.** "Publish" in this repo means **all three** of:
 
-1. Bump the plugin version in both manifest files (they must match):
-   - `plugins/<name>/.claude-plugin/plugin.json` (the plugin's own manifest)
-   - `.claude-plugin/marketplace.json` (the marketplace-level listing)
+1. Bump the plugin version in `plugins/<name>/.claude-plugin/plugin.json` (the plugin's own manifest is the source of truth). Then regenerate the marketplace listing:
+   ```bash
+   python scripts/regen_marketplace.py
+   ```
+   `.claude-plugin/marketplace.json` is **derived data** — its `plugins[]` array is rebuilt from each plugin's `plugin.json`, filtered by the `"published"` field (missing = `true`; `false` = excluded from the marketplace). Do not hand-edit marketplace.json plugin entries; the pre-commit hook will reject drift.
 2. Push the version-bumped commit to `origin/dev`.
 3. Merge `dev` to `master` (via PR or fast-forward) and push to `origin/master`.
 
@@ -136,6 +138,16 @@ After publish:
 
 - Users with `autoUpdate: true` receive the update on next session start.
 - Users without auto-update run `/plugin marketplace update` then `/plugin update`.
+
+### Dev-only plugins — do not publish to master
+
+Some plugins live on `dev` for in-development work and must not reach consumers until they are ready. Each such plugin sets `"published": false` in its `plugins/<name>/.claude-plugin/plugin.json`. The marketplace regenerator (`scripts/regen_marketplace.py`) filters those plugins out of `marketplace.json`, so they are excluded structurally — not by memory — even if their files land on master via a cherry-pick.
+
+**Current dev-only plugins** (the field, not this list, is load-bearing — this is just a human-readable inventory):
+
+- `agent-glue` — graph-orchestration kit, design + scaffolding phase. Heavy new Python deps (pydantic, jinja2, jsonschema), no `bootstrap.json` yet, no skills wired up. Tested locally via `--plugin-dir`.
+
+When you see commits for a dev-only plugin in `git log origin/master..origin/dev`, that's still gotcha 1 territory — branch from master, cherry-pick only the publish-ready commits, and leave the dev-only commits on `dev`. The regenerator is a backstop for the marketplace listing, not a substitute for picking the right commits to merge.
 
 ### Safe-publish practices
 
