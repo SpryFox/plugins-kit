@@ -122,9 +122,11 @@ claude --plugin-dir ~/Dev/plugins-kit/plugins/my-plugin
 
 **Definition.** "Publish" in this repo means **all three** of:
 
-1. Bump the plugin version in both manifest files (they must match):
-   - `plugins/<name>/.claude-plugin/plugin.json` (the plugin's own manifest)
-   - `.claude-plugin/marketplace.json` (the marketplace-level listing)
+1. Bump the plugin version in `plugins/<name>/.claude-plugin/plugin.json` (the plugin's own manifest is the source of truth). Then regenerate the marketplace listing:
+   ```bash
+   python scripts/regen_marketplace.py
+   ```
+   `.claude-plugin/marketplace.json` is **derived data** — its `plugins[]` array is rebuilt from each plugin's `plugin.json`, filtered by the `"published"` field (missing = `true`; `false` = excluded from the marketplace). Do not hand-edit marketplace.json plugin entries; the pre-commit hook will reject drift.
 2. Push the version-bumped commit to `origin/dev`.
 3. Merge `dev` to `master` (via PR or fast-forward) and push to `origin/master`.
 
@@ -137,7 +139,13 @@ After publish:
 - Users with `autoUpdate: true` receive the update on next session start.
 - Users without auto-update run `/plugin marketplace update` then `/plugin update`.
 
-**Why both files**: Claude Code uses the `marketplace.json` version to decide whether to fetch a new cache entry. If you only bump `plugin.json` but not `marketplace.json`, consumers won't see the update. A pre-commit hook (`scripts/pre-commit-version-check.sh`) blocks commits when these versions diverge.
+### Dev-only plugins — do not publish to master
+
+Some plugins live on `dev` for in-development work and must not reach consumers until they are ready. Each such plugin sets `"published": false` in its `plugins/<name>/.claude-plugin/plugin.json`. The marketplace regenerator (`scripts/regen_marketplace.py`) filters those plugins out of `marketplace.json`, so they are excluded structurally — not by memory — even if their files land on master via a cherry-pick.
+
+When you see commits for a dev-only plugin in `git log origin/master..origin/dev`, branch from master, cherry-pick only the publish-ready commits, and leave the dev-only commits on `dev`. The regenerator is a backstop for the marketplace listing, not a substitute for picking the right commits to merge.
+
+**Why both files**: Claude Code uses the `marketplace.json` version to decide whether to fetch a new cache entry. If you only bump `plugin.json` but not `marketplace.json`, consumers won't see the update. The regenerator + a pre-commit hook (`scripts/pre-commit-version-check.sh`) keep them in sync automatically.
 
 **The cache keys on version** — same version = same code. The cache will NOT refresh without a version bump, even if you push new commits. Fresh installs between releases copy HEAD code under the old version string, creating **silent divergence** — two users on the "same version" with different code. The dev-branch strategy above prevents this. Never copy files directly into the plugin cache — always use this publish flow.
 

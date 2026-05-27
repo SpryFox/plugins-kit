@@ -15,8 +15,7 @@
       },
       "source": "./plugins/unreal-kit",
       "category": "development"
-    }
-    ,
+    },
     {
       "name": "cache-kit",
       "description": "Cache usage reporting - per-request and session-level cache hit analysis from Claude Code transcripts",
@@ -99,7 +98,7 @@
     },
     {
       "name": "prototypes",
-      "description": "Experimental skills that may graduate into their own plugins. Currently hosts /claude-explorer (Omarchy-style HTML browser of ~/.claude/ + the current project). Depends on plugins-kit:skills-kit for the shared audit framework.",
+      "description": "Experimental skills that may graduate into their own plugins. Currently hosts /claude-explorer (Omarchy-style HTML browser of ~/.claude/ + the current project, Python crawl + local HTTP serve + embedded SPA). Depends on plugins-kit:skills-kit for the shared audit framework.",
       "version": "0.1.0",
       "author": {
         "name": "Christina"
