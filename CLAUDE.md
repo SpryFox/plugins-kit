@@ -186,6 +186,8 @@ Read every line. If anything is unrelated to the feature, `git restore --staged 
 
 **The cache keys on version** — same version = same code. The cache will NOT refresh without a version bump, even if you push new commits. Fresh installs between releases copy HEAD code under the old version string, creating **silent divergence** — two users on the "same version" with different code. The dev-branch strategy above prevents this. Never copy files directly into the plugin cache — always use this publish flow.
 
+**Manifest edits count as code edits.** Adding a tool to `bootstrap.json`, changing a `download:` recipe, bumping a `venv.check_imports` list — all need a version bump too. The engine reads each plugin's `bootstrap.json` from its cached `installPath`, so a manifest edit without a version bump is structurally invisible to consumers (see the `manifest_changes_need_version_bump` insight below).
+
 **Don't omit the version field** hoping for rolling updates. Claude Code substitutes a truncated git SHA, which becomes a static cache key at install time — identical behavior to a version string, with worse readability.
 
 **Downstream consumers with git dependencies** (e.g., update06): If another project depends on `bootstrap` as a Python git dependency (`bootstrap @ git+https://...`), also bump `bootstrap`'s Python package version in `plugins/bootstrap/pyproject.toml`. Without a package version bump, `uv sync` may consider the installed copy satisfied and skip reinstallation even after the lockfile changes.
@@ -381,6 +383,42 @@ claude_md:
         Use it directly in SKILL.md examples instead of `uv run python`.
       origin: "Surfaced 2026-05-05 in unreal-kit fix-up-redirectors -- broke Phase 2 with ModuleNotFoundError: yaml. Fixed in 0.9.4."
       added: "2026-05-05"
+    - id: manifest_changes_need_version_bump
+      keywords: [bootstrap.json, manifest change, version bump, cache key, silent divergence, download recipe, dead config, install path, installPath]
+      summary: Edits to bootstrap.json (or any per-plugin manifest) need a version bump to reach consumers, same rule as code changes -- the engine reads each plugin's bootstrap.json from its cached installPath.
+      detail: |
+        The bootstrap engine's per-plugin loop reads `bootstrap.json` from the plugin's
+        `installPath` recorded in `~/.claude/plugins/installed_plugins.json`. That installPath
+        is the cache directory (`~/.claude/plugins/cache/<mkt>/<plugin>/<version>/`), keyed on
+        version. Adding a new tool, a `download:` block, a new venv import, etc. to bootstrap.json
+        without bumping the plugin version means consumers still see the OLD bootstrap.json
+        from their cache. The new manifest content is structurally invisible until a version
+        bump triggers a cache refresh. Same "burned version" failure mode as code changes
+        (CLAUDE.md gotcha 3). Surfaced when the tool-resolution redesign added jq's download
+        recipe to bootstrap.json on dev without bumping bootstrap's version -- master and dev
+        both showed v0.10.14 with completely different bootstrap.json content. Recovery: bump
+        to a fresh version (e.g. 0.10.14 -> 0.11.0) and republish.
+      origin: Surfaced 2026-05-27 while smoke-testing the tool-resolution redesign via claudx (--plugin-dir all dev plugins). jq/gh never got download-recorded because the engine was reading the cached 0.10.14 bootstrap.json which had no download: block.
+      added: "2026-05-27"
+    - id: plugin_dir_doesnt_test_cross_plugin
+      keywords: [--plugin-dir, claudx, smoke test, cross-plugin, bootstrap testing, installPath, dev tree, cache, layered manifests]
+      summary: --plugin-dir overrides Claude Code's load of one plugin from disk, but the bootstrap engine's per-plugin iteration still reads OTHER plugins' bootstrap.json from their cached installPath.
+      detail: |
+        Loading a plugin via `--plugin-dir <dev tree>` only overrides Claude Code's loading of
+        THAT plugin's hooks/skills. The bootstrap engine's per-plugin loop iterates
+        `installed_plugins.json` and reads each plugin's bootstrap.json from its cached
+        installPath. So when claudx loads all 12 dev plugins via --plugin-dir, the engine
+        still sees each plugin's CACHED bootstrap.json -- not the dev-tree version.
+        Implication: --plugin-dir smoke tests can exercise the new engine code paths (the
+        engine binary is loaded from dev), but they cannot exercise new bootstrap.json content
+        for any plugin without first publishing that plugin. Workarounds: (a) bump versions
+        and publish to test for real; (b) use the `pk-dev` mode helper, which rewrites
+        installed_plugins.json to point installPaths at the dev tree -- that does exercise
+        new bootstrap.json content; (c) test new bootstrap.json content via layered manifests
+        in `~/.claude/bootstrap.json` or `<project>/.claude/bootstrap.json`, which DO go
+        through the engine without an installPath lookup.
+      origin: Surfaced 2026-05-27 -- the claudx smoke test couldn't validate jq's new download recipe because the engine kept reading the cached bootstrap.json.
+      added: "2026-05-27"
   conventions:
     - rule: When adding a new plugin Python dependency, update <plugin>/pyproject.toml AND <plugin>/bootstrap.json venv.check_imports together.
       keywords: [pyproject.toml, bootstrap.json, dependency, venv, check_imports]
