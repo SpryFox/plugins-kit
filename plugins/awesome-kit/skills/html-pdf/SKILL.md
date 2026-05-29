@@ -37,11 +37,12 @@ technique_skill:
     default_mode: single-page -- PDF page sized to the content's real height, so there are no A4 pagination blank-gaps
     a4_mode: --a4 paginates to A4 and honors the page's own @media print rules (white background, page breaks)
     default_output: "<input>.pdf next to the input file"
-    invocation: 'uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/skills/html-pdf/scripts/html_to_pdf.py" <input.html> [output.pdf]'
+    scaling: '--scale accepts a fraction (0.8) or a percent (80% / 80). Range 10%-200%, default 100%. When the user says "scale it to 80%" or "make it 80%", pass --scale 80%.'
+    invocation: 'uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/skills/html-pdf/scripts/html_to_pdf.py" <input.html> [output.pdf] [--scale 80%] [--a4]'
 
   technique:
     id: convert
-    keywords: [html to pdf, convert html, render pdf, html pdf, export pdf, print to pdf, open pdf]
+    keywords: [html to pdf, convert html, render pdf, html pdf, export pdf, print to pdf, open pdf, scale, scale to 80%, percent, shrink, zoom]
     steps:
       - n: 1
         action: Resolve the input HTML file
@@ -50,14 +51,17 @@ technique_skill:
           a local HTML file. For best results it should be self-contained -- a page that
           pulls in sibling files or local-disk asset paths will convert but render broken.
       - n: 2
-        action: Decide the output path and mode
+        action: Decide the output path, mode, and scale
         detail: >-
           Default output is <input>.pdf beside the input; pass an explicit second argument to
           override. Default rendering is single-page (no blank gaps), which suits posters and
           diagram pages. Use --a4 only when the user wants a paginated, print-style document.
+          If the user asks to scale ("scale it to 80%", "make it 80%", "0.8"), pass --scale 80%
+          -- it shrinks/grows the whole rendering; in single-page mode the page resizes with it
+          so there is no surrounding whitespace.
       - n: 3
         action: Run the converter
-        detail: 'uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/skills/html-pdf/scripts/html_to_pdf.py" "<input.html>" ["<output.pdf>"] [--a4]'
+        detail: 'uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/skills/html-pdf/scripts/html_to_pdf.py" "<input.html>" ["<output.pdf>"] [--scale 80%] [--a4]'
         tool: ${CLAUDE_PLUGIN_ROOT}/skills/html-pdf/scripts/html_to_pdf.py
       - n: 4
         action: Relay the result

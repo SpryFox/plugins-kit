@@ -34,6 +34,27 @@ def default_output_path(input_path) -> Path:
     return Path(input_path).with_suffix(".pdf")
 
 
+def parse_scale(value) -> float:
+    """Normalize a scale request to a 0.1-2.0 fraction.
+
+    Accepts a fraction ("0.8"), a percent string ("80%"), or a bare percent
+    number ("80" -> 0.8). A value with a '%' sign, or a bare number greater
+    than 2, is treated as a percentage; a bare number <= 2 is treated as a
+    fraction already. The result is clamped to Chromium's supported [0.1, 2.0].
+    """
+    s = str(value).strip()
+    is_percent = s.endswith("%")
+    if is_percent:
+        s = s[:-1].strip()
+    try:
+        n = float(s)
+    except ValueError:
+        raise SystemExit(f"ERROR invalid --scale value: {value!r} (try 0.8 or 80%)")
+    if is_percent or n > 2:
+        n = n / 100.0
+    return max(0.1, min(2.0, n))
+
+
 def exe_from_command(command: str):
     """Extract the executable path from a Windows shell 'open' command string.
 
@@ -111,7 +132,8 @@ def open_in_default_browser(pdf_path) -> bool:
 # --------------------------------------------------------------------------
 # Conversion (requires Playwright + a Chromium browser)
 # --------------------------------------------------------------------------
-def convert(input_path, output_path, *, a4: bool = False, width: int = 1280) -> Path:
+def convert(input_path, output_path, *, a4: bool = False, width: int = 1280,
+            scale: float = 1.0) -> Path:
     from playwright.sync_api import sync_playwright
 
     src = Path(input_path).expanduser().resolve()
@@ -130,6 +152,7 @@ def convert(input_path, output_path, *, a4: bool = False, width: int = 1280) -> 
                     print_background=True,
                     prefer_css_page_size=True,
                     format="A4",
+                    scale=scale,
                     margin={"top": "0.4in", "bottom": "0.4in",
                             "left": "0.4in", "right": "0.4in"},
                 )
@@ -144,11 +167,14 @@ def convert(input_path, output_path, *, a4: bool = False, width: int = 1280) -> 
                     "document.documentElement.scrollHeight,"
                     "document.body.scrollHeight))"
                 )
+                # Scale shrinks/grows the content; size the single page to the
+                # scaled content so it fits exactly with no surrounding whitespace.
                 page.pdf(
                     path=str(out),
                     print_background=True,
-                    width=f"{width}px",
-                    height=f"{height}px",
+                    width=f"{round(width * scale)}px",
+                    height=f"{round(height * scale)}px",
+                    scale=scale,
                     margin={"top": "0", "bottom": "0", "left": "0", "right": "0"},
                 )
         finally:
@@ -167,17 +193,20 @@ def main() -> None:
                     help="paginate to A4 using the page's @media print styles")
     ap.add_argument("--width", type=int, default=1280,
                     help="layout width in CSS px for single-page mode (default 1280)")
+    ap.add_argument("--scale", default="1.0",
+                    help="scale the rendering: fraction (0.8) or percent (80%%). Range 10%%-200%%.")
     ap.add_argument("--no-open", action="store_true",
                     help="write the PDF but do not open it in the browser")
     args = ap.parse_args()
+    scale = parse_scale(args.scale)
 
     src = Path(args.input).expanduser()
     if not src.is_file():
         raise SystemExit(f"ERROR input not found or not a file: {src}")
     out = Path(args.output).expanduser() if args.output else default_output_path(src)
 
-    out = convert(src, out, a4=args.a4, width=args.width)
-    print(f"PDF {out}")
+    out = convert(src, out, a4=args.a4, width=args.width, scale=scale)
+    print(f"PDF {out}  (scale {int(scale * 100)}%)")
 
     if not args.no_open:
         if open_in_default_browser(out):
