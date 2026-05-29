@@ -1,5 +1,5 @@
 {
-  "$comment": "awesome-kit's claude-explorer skill references the audit framework hosted in plugins-kit:skills-kit (skill-audit/references/audit-framework.{md,yaml}). Auto-install when missing.",
+  "$comment": "awesome-kit's claude-explorer skill references the audit framework hosted in plugins-kit:skills-kit (skill-audit/references/audit-framework.{md,yaml}). Auto-install when missing. The html-pdf skill needs Playwright (venv) + a Chromium browser, installed by custom_bootstrap.py.",
   "plugins": [
     {
       "ref": "plugins-kit:skills-kit",
@@ -8,5 +8,12 @@
       "min_version": "0.12.0",
       "install": "auto"
     }
-  ]
+  ],
+  "venv": {
+    "check_imports": ["playwright"]
+  },
+  "script": {
+    "path": "custom_bootstrap.py",
+    "entry_point": "bootstrap"
+  }
 }

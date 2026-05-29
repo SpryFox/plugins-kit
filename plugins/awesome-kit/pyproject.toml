@@ -1,0 +1,15 @@
+[project]
+name = "awesome-kit"
+version = "0.1.0"
+description = "Runtime dependencies for awesome-kit skills. html-pdf renders HTML to PDF via headless Chromium (Playwright)."
+requires-python = ">=3.10"
+dependencies = [
+    "playwright>=1.40",
+]
+
+# awesome-kit is not an importable package -- this pyproject exists only to
+# declare the runtime venv that `uv sync --project` provisions for the plugin's
+# skills. Marking it non-package stops uv from trying to build/install awesome-kit
+# itself (there is no package directory to build).
+[tool.uv]
+package = false
