@@ -38,6 +38,32 @@ class TestDefaultOutputPath:
         assert html_to_pdf.default_output_path("report") == Path("report.pdf")
 
 
+class TestParseScale:
+    @pytest.mark.parametrize("value,expected", [
+        ("0.8", 0.8),
+        ("80%", 0.8),
+        ("80", 0.8),
+        ("1.0", 1.0),
+        ("100%", 1.0),
+        ("100", 1.0),
+        ("150%", 1.5),
+        ("1.5", 1.5),
+        ("200%", 2.0),
+    ])
+    def test_accepts_fraction_and_percent(self, value, expected):
+        assert html_to_pdf.parse_scale(value) == pytest.approx(expected)
+
+    def test_clamps_below_minimum(self):
+        assert html_to_pdf.parse_scale("5%") == 0.1   # 0.05 -> clamped up
+
+    def test_clamps_above_maximum(self):
+        assert html_to_pdf.parse_scale("300%") == 2.0  # 3.0 -> clamped down
+
+    def test_invalid_raises(self):
+        with pytest.raises(SystemExit):
+            html_to_pdf.parse_scale("abc")
+
+
 class TestExeFromCommand:
     def test_quoted_path_with_args(self):
         cmd = r'"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --single-argument %1'
