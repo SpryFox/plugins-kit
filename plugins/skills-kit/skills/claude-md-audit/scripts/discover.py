@@ -6,9 +6,11 @@ Usage:
     python discover.py
     python discover.py --json
 
-Walks upward from cwd to the filesystem root collecting ancestor CLAUDE.md and
-CLAUDE.local.md files, then walks downward up to a depth limit collecting
-descendants. Outputs a numbered list (or JSON) with role classification:
+Walks upward from cwd to the project root (the nearest ancestor containing
+.git) collecting ancestor CLAUDE.md and CLAUDE.local.md files -- never looking
+outside the project boundary -- then walks downward up to a depth limit
+collecting descendants. Outputs a numbered list (or JSON) with role
+classification:
 
     role values:
       root       -- CLAUDE.md at cwd, when no CLAUDE.md exists above it (claude
@@ -43,17 +45,39 @@ def is_skipped(path: Path, cwd: Path) -> bool:
     return False
 
 
+def find_project_root(cwd: Path) -> Path | None:
+    """Return the project root: the nearest directory at or above cwd that holds
+    a .git entry (directory or file). None when cwd is not inside a git repo --
+    the audit then treats cwd as having no in-project ancestors.
+    """
+    current = cwd
+    while True:
+        if (current / ".git").exists():
+            return current
+        if current == current.parent:
+            return None
+        current = current.parent
+
+
 def collect_ancestors(cwd: Path) -> list[tuple[Path, str]]:
-    """Walk upward from cwd to root, collecting CLAUDE.md and CLAUDE.local.md.
-    Returns list of (path, role) tuples ordered root-most-first.
+    """Walk upward from cwd to the project root, collecting CLAUDE.md and
+    CLAUDE.local.md. The walk stops at the project root (the .git boundary) and
+    never scans directories outside the project. Returns (path, role) tuples
+    ordered root-most-first. Empty when cwd is not in a git repo, or when cwd is
+    itself the project root (nothing above it counts).
     """
     out: list[tuple[Path, str]] = []
+    project_root = find_project_root(cwd)
+    if project_root is None or cwd == project_root:
+        return out
     current = cwd.parent
-    while current != current.parent:
+    while True:
         for name, role in (("CLAUDE.md", "ancestor"), ("CLAUDE.local.md", "local")):
             candidate = current / name
             if candidate.exists():
                 out.append((candidate, role))
+        if current == project_root:
+            break
         current = current.parent
     out.reverse()
     return out

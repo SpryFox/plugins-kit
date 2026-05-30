@@ -138,7 +138,7 @@ audit_skill:
       goal: "For each target CLAUDE.md, run mechanical and judgment-based checks against the framework's contract, classify findings into the taxonomy, dispatch remediations to AUTO/DISCUSS/SPECIAL buckets, and emit a per-file compliance verdict."
       preconditions:
         - "audit.py is reachable (mechanical schema validator -- only needed if a claude_md: YAML block is present)."
-        - "references/audit-criteria.md is loadable (the single self-contained criteria doc; the upstream content-allocation.md is its derivation and is NOT loaded by the audit path)."
+        - "The shared criteria doc at ${CLAUDE_PLUGIN_ROOT}/skills/claude-md-audit/references/audit-criteria.md is loadable -- the single self-contained criteria doc, reused from /claude-md-audit rather than duplicated here; the upstream content-allocation.md is its derivation and is NOT loaded by the audit path."
         - "The user is in a project directory so role classification works."
       steps:
         - n: 1
@@ -148,7 +148,7 @@ audit_skill:
           expected: "Resolved list of (path, role) tuples."
           on_failure: "If no CLAUDE.md resolves, surface cwd and stop."
         - n: 2
-          action: "Load references/audit-criteria.md into context -- the single self-contained criteria doc, which states each testable rule with its CCP/CRP/ADP derivation inline. Do NOT also load content-allocation.md (it is the upstream derivation, redundant for applying criteria). Principle recap so you can apply them without re-derivation: CCP = content that changes for the same reason belongs together (a rule duplicated across scopes is a FAIL); CRP = a fact lives in the smallest scope whose readers all need it; ADP = cross-file references must resolve and run downward in load order (a broken or stale reference is a FAIL)."
+          action: "Load the shared criteria doc at ${CLAUDE_PLUGIN_ROOT}/skills/claude-md-audit/references/audit-criteria.md into context -- the single self-contained criteria doc (reused from /claude-md-audit), which states each testable rule with its CCP/CRP/ADP derivation inline. Do NOT also load content-allocation.md (it is the upstream derivation, redundant for applying criteria). Principle recap so you can apply them without re-derivation: CCP = content that changes for the same reason belongs together (a rule duplicated across scopes is a FAIL); CRP = a fact lives in the smallest scope whose readers all need it; ADP = cross-file references must resolve and run downward in load order (a broken or stale reference is a FAIL)."
           tool: "Read"
           expected: "The role-to-criteria map and all testable CCP / CRP / ADP / Hygiene rules are now loaded from the single criteria doc."
         - n: 3
@@ -156,7 +156,7 @@ audit_skill:
           tool: "Read"
           expected: "File content (plus any required parent) is in context."
         - n: 4
-          action: "Apply the criteria from references/audit-criteria.md according to the role-to-criteria map. Produce findings tagged with their group (CCP / CRP / ADP / Hygiene) and severity."
+          action: "Apply the criteria from the shared ${CLAUDE_PLUGIN_ROOT}/skills/claude-md-audit/references/audit-criteria.md according to the role-to-criteria map. Produce findings tagged with their group (CCP / CRP / ADP / Hygiene) and severity."
           expected: "Per-file finding list."
         - n: 5
           action: "If the file carries a `claude_md:` YAML contract block, invoke skill-authoring's audit.py for schema validation. Merge findings into the per-file list under Schema."
@@ -201,7 +201,7 @@ audit_skill:
         Verdict: COMPLIANT | NON-COMPLIANT
         Remediation routed: AUTO=<N>, DISCUSS=<N>, SPECIAL=<N>
       gotchas:
-        - "Role classification depends on cwd. A CLAUDE.md at cwd is `root` from the audit's perspective even if the broader project has a CLAUDE.md higher up. The audit reports the cwd-relative role and notes any ancestor walked."
+        - "Role classification is anchored on cwd (the directory claude was launched in). The cwd CLAUDE.md is `root` only when no CLAUDE.md exists above it; if an ancestor CLAUDE.md is found, the cwd file is classified `child` so the project-root-only hygiene checks (H1/H2/H3) do not fire on a subordinate file and the parent-child duplication check runs against the ancestor."
         - "INFO findings are advisory (size signals, migration opportunities). They do NOT escalate to FAIL on subsequent runs even if unaddressed."
         - "When auditing a child CLAUDE.md, the parent must be read for CCP duplication checks. If the parent cannot be located (e.g. standalone file with no project context), report 'parent unavailable' for parent-relative criteria rather than failing them silently."
         - "For role=local (CLAUDE.local.md), only D-group criteria apply (see role-to-criteria map). Hygiene and ADP rules are skipped because the file is by design personal-scoped."
@@ -224,7 +224,7 @@ audit_skill:
       - category: "G_descendant_role_mismatch"
         procedure: "Propose moving project-conventional content from .local file into the checked-in CLAUDE.md (so all collaborators see it). User confirms before applying."
     special:
-      procedure: "Surface the finding with the audit row that fired, attempted categories, and reasons none fit. User proposes strategy. Generalizable strategies become new taxonomy categories in references/audit-criteria.md."
+      procedure: "Surface the finding with the audit row that fired, attempted categories, and reasons none fit. User proposes strategy. Generalizable strategies become new taxonomy categories in the shared ${CLAUDE_PLUGIN_ROOT}/skills/claude-md-audit/references/audit-criteria.md."
   enforcement:
     gate_kind: "audit-finding"
     gating_rule: "FAIL findings (CCP cross-file duplication, ADP forward dependency, schema validation failures with non-optional missing fields) gate compliance. JUDGMENT findings surface for review without gating; INFO findings are advisory only."
@@ -266,6 +266,6 @@ Typical workflow: `/claude-md-audit list` to see what's available, then `/claude
 
 ## Cross-references
 
-- Canonical placement framework: `content-allocation.md (in skills-kit:skill-authoring)`. The criteria in this skill's `references/audit-criteria.md` derive directly from that doc; when the two diverge, the canonical doc wins.
+- Canonical placement framework: `content-allocation.md (in skills-kit:skill-authoring)`. The criteria live in the shared `claude-md-audit/references/audit-criteria.md` (this skill reuses /claude-md-audit's criteria doc and discover.py rather than keeping its own copies) and derive directly from that framework; when the two diverge, the canonical doc wins.
 - Schema validation tooling: `plugins/skills-kit/skills/skill-authoring/scripts/audit.py` (validates `claude_md:` YAML blocks against `CLAUDE_MD_SCHEMA` in schemas.py).
 - Sibling audit skills: `/skill-audit` for SKILL.md files; `/references-audit` for broken cross-references across markdown.
