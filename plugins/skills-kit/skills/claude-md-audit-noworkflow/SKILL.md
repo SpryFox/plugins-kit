@@ -1,12 +1,12 @@
 ---
 _schema_version: 1
-name: claude-md-audit
+name: claude-md-audit-noworkflow
 author: christina
 skill-type: audit-skill
-description: Use when invoking /claude-md-audit to audit a CLAUDE.md against the cohesion framework; fans multi-file runs via the Workflow tool. Do NOT use for SKILL.md.
+description: Use when invoking /claude-md-audit-noworkflow -- the preserved single-loop CLAUDE.md audit (no Workflow fan-out). Do NOT use for SKILL.md (use /skill-audit).
 disable-model-invocation: true
 user-invocable: true
-argument-hint: "[file path, number(s) from list, or 'list'; add 'fast' for non-interactive]"
+argument-hint: "[file path, number(s) from list, or 'list']"
 ---
 
 # CLAUDE.md Audit
@@ -142,30 +142,39 @@ audit_skill:
         - "The user is in a project directory so role classification works."
       steps:
         - n: 1
-          action: "Resolve the audit target set from $ARGUMENTS. Empty -> cwd/CLAUDE.md. 'list' -> emit numbered list via discover.py and stop. Integers -> map to paths from last list. Path -> use directly. Strip any non-interactive token ('fast', '--fast', '--yes', '-y') from the args first and set non_interactive accordingly (also set it if the user's prose expresses non-interactive intent, e.g. 'just apply everything, don't ask'). For each target capture (path, role, parentPath) where role is root / ancestor / child / local and parentPath is the nearest ancestor CLAUDE.md for a child (else null)."
+          action: "Resolve the audit target set from $ARGUMENTS. Empty -> cwd/CLAUDE.md. 'list' -> emit numbered list via discover.py and stop. Integers -> map to paths from last list. Path -> use directly. Capture (path, role) tuples where role is root / ancestor / child / local."
           tool: "discover.py"
           input: "uv run python ${CLAUDE_PLUGIN_ROOT}/skills/claude-md-audit/scripts/discover.py [--json]"
-          expected: "Resolved (path, role, parentPath) tuples + non_interactive flag."
+          expected: "Resolved list of (path, role) tuples."
           on_failure: "If no CLAUDE.md resolves, surface cwd and stop."
         - n: 2
-          action: "DETECT phase (before-Q&A). Choose execution mode by file count -- this threshold equalizes the Workflow tool's per-run overhead. ONE file: audit inline in the main loop (read the file + its parent if child; Read references/audit-criteria.md and skill-authoring/references/content-allocation.md; apply the role-to-criteria map; if a `claude_md:` block is present run the schema validator; classify each finding into taxonomy + bucket). TWO OR MORE files: call the Workflow tool with scriptPath ${CLAUDE_PLUGIN_ROOT}/skills/claude-md-audit/workflow/detect.js and args = { files:[{path,role,parentPath}], refs:{criteria, contentAllocation, pluginRoot, venvPython} }. The workflow fans one lane out per file and returns { perFile:[...], totals }. Detection only -- no file is edited in this phase."
-          tool: "Workflow | inline"
-          input: "detect.js args.refs: criteria=${CLAUDE_PLUGIN_ROOT}/skills/claude-md-audit/references/audit-criteria.md; contentAllocation=${CLAUDE_PLUGIN_ROOT}/skills/skill-authoring/references/content-allocation.md; pluginRoot=${CLAUDE_PLUGIN_ROOT}; venvPython=<plugin venv python>. Schema validator is run as: (cd ${CLAUDE_PLUGIN_ROOT} && <venvPython> -m skills_kit_lib.audit <path> --json)."
-          expected: "Structured per-file findings (group, severity, criterion, message, line, taxonomy, bucket, remediation) + per-file verdict."
-          on_failure: "If the schema validator is unavailable, the lane marks the Schema group JUDGMENT ('validator unavailable') and continues -- never fail a file for that."
+          action: "Load content-allocation.md and references/audit-criteria.md into context."
+          tool: "Read"
+          expected: "CCP / CRP / ADP rules and role-to-criteria map are now loaded."
         - n: 3
-          action: "Render the per-file report (output_template) from the collected findings: per-file verdict blocks followed by an overall summary with bucket counts. This is the before-Q&A surface the user reads."
-          expected: "Markdown report in the user's chat with compliance verdicts and AUTO/DISCUSS/SPECIAL counts."
+          action: "For each target file, read it. If role is child, also read the parent CLAUDE.md (for CCP cross-file duplication checks)."
+          tool: "Read"
+          expected: "File content (plus any required parent) is in context."
         - n: 4
-          action: "Q&A GATE. If non_interactive is FALSE (default): for each DISCUSS and SPECIAL finding, ask the user for a decision (apply as-proposed / skip / a refined instruction). Surface one decision at a time or a tight grouped set; do not dump a giant list. If non_interactive is TRUE: infer each decision from the taxonomy's default_remediation plus the file content and proceed WITHOUT prompting -- record each inferred decision in the final summary so the user can see and reverse them. AUTO findings need no decision (they apply by definition)."
-          expected: "A decision (explicit or inferred) attached to every AUTO/DISCUSS/SPECIAL finding."
+          action: "Apply the criteria from references/audit-criteria.md according to the role-to-criteria map. Produce findings tagged with their group (CCP / CRP / ADP / Hygiene) and severity."
+          expected: "Per-file finding list."
         - n: 5
-          action: "REMEDIATE phase (after-Q&A). Assemble per-file remediation lists from the decided findings (AUTO=apply; DISCUSS/SPECIAL=per decision; drop skips). Choose mode by how many FILES carry remediation work. ONE file: apply inline with Edit. TWO OR MORE files: call the Workflow tool with scriptPath ${CLAUDE_PLUGIN_ROOT}/skills/claude-md-audit/workflow/remediate.js and args = { perFile:[{path,role,remediations:[{criterion,taxonomy,bucket,line,instruction,decision}]}] }. One lane per file (disjoint files never conflict)."
-          tool: "Workflow | inline"
-          expected: "Edits applied to the target files; per-file applied/skipped/failed summary."
+          action: "If the file carries a `claude_md:` YAML contract block, invoke skill-authoring's audit.py for schema validation. Merge findings into the per-file list under Schema."
+          tool: "audit.py"
+          input: "uv run python ${CLAUDE_PLUGIN_ROOT}/../skill-authoring/scripts/audit.py <path> --json"
+          expected: "Schema validation findings appended (if applicable)."
+          on_failure: "If audit.py is unavailable, mark Schema group as 'unavailable' and continue."
         - n: 6
-          action: "Render the final summary: what was applied per file, what was skipped, any failures, and the bucket totals. Remind the user that re-running the audit should now reproduce a clean (or reduced-FAIL) verdict -- detection and remediation are separate passes, so the re-run is the verification step."
-          expected: "Closing summary; user can re-run /claude-md-audit to verify FAILs cleared."
+          action: "Classify every finding into a taxonomy category (A-G, or K for SPECIAL). Assign bucket per category."
+          expected: "Findings sorted into AUTO / DISCUSS / SPECIAL buckets."
+        - n: 7
+          action: "Dispatch in parallel: AUTO findings to a background agent; DISCUSS + SPECIAL to a foreground Q&A round. Do not block one on the other."
+          tool: "Agent"
+          input: "Per-finding payloads with file:line, category, default_remediation, agent's recommendation for DISCUSS."
+          expected: "Background agent applies AUTO edits; foreground Q&A collects user decisions."
+        - n: 8
+          action: "Render the per-file report (output_template). When auditing multiple files, render per-file blocks followed by an overall summary."
+          expected: "Markdown report in the user's chat with compliance verdicts and finding-bucket summaries."
       output_template: |
         ## <file path> (<role>)
 
@@ -246,35 +255,8 @@ audit_skill:
 - `list` -- show numbered list of CLAUDE.md files visible from cwd; do not audit.
 - `<path>` -- audit a specific CLAUDE.md or CLAUDE.local.md.
 - `<numbers>` -- audit files by index from the most recent `list` output (e.g. `3 7 9`).
-- `fast` / `--fast` / `--yes` / `-y` -- non-interactive: skip the Q&A round and infer every DISCUSS/SPECIAL decision (see Non-interactive mode). Combine with any selector, e.g. `/claude-md-audit 3 7 fast`. Prose intent ("audit these and just apply everything, don't ask me") sets the same flag.
 
 Typical workflow: `/claude-md-audit list` to see what's available, then `/claude-md-audit 3 7` to audit specific files.
-
-## Workflow orchestration
-
-This skill runs in two phases split by an interactive Q&A gate, and uses the Workflow tool to fan the work out across files. **Invoking this skill authorizes the Workflow-tool calls described below** (the skill's instructions are the opt-in; do not re-prompt the user for permission to orchestrate).
-
-```
-resolve (main loop)
-  -> DETECT  (before-Q&A)  : 1 file inline | 2+ files via workflow/detect.js   -> structured findings
-  -> render report (main loop)
-  -> Q&A GATE (main loop)  : interactive decisions | inferred when non-interactive
-  -> REMEDIATE (after-Q&A) : 1 file inline | 2+ files via workflow/remediate.js -> edits applied
-  -> final summary + "re-run to verify"
-```
-
-**Multi-file threshold (the overhead equalizer).** The Workflow tool has real per-run overhead (background orchestration, agent spin-up). For a single file that overhead is not worth it, so a 1-file audit runs inline in the main loop. At 2+ files the parallel fan-out pays for itself, so detection (and, separately, remediation) go through the workflow scripts. Detection and remediation are **always separate passes** even in workflow mode -- the interactive Q&A sits between them, and a background workflow cannot ask the user anything. This split is also what preserves the `audit_then_self_remediate` anti-pattern: re-running the audit reproduces the same findings because nothing was remediated during detection.
-
-**The two workflow scripts** (hand-authored, shipped as skill assets):
-
-- `workflow/detect.js` -- before-Q&A. One lane per file: read (+parent if child) -> apply criteria -> schema-validate -> classify. Returns `{ perFile, totals }`. No edits.
-- `workflow/remediate.js` -- after-Q&A. One lane per file (disjoint files, no conflicts): apply the decided edits. Returns `{ perFile, summary }`.
-
-Both accept `args` as an object or JSON string. Pass absolute `refs` paths (they run from the session cwd, not the skill dir).
-
-## Non-interactive mode
-
-When the non-interactive flag is set (argument token or expressed intent), the Q&A gate does not prompt. Instead, infer each DISCUSS/SPECIAL decision from the taxonomy's `default_remediation` plus the file content, apply them, and **list every inferred decision in the final summary** so the user can see and reverse them. AUTO findings apply regardless. FAIL findings are still gated by the verdict; non-interactive only changes how the *decisions* are obtained, not the audit contract. Interactive mode is the default; non-interactive is opt-in per the rule above.
 
 ## Decision rules
 
