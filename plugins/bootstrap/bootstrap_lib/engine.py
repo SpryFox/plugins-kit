@@ -1871,11 +1871,14 @@ def _load_plugin_config(data_dir):
 def _find_plugins_dir(plugin_root):
     """Find the directory containing installed_plugins.json by walking up from plugin_root.
 
-    Works for both layouts:
+    Works for all layouts:
     - Dev: ~/Dev/<marketplace>/plugins/bootstrap → finds at ../installed_plugins.json
     - Cache: ~/.claude/plugins/cache/<mkt>/bootstrap/<ver> → finds at ~/.claude/plugins/installed_plugins.json
+    - Plugin-dir override: plugin_root is the dev tree but the registry lives at
+      ~/.claude/plugins/ (potentially on a different drive). The walk-up can't
+      reach it, so we fall back to the canonical prod location.
 
-    Falls back to os.path.dirname(plugin_root) if not found (original behavior).
+    Falls back to os.path.dirname(plugin_root) only as a last resort.
     """
     d = os.path.dirname(plugin_root)
     for _ in range(10):  # safety limit
@@ -1886,7 +1889,14 @@ def _find_plugins_dir(plugin_root):
         if parent == d:
             break
         d = parent
-    # Fallback: immediate parent (original behavior)
+    # Walk-up didn't find it. Try the canonical prod location -- handles the
+    # plugin-dir-override case where plugin_root is the dev tree on a different
+    # drive than ~/.claude/plugins/.
+    home = os.environ.get("HOME") or os.path.expanduser("~")
+    prod_dir = os.path.join(home, ".claude", "plugins")
+    if os.path.isfile(os.path.join(prod_dir, "installed_plugins.json")):
+        return prod_dir
+    # Final fallback: immediate parent (original behavior)
     return os.path.dirname(plugin_root)
 
 
