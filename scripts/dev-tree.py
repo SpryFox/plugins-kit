@@ -69,8 +69,25 @@ def _clear_cooldowns() -> int:
     return n
 
 
+def _dev_plugin_version(plugin_name: str) -> str:
+    """Read the version from a plugin's dev-tree plugin.json. Empty string on miss."""
+    pj = PLUGINS_DIR / plugin_name / ".claude-plugin" / "plugin.json"
+    if not pj.is_file():
+        return ""
+    try:
+        return json.loads(pj.read_text(encoding="utf-8")).get("version", "")
+    except (json.JSONDecodeError, OSError):
+        return ""
+
+
 def cmd_dev() -> int:
-    """Rewrite plugins-kit plugin installPaths to point at the dev tree."""
+    """Rewrite plugins-kit plugin installPaths to point at the dev tree.
+
+    Collapses each plugins-kit plugin's entries down to a single canonical entry
+    pointing at the dev tree, with the version taken from the dev plugin.json.
+    Multi-entry registry state (e.g. residual historical cache versions) would
+    otherwise make the engine process the same plugin twice.
+    """
     print(f"switching to dev-tree mode (repo: {REPO_ROOT})")
 
     if not BACKUP_PATH.exists():
@@ -82,6 +99,7 @@ def cmd_dev() -> int:
     data = _load_installed()
     plugins = data.get("plugins", {})
     rewritten = 0
+    collapsed = 0
     skipped: list[str] = []
 
     for ref, entries in plugins.items():
@@ -95,17 +113,25 @@ def cmd_dev() -> int:
         if dev_path is None:
             skipped.append(f"{plugin_name} (no dev tree at {PLUGINS_DIR / plugin_name})")
             continue
-        for entry in entries:
-            current = entry.get("installPath", "")
-            target = str(dev_path).replace("/", os.sep)
-            if current != target:
-                entry["installPath"] = target
-                rewritten += 1
+        dev_version = _dev_plugin_version(plugin_name)
+        target = str(dev_path).replace("/", os.sep)
+        # Use the first entry as the template (preserves scope/installedAt etc.)
+        # then overwrite the version + installPath. Drop any additional entries.
+        if not entries:
+            continue
+        template = dict(entries[0])
+        template["installPath"] = target
+        if dev_version:
+            template["version"] = dev_version
+        if len(entries) > 1:
+            collapsed += len(entries) - 1
+        plugins[ref] = [template]
+        rewritten += 1
 
     _save_installed(data)
     cleared = _clear_cooldowns()
 
-    print(f"  rewrote {rewritten} installPath entries")
+    print(f"  rewrote {rewritten} plugin entries (collapsed {collapsed} duplicate version entries)")
     if skipped:
         print(f"  skipped: {', '.join(skipped)}")
     print(f"  cleared {cleared} cooldown stamps")

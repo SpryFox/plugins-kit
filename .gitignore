@@ -13,3 +13,4 @@ tmp/
 .claude/p4-kit.yaml
 .local-data/
 CLAUDE.local.md
+.claude/workflows/
