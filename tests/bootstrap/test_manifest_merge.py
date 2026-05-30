@@ -333,3 +333,31 @@ class TestNestedToolOverride:
         merged = merge_manifests(base, override)
         git = next(t for t in merged["tools"] if t["name"] == "git")
         assert git["install"] == {"windows": "winget git", "ubuntu": "snap install git"}
+
+
+class TestSharedLibsUnion:
+    def test_shared_libs_merge_by_name(self):
+        base = {"shared_libs": [{"name": "openrouter_kit", "src": "lib"}]}
+        override = {"shared_libs": [{"name": "bootstrap_lib", "src": "."}]}
+        merged = merge_manifests(base, override)
+        names = {e["name"] for e in merged["shared_libs"]}
+        assert names == {"openrouter_kit", "bootstrap_lib"}
+
+    def test_shared_libs_same_name_deep_merged(self):
+        base = {"shared_libs": [{"name": "lib", "src": "lib", "keep": 1}]}
+        override = {"shared_libs": [{"name": "lib", "src": "lib2"}]}
+        merged = merge_manifests(base, override)
+        assert len(merged["shared_libs"]) == 1
+        assert merged["shared_libs"][0]["src"] == "lib2"   # override wins
+        assert merged["shared_libs"][0]["keep"] == 1        # sibling preserved
+
+
+class TestSharedLibImportsUnion:
+    def test_string_list_dedup_union(self):
+        base = {"shared_lib_imports": ["bootstrap_lib", "openrouter_kit"]}
+        override = {"shared_lib_imports": ["bootstrap_lib", "skills_kit_lib"]}
+        merged = merge_manifests(base, override)
+        # dedup-union, order preserved (not a concat with duplicates)
+        assert merged["shared_lib_imports"] == [
+            "bootstrap_lib", "openrouter_kit", "skills_kit_lib",
+        ]

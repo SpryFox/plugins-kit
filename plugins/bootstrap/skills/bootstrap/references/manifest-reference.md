@@ -42,6 +42,10 @@ A declarative configuration file covering automatable operations. The engine rea
   "sync_to_data": [
     {"src": "lib", "dst": "lib"}
   ],
+  "shared_libs": [
+    {"name": "openrouter_kit", "src": "lib"}
+  ],
+  "shared_lib_imports": ["openrouter_kit"],
   "json_entries": [
     {
       "reference": "known_marketplaces.json",
@@ -146,6 +150,41 @@ if Path(sys.executable).resolve() != Path(_venv).resolve():
 **Reach**: Exports in `CLAUDE_ENV_FILE` are sourced by Claude Code before every subsequent Bash tool invocation. They do NOT automatically propagate to hook script invocations — hook scripts that need the venv must either re-derive the path or source `$CLAUDE_ENV_FILE` themselves. For the common case (scripts called via Bash or re-exec'd via `os.execv`), the variable is always set.
 
 **Fail-fast semantics**: if bootstrap cannot create the venv, no export line is written. Consumer scripts then error out on the unset var rather than re-exec'ing an invalid interpreter path.
+
+## `shared_libs` / `shared_lib_imports` — Cross-Plugin First-Party Libraries
+
+These two keys let one plugin reuse another plugin's first-party Python library **without declaring a dependency on the owning plugin** (reuse-by-availability). The engine shares the library SOURCE via a `.pth` file; it does NOT install third-party dependencies — each importing plugin declares those itself in its own `pyproject.toml` (a static test, `tests/bootstrap/test_dependency_completeness.py`, catches omissions).
+
+**Owner side — `shared_libs`** (the plugin that owns the library):
+
+```json
+{
+  "shared_libs": [
+    {"name": "openrouter_kit", "src": "lib"}
+  ]
+}
+```
+
+- `name` — the importable top-level package name. Identity key for layered merge.
+- `src` — directory (relative to the plugin root) that contains the package; the package itself lives at `<plugin_root>/<src>/<name>/`. Use `"."` when the package sits directly under the plugin root (e.g. `bootstrap_lib`).
+
+For each entry the engine: syncs the package source to a **stable, version-independent** location, `~/.claude/plugins/data/plugins-kit/_shared_libs/<name>/<name>/` (a clean re-sync that prunes deleted/renamed modules, content-hash cached); then writes a `<name>.pth` (pointing at `_shared_libs/<name>/`) into the **standalone Python's** site-packages and verifies `import <name>`.
+
+**Consumer side — `shared_lib_imports`** (a plugin that wants the library on its own venv):
+
+```json
+{
+  "shared_lib_imports": ["openrouter_kit"]
+}
+```
+
+A plain string list of library names (deduplicated-unioned across config layers). For each name the engine writes a `<name>.pth` into THIS plugin's own venv (`<plugin_data_dir>/.venv`) pointing at the shared location, then verifies the import. The consumer names only the LIBRARY, never the owning plugin — the location is derived from the name, so reuse stays decoupled from the owner.
+
+**Stable location, not versioned**: the `.pth` points at the version-independent `_shared_libs/<name>/`, so an owner version bump re-syncs one directory and every `.pth` (standalone + all consumer venvs) keeps resolving without a rewrite.
+
+**Ordering / eventual consistency**: the consumer link runs AFTER the `venv` handler (so the venv exists as the `.pth` target) but a consumer may be processed before its owner in a given session. A not-yet-published library is a soft skip (logged, not a failure) that self-heals on the next session; the runtime `bootstrap_guard` covers the installed-but-not-yet-provisioned window.
+
+**Source only**: a `.pth` shares first-party SOURCE, not third-party deps. If `openrouter_kit` needs `openai`, the plugin that imports it (under the interpreter that runs the importing script) must declare `openai` in its own `pyproject.toml` + `venv.check_imports`.
 
 ## `fonts` — Per-User Font Installation
 
@@ -396,6 +435,9 @@ Each array type has an identity key used for deduplication during merge:
 | `ini_settings` | `file` + `section` |
 | `sync_to_data` | `src` + `dst` |
 | `pypi_packages` | `package` |
+| `shared_libs` | `name` |
+
+`path_entries` and `shared_lib_imports` are plain string lists — unioned and deduplicated (order preserved), not identity-keyed.
 
 ### Example
 

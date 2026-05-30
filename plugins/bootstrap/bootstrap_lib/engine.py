@@ -1885,6 +1885,49 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
     if pypi_installed:
         action_entries.append(f"{prefix}pypi: {_join_items(pypi_installed)}")
 
+    # Shared libraries: owner publish (shared_libs) + consumer link (shared_lib_imports).
+    # Rule: cached/skipped -> ok_entries (verbose-only); published/linked -> action_entries;
+    # failed -> action_entries + failures. Runs after the venv handler so a consumer's
+    # own .venv already exists as the .pth target.
+    shared_root = os.path.join(os.path.dirname(data_dir), "_shared_libs")
+
+    def _log_shared(result):
+        if result.status in ("cached", "skipped"):
+            ok_entries.append(f"{prefix}shared-lib {result.name}: {result.message}")
+        elif result.status in ("published", "linked"):
+            action_entries.append(f"{prefix}shared-lib {result.name}: {result.message}")
+        else:  # failed
+            action_entries.append(f"{prefix}shared-lib {result.name}: FAILED - {result.message}")
+            failures.append({
+                "type": "shared_lib",
+                "name": result.name,
+                "message": result.message,
+                "plugin": plugin_name,
+            })
+
+    shared_libs = manifest.get("shared_libs", [])
+    shared_lib_imports = manifest.get("shared_lib_imports", [])
+    if shared_libs or shared_lib_imports:
+        from .shared_lib import sync_shared_lib, link_shared_lib, find_standalone_python
+        from .venv_check import _find_python
+
+        # Owner phase: publish source, then broadcast to the standalone Python.
+        for lib_def in shared_libs:
+            lib_name = lib_def.get("name", "")
+            lib_src = lib_def.get("src", ".")
+            if not lib_name:
+                continue
+            sync_result = sync_shared_lib(lib_name, lib_src, plugin_root, shared_root)
+            _log_shared(sync_result)
+            if sync_result.status != "failed":
+                _log_shared(link_shared_lib(lib_name, find_standalone_python(), shared_root))
+
+        # Consumer phase: link into this plugin's own venv.
+        if shared_lib_imports:
+            venv_python = _find_python(os.path.join(data_dir, ".venv"))
+            for lib_name in shared_lib_imports:
+                _log_shared(link_shared_lib(lib_name, venv_python, shared_root))
+
     # Script phase
     script_def = manifest.get("script")
     if script_def:

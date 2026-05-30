@@ -11,7 +11,11 @@ _IDENTITY_KEYS = {
     "json_entries": "file",
     "ini_settings": None,  # composite key: file + section
     "pypi_packages": "package",
+    "shared_libs": "name",
 }
+
+# Sections that are plain string lists (unioned, deduplicated, order preserved).
+_STRING_LIST_KEYS = {"path_entries", "shared_lib_imports"}
 
 
 def _ini_key(entry):
@@ -111,8 +115,8 @@ def merge_manifests(base, override):
             result[key] = base_val
             continue
 
-        # path_entries: simple string list union (deduplicated, order preserved)
-        if key == "path_entries":
+        # Plain string-list sections: union (deduplicated, order preserved)
+        if key in _STRING_LIST_KEYS:
             seen = set()
             merged = []
             for item in (base_val or []) + (over_val or []):
