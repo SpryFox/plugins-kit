@@ -1,0 +1,7 @@
+name: bad-model
+description: Uses an invalid model name.
+steps:
+  - id: x
+    agent:
+      prompt: "hello"
+      model: gpt-4

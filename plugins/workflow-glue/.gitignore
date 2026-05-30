@@ -1,0 +1,3 @@
+# Compiled Workflow scripts are derived artifacts -- regenerate from the .workflow.yaml.
+.compiled/
+*.workflow.js
