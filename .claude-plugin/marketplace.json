@@ -69,7 +69,7 @@
     {
       "name": "skills-kit",
       "description": "Skill authoring + shared audit framework. Vocabulary, type contracts, single-skill audit (/skill-audit), cross-reference audit/remediation (/references-audit), and the canonical audit-framework (primitives, compositions, audit-kinds, viewer-kinds) that other plugins' audits and viewers ride on.",
-      "version": "0.14.0",
+      "version": "0.14.1",
       "author": {
         "name": "Christina"
       },

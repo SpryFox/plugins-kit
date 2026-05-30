@@ -10,9 +10,8 @@ The role of a CLAUDE.md determines which subset of criteria applies. Roles are c
 
 | Role | Definition | Criteria applied |
 |---|---|---|
-| `root` | CLAUDE.md at the user's cwd (the project root from the audit's perspective) | CCP (all), CRP (all), ADP (all), Hygiene (all incl. H1/H2/H3) |
-| `subsystem` | CLAUDE.md in a directory between cwd and the deepest target file (intermediate scope) | CCP (all), CRP (all), ADP (all), Hygiene (skip H1/H2/H3 -- those belong to root only) |
-| `child` | CLAUDE.md in a directory below cwd (directory-local scope) | CCP (incl. parent-child), CRP, ADP, Hygiene (skip H1/H2/H3) |
+| `root` | CLAUDE.md at cwd when no CLAUDE.md exists above it -- claude was launched at the project top | CCP (all), CRP (all), ADP (all), Hygiene (all incl. H1/H2/H3) |
+| `child` | CLAUDE.md below cwd, OR at cwd when an ancestor CLAUDE.md exists above it (directory-local / subordinate scope) | CCP (incl. parent-child), CRP, ADP, Hygiene (skip H1/H2/H3 -- those belong to root only) |
 | `ancestor` | CLAUDE.md above cwd (loaded ambient from the user's session) | CCP (all), CRP (all), ADP (all), Hygiene (all) |
 | `local` | CLAUDE.local.md at any directory | CCP only (C-3, C-4); ADP and Hygiene skipped because the file is personal-scoped by design |
 
