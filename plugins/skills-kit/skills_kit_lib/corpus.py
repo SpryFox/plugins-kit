@@ -17,7 +17,12 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import yaml
+try:
+    import yaml as _pyyaml
+    HAVE_YAML = True
+except ImportError:
+    _pyyaml = None
+    HAVE_YAML = False
 
 from .schema_registry import SKILL_TYPE_ROOTS
 
@@ -79,22 +84,23 @@ def parse_skill_md(path: Path) -> SkillRecord | None:
     body_text = text
     m = FRONTMATTER_RE.match(text)
     if m:
-        try:
-            parsed = yaml.safe_load(m.group(1))
-            if isinstance(parsed, dict):
-                fm = parsed
-        except yaml.YAMLError:
-            fm = {}
+        if HAVE_YAML:
+            try:
+                parsed = _pyyaml.safe_load(m.group(1))
+                if isinstance(parsed, dict):
+                    fm = parsed
+            except _pyyaml.YAMLError:
+                fm = {}
         body_text = text[m.end():]
 
     body_contract: dict | None = None
     bm = YAML_FENCE_RE.search(body_text)
-    if bm:
+    if bm and HAVE_YAML:
         try:
-            parsed_body = yaml.safe_load(bm.group(1))
+            parsed_body = _pyyaml.safe_load(bm.group(1))
             if isinstance(parsed_body, dict):
                 body_contract = parsed_body
-        except yaml.YAMLError:
+        except _pyyaml.YAMLError:
             body_contract = None
 
     return SkillRecord(

@@ -75,17 +75,28 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from bootstrap_lib.path_repair import repair_path  # noqa: E402
-repair_path()
+try:
+    from bootstrap_lib.path_repair import repair_path  # noqa: E402
 
-from bootstrap_lib.code_review.chunking import (  # noqa: E402
-    partition_sections_into_chunks,
-    write_chunks,
-)
-from bootstrap_lib.code_review.claude_mds import (  # noqa: E402
-    collect_claude_mds,
-    collect_submit_gates,
-)
+    from bootstrap_lib.code_review.chunking import (  # noqa: E402
+        partition_sections_into_chunks,
+        write_chunks,
+    )
+    from bootstrap_lib.code_review.claude_mds import (  # noqa: E402
+        collect_claude_mds,
+        collect_submit_gates,
+    )
+except ImportError:
+    # bootstrap_lib is absent -> the bootstrap plugin never provisioned this
+    # plugin's venv. Convert the raw ModuleNotFoundError traceback into an
+    # actionable "install/enable plugins-kit:bootstrap" message and exit.
+    from bootstrap_guard import require_bootstrap
+
+    require_bootstrap(
+        "git-kit", feature="code review", missing="bootstrap_lib", force=True
+    )
+
+repair_path()
 
 
 # Mirror p4-kit's choice for the same reason -- Read tool refuses files

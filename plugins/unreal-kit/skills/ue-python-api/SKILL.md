@@ -148,6 +148,10 @@ capability_skill:
 | `unreal.AnimationLibrary` | Animation sequence/montage queries |
 | `unreal.BlueprintEditorLibrary` | Inspect Blueprint graphs and nodes |
 
+## Precondition - bootstrap must have provisioned unreal-kit
+
+Before invoking the plugin venv interpreter (`~/.claude/plugins/data/plugins-kit/unreal-kit/.venv/Scripts/python.exe`) to run `ue_runner.py`, confirm `~/.claude/plugins/data/plugins-kit/unreal-kit/bootstrap.log` exists. If it does not, the venv interpreter path won't exist either and the command fails opaquely (no Python starts, so the in-script guard can't fire). Tell the user "the bootstrap plugin hasn't provisioned unreal-kit -- install/enable plugins-kit:bootstrap and start a new session" and stop.
+
 ## Core Patterns
 
 > **Output**: write to a YAML file in `<Project>/Saved/PythonOutput/` -- the runner auto-detects these. All patterns below use the YAML output approach.

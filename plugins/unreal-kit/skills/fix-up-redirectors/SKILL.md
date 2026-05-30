@@ -166,6 +166,10 @@ Use the reducer on either the fix-up safe set or the orphaned safe set; the inpu
 
 Then point Phase 4 at `safe_per_dir.json` instead. After the test CL submits cleanly, run Phase 4 again on the original safe set (with the per-dir entries removed if you want a strict residual, or just re-run the whole thing — already-fixed redirectors are no-ops in the second pass).
 
+## Precondition - bootstrap must have provisioned unreal-kit
+
+Before invoking the plugin venv interpreter (`~/.claude/plugins/data/plugins-kit/unreal-kit/.venv/Scripts/python.exe`) in any phase below, confirm `~/.claude/plugins/data/plugins-kit/unreal-kit/bootstrap.log` exists. If it does not, the venv interpreter path won't exist either and the command fails opaquely (no Python starts, so the in-script guard can't fire). Tell the user "the bootstrap plugin hasn't provisioned unreal-kit -- install/enable plugins-kit:bootstrap and start a new session" and stop.
+
 ## Phase 1 - Discover redirectors (UE Python)
 
 Run discovery via the plugin's `ue-runner`. Pass scope via `SCOPE` env var.

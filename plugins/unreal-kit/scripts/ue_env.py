@@ -41,6 +41,12 @@ from path_repair import repair_path  # noqa: E402
 
 repair_path()
 
+# Fail fast with an actionable message if the bootstrap plugin never provisioned
+# this plugin (e.g. a stray system Python is running this script).
+from bootstrap_guard import require_bootstrap  # noqa: E402
+
+require_bootstrap("unreal-kit", feature="Unreal Python automation")
+
 from ue_env import (  # noqa: E402
     DEFAULT_MCP_HOST,
     DEFAULT_MCP_PORT,

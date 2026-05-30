@@ -18,7 +18,7 @@ Inspect and customize the Claude Code status line. The plugin ships an opinionat
    - `<project>/.claude/settings.json`
    - `~/.claude/settings.json`
 
-   The first one with a `statusLine.command` is the active script. If none, tell the user there is no statusLine configured and offer to install claude-ui-kit's default.
+   The first one with a `statusLine.command` is the active script. If none, before offering to install claude-ui-kit's default, check that bootstrap has provisioned the plugin: the synced script `~/.claude/plugins/data/plugins-kit/claude-ui-kit/scripts/statusline.sh` (equivalently the plugin's `~/.claude/plugins/data/plugins-kit/claude-ui-kit/bootstrap.log`) must exist. If it is missing, do **not** offer the default — tell the user "the bootstrap plugin hasn't provisioned claude-ui-kit — install/enable plugins-kit:bootstrap and start a new session" and stop. Only when the synced script is present, tell the user there is no statusLine configured and offer to install claude-ui-kit's default.
 
 2. **Read the script** at that command path. Identify what it displays (components) and how (colors, thresholds, separators). Summarize for the user in plain language. Example:
    > Your current status line shows **directory**, **context %**, **5-hour usage**, and **7-day usage**, separated by `│`. The context number turns orange at 30% and red at 70%; the 5-hour number turns orange at 70% and red at 90%.
@@ -87,7 +87,7 @@ technique_skill:
           action: Summarize in plain language and ask whether they want to change anything.
       gotchas:
         - Do not suggest specific changes; just ask "Want to customize anything?".
-        - If no statusLine is configured anywhere, offer to install claude-ui-kit's default.
+        - If no statusLine is configured anywhere, offer to install claude-ui-kit's default -- but ONLY if the synced script ~/.claude/plugins/data/plugins-kit/claude-ui-kit/scripts/statusline.sh (or the plugin's bootstrap.log) exists. If it is missing, bootstrap hasn't provisioned claude-ui-kit: tell the user to install/enable plugins-kit:bootstrap and start a new session, and stop -- do not offer a default that isn't on disk.
     - id: edit
       name: Apply a user-requested edit
       keywords: [change, customize, edit, swap, replace, drop, add, color, threshold, progress bar, separator]

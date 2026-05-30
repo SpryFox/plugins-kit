@@ -61,6 +61,11 @@ technique_skill:
           so there is no surrounding whitespace.
       - n: 3
         action: Run the converter
+        precondition: >-
+          Before running, confirm bootstrap has provisioned html-pdf: if
+          ~/.claude/plugins/data/plugins-kit/awesome-kit/bootstrap.log is missing, tell the user
+          "the bootstrap plugin hasn't provisioned awesome-kit's html-pdf -- install/enable
+          plugins-kit:bootstrap and start a new session" and stop (the venv + Chromium aren't set up).
         detail: 'uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/skills/html-pdf/scripts/html_to_pdf.py" "<input.html>" ["<output.pdf>"] [--scale 80%] [--a4]'
         tool: ${CLAUDE_PLUGIN_ROOT}/skills/html-pdf/scripts/html_to_pdf.py
       - n: 4

@@ -47,7 +47,7 @@ def _load_plugin_manifests() -> dict[str, dict]:
 
 def _build_entry(manifest: dict) -> dict:
     """Project a plugin.json into a marketplace.json plugins[] entry."""
-    return {
+    entry = {
         "name": manifest["name"],
         "description": manifest.get("description", ""),
         "version": manifest.get("version", ""),
@@ -55,6 +55,11 @@ def _build_entry(manifest: dict) -> dict:
         "source": f"./plugins/{manifest['__dir']}",
         "category": manifest.get("category", DEFAULT_CATEGORY),
     }
+    # Propagate inter-plugin dependencies so they are declared in both plugin.json
+    # and the marketplace entry (the spec accepts either location).
+    if manifest.get("dependencies"):
+        entry["dependencies"] = manifest["dependencies"]
+    return entry
 
 
 def _is_published(manifest: dict) -> bool:
