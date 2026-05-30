@@ -11,6 +11,7 @@ testpaths = ["tests"]
 pythonpath = [
     "plugins/bootstrap",
     "plugins/bootstrap/engine",
+    "plugins/skills-kit",
     "plugins/skills-kit/skills/skill-authoring/scripts",
     "plugins/skills-kit/skills/claude-md-audit/scripts",
 ]
