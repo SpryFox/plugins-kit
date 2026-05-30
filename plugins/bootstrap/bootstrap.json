@@ -2,6 +2,25 @@
   "tools": [
     {
       "name": "jq",
+      "$comment": "jq fits the 'download our own copy' rubric (single ~2MB binary, no OS integration, slow release cadence). See plugins/bootstrap/skills/bootstrap/references/dependency-philosophy.md.",
+      "download": {
+        "windows-amd64": {
+          "url": "https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-windows-amd64.exe",
+          "sha256": "23cb60a1354eed6bcc8d9b9735e8c7b388cd1fdcb75726b93bc299ef22dd9334"
+        },
+        "macos-amd64": {
+          "url": "https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-macos-amd64",
+          "sha256": "e80dbe0d2a2597e3c11c404f03337b981d74b4a8504b70586c354b7697a7c27f"
+        },
+        "macos-arm64": {
+          "url": "https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-macos-arm64",
+          "sha256": "a9fe3ea2f86dfc72f6728417521ec9067b343277152b114f4e98d8cb0e263603"
+        },
+        "ubuntu-amd64": {
+          "url": "https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-linux-amd64",
+          "sha256": "020468de7539ce70ef1bceaf7cde2e8c4f2ca6c3afb84642aabc5c97d9fc2a0d"
+        }
+      },
       "install": {
         "windows": "winget install --id jqlang.jq --accept-source-agreements --accept-package-agreements --silent --disable-interactivity",
         "macos": "brew install jq",

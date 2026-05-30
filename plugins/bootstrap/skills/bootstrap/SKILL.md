@@ -83,7 +83,7 @@ reference_skill:
       summary: Layered configs merge by identity key for arrays, deep-merge for objects, override for scalars.
       keywords: [merge semantics, union, identity key, deep merge, path entries, scalar override]
       detail: |
-        - Arrays (tools, plugins, marketplaces): unioned by identity key (name, ref). Same identity in multiple layers means higher-priority fields win.
+        - Arrays (tools, plugins, marketplaces): unioned by identity key (name, ref). Same identity in multiple layers is DEEP-merged — a user override for `tools[name=jq].download[macos-arm64].url` keeps every other download key and the sha256 intact. Higher priority wins at any leaf.
         - Objects (venv, config): deep-merged; higher priority wins for conflicts.
         - path_entries: string-list union, deduplicated, order preserved.
         - Scalars: higher priority wins.
@@ -115,4 +115,8 @@ reference_skill:
       path: references/plugin-setup-pattern.md
       keywords: [setup pattern, config setup, setup.py, interactive setup, --check, --describe, --apply, --init-defaults, missing config, API keys]
       summary: Plugin setup-pattern recipe.
+    - id: dependency_philosophy
+      path: references/dependency-philosophy.md
+      keywords: [philosophy, principles, local-first, ~/.local, repair_path, find-or-download, absolute path, target architecture, full execution chain, installed_but_path_stale, why not PATH, design intent]
+      summary: Bootstrap's dependency-management philosophy and target architecture.
 ```

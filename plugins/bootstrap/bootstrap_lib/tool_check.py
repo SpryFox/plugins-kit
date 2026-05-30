@@ -12,6 +12,7 @@ class CheckResult(NamedTuple):
     passed: bool
     message: str
     install_cmd: Optional[str] = None
+    path: Optional[str] = None  # absolute path to the resolved binary, when passed=True
 
 
 def check_tool(name: str, install_cmds: Optional[dict] = None, current_os: Optional[str] = None, install_path: Optional[str] = None) -> CheckResult:
@@ -39,6 +40,7 @@ def check_tool(name: str, install_cmds: Optional[dict] = None, current_os: Optio
                     name=name,
                     passed=True,
                     message=f"found at {candidate}",
+                    path=candidate,
                 )
 
     path = shutil.which(name)
@@ -47,6 +49,7 @@ def check_tool(name: str, install_cmds: Optional[dict] = None, current_os: Optio
             name=name,
             passed=True,
             message=f"found at {path}",
+            path=path,
         )
 
     install_cmd = None
