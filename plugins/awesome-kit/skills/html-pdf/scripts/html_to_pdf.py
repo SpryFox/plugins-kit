@@ -157,29 +157,62 @@ def convert(input_path, output_path, *, a4: bool = False, width: int = 1280,
                             "left": "0.4in", "right": "0.4in"},
                 )
             else:
-                # Single-page: render at a fixed layout width, measure the real
-                # content height, emit one page exactly that tall -> no pagination.
+                # Single-page: render at a FIXED full layout width, measure the
+                # real content height, emit ONE page exactly that tall. Scaling is
+                # applied to the finished PDF afterward (_scale_pdf), never via the
+                # browser -- shrinking the paper width here makes Chromium re-flow
+                # the page into a narrow column and spill across many pages.
                 page = browser.new_page(viewport={"width": width, "height": 1000})
                 page.goto(src.as_uri(), wait_until="networkidle")
                 page.emulate_media(media="screen")  # keep the on-screen design
+                page.evaluate("document.fonts.ready")  # let web fonts settle first
+                # Two print-time gotchas, both neutralized here:
+                #  - min-height:100vh ties the body to the viewport, so the true
+                #    content spills onto a 2nd page -> collapse to real height.
+                #  - a page-authored `@page { size: landscape }` rule is honored by
+                #    Chromium's PDF path (regardless of emulated media) and SWAPS
+                #    our width/height -> force `size: auto` so our dimensions win.
+                page.add_style_tag(
+                    content=("html,body{min-height:0!important;height:auto!important}"
+                             "@page{size:auto!important;margin:0!important}")
+                )
                 height = page.evaluate(
                     "Math.ceil(Math.max("
                     "document.documentElement.scrollHeight,"
-                    "document.body.scrollHeight))"
+                    "document.body.scrollHeight,"
+                    "document.body.getBoundingClientRect().bottom))"
                 )
-                # Scale shrinks/grows the content; size the single page to the
-                # scaled content so it fits exactly with no surrounding whitespace.
                 page.pdf(
                     path=str(out),
                     print_background=True,
-                    width=f"{round(width * scale)}px",
-                    height=f"{round(height * scale)}px",
-                    scale=scale,
+                    width=f"{width}px",
+                    height=f"{height}px",
+                    scale=1,
                     margin={"top": "0", "bottom": "0", "left": "0", "right": "0"},
                 )
         finally:
             browser.close()
+
+    # Scale the finished single-page PDF as a vector transform so scaling never
+    # reflows the layout. (A4 mode scales via the browser print path above.)
+    if (not a4) and scale != 1.0:
+        _scale_pdf(out, scale)
     return out
+
+
+def _scale_pdf(path: Path, scale: float) -> None:
+    """Scale every page of a finished PDF by `scale`, vector-preserving."""
+    import io
+    from pypdf import PdfReader, PdfWriter
+
+    reader = PdfReader(io.BytesIO(Path(path).read_bytes()))
+    writer = PdfWriter()
+    for pg in reader.pages:
+        pg.scale_by(scale)
+        writer.add_page(pg)
+    buf = io.BytesIO()
+    writer.write(buf)
+    Path(path).write_bytes(buf.getvalue())
 
 
 def main() -> None:

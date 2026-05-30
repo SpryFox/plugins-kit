@@ -5,6 +5,7 @@ description = "Runtime dependencies for awesome-kit skills. html-pdf renders HTM
 requires-python = ">=3.10"
 dependencies = [
     "playwright>=1.40",
+    "pypdf>=4.0",
 ]
 
 # awesome-kit is not an importable package -- this pyproject exists only to

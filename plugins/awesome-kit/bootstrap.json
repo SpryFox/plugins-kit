@@ -10,7 +10,7 @@
     }
   ],
   "venv": {
-    "check_imports": ["playwright"]
+    "check_imports": ["playwright", "pypdf"]
   },
   "script": {
     "path": "custom_bootstrap.py",

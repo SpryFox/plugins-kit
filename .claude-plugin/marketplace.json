@@ -89,7 +89,7 @@
     {
       "name": "awesome-kit",
       "description": "Christina's cross-domain skills: a shared communication framework (hand-off + verbose-updates), the update-documentation meta-skill, /plugin-ecosystem (interactive 16:9 HTML poster of marketplaces and plugins), and /html-pdf (convert an HTML file to PDF via headless Chromium and open it). Depends on plugins-kit:skills-kit for the shared audit framework and knowledge-encoding. /claude-explorer moved to plugins-kit:prototypes in 0.5.0.",
-      "version": "0.6.1",
+      "version": "0.6.2",
       "author": {
         "name": "Christina"
       },
