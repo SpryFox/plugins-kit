@@ -1,9 +1,17 @@
 {
   "name": "test-plugin",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Test plugin exercising all 5 bootstrap steps including Claude-driven config setup",
   "author": {
     "name": "Christina"
   },
-  "keywords": ["test", "bootstrap", "config-setup", "reference-implementation"]
+  "dependencies": [
+    "bootstrap"
+  ],
+  "keywords": [
+    "test",
+    "bootstrap",
+    "config-setup",
+    "reference-implementation"
+  ]
 }

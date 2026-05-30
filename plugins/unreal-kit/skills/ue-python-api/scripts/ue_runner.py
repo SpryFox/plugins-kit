@@ -33,6 +33,11 @@ if str(_LIB_DIR) not in sys.path:
 from path_repair import repair_path  # noqa: E402
 repair_path()
 
+# Fail fast with an actionable message if the bootstrap plugin never provisioned
+# this plugin (e.g. a stray system Python is running this script).
+from bootstrap_guard import require_bootstrap  # noqa: E402
+require_bootstrap("unreal-kit", feature="Unreal Python automation")
+
 from ue_discovery import find_engine_dir as _find_engine_dir, find_uproject_from_cwd, find_uproject_from_path
 from ue_runner_config import RunnerConfig, load_config
 

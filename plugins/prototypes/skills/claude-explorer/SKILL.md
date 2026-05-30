@@ -73,7 +73,7 @@ The `/file?path=...` endpoint guards against path traversal: requested paths mus
 Run as a single response.
 
 1. Resolve project root (`--project` or CWD).
-2. Run `claude_explorer.py run` (crawl + serve). The server blocks; the agent should invoke it via `run_in_background` so control returns to the user once the browser opens.
+2. PRECONDITION: confirm `~/.claude/plugins/data/plugins-kit/skills-kit/bootstrap.log` exists before invoking the skills-kit venv interpreter; if it is missing, tell the user "the bootstrap plugin hasn't provisioned skills-kit (which claude-explorer relies on) — install/enable plugins-kit:bootstrap and start a new session" and STOP. Then run `claude_explorer.py run` (crawl + serve). The server blocks; the agent should invoke it via `run_in_background` so control returns to the user once the browser opens.
 3. Report the URL (`http://127.0.0.1:8923/`), the index location, and one-line counts (roots, compositions, primitives).
 
 ## Anti-patterns
@@ -118,7 +118,7 @@ technique_skill:
         - n: 1
           action: "Resolve project root (--project PATH, defaults to CWD)."
         - n: 2
-          action: "Invoke claude_explorer.py run via run_in_background. The script crawls, then binds 127.0.0.1:8923, then auto-opens the browser."
+          action: "PRECONDITION: confirm ~/.claude/plugins/data/plugins-kit/skills-kit/bootstrap.log exists before invoking the skills-kit venv interpreter; if it is missing, tell the user 'the bootstrap plugin hasn't provisioned skills-kit (which claude-explorer relies on) — install/enable plugins-kit:bootstrap and start a new session' and STOP. Then invoke claude_explorer.py run via run_in_background. The script crawls, then binds 127.0.0.1:8923, then auto-opens the browser."
         - n: 3
           action: "Report URL + index path + counts back to the user. Hand control to them."
       gotchas:

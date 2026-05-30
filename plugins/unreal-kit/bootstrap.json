@@ -10,7 +10,7 @@
     }
   ],
   "venv": {
-    "check_imports": ["upyrc", "yaml"]
+    "check_imports": ["upyrc", "yaml", "websocket"]
   },
   "project_config": {
     "file": ".local-data/unreal-kit/config.yaml",

@@ -154,6 +154,16 @@ def _ensure_bootstrap_lib_importable() -> None:
         except ImportError:
             sys.path.remove(site_str)
 
+    # Exhausted every candidate without importing bootstrap_lib -> the bootstrap
+    # plugin never provisioned this plugin's venv. Don't fall through silently
+    # (that surfaces as a raw ModuleNotFoundError below); emit the actionable
+    # "install/enable plugins-kit:bootstrap" message and exit.
+    from bootstrap_guard import require_bootstrap
+
+    require_bootstrap(
+        "p4-kit", feature="code review", missing="bootstrap_lib", force=True
+    )
+
 
 _ensure_bootstrap_lib_importable()
 
@@ -163,19 +173,30 @@ _ensure_bootstrap_lib_importable()
 # venv activation and leave this Python with a stripped PATH that
 # breaks `subprocess.run(["p4", ...])` with FileNotFoundError. Pulling
 # the registry-canonical PATH back in restores p4 visibility.
-from bootstrap_lib.path_repair import repair_path  # noqa: E402
-repair_path()
+try:
+    from bootstrap_lib.path_repair import repair_path  # noqa: E402
 
-# Shared code-review primitives -- VCS-neutral chunking, CLAUDE.md walk,
-# submit-gate parsing/matching. See bootstrap_lib/code_review/.
-from bootstrap_lib.code_review.chunking import (  # noqa: E402
-    partition_sections_into_chunks,
-    write_chunks,
-)
-from bootstrap_lib.code_review.claude_mds import (  # noqa: E402
-    collect_claude_mds,
-    collect_submit_gates,
-)
+    # Shared code-review primitives -- VCS-neutral chunking, CLAUDE.md walk,
+    # submit-gate parsing/matching. See bootstrap_lib/code_review/.
+    from bootstrap_lib.code_review.chunking import (  # noqa: E402
+        partition_sections_into_chunks,
+        write_chunks,
+    )
+    from bootstrap_lib.code_review.claude_mds import (  # noqa: E402
+        collect_claude_mds,
+        collect_submit_gates,
+    )
+except ImportError:
+    # Belt-and-suspenders: _ensure_bootstrap_lib_importable() should already
+    # have exited if bootstrap_lib is missing, but guard the import directly
+    # too so a partial install can't surface a raw ModuleNotFoundError.
+    from bootstrap_guard import require_bootstrap
+
+    require_bootstrap(
+        "p4-kit", feature="code review", missing="bootstrap_lib", force=True
+    )
+
+repair_path()
 
 
 _FILE_HEADER = re.compile(r"^==== (//[^#]+)#(\d+) \([^)]*\) ====\s*$")

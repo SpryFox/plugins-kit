@@ -9,12 +9,15 @@
     {
       "name": "unreal-kit",
       "description": "Unreal Engine automation: Python API for asset inspection and data extraction; MCP server for live Editor authoring (actors, Blueprints, materials, PIE)",
-      "version": "0.9.13",
+      "version": "0.9.14",
       "author": {
         "name": "Christina"
       },
       "source": "./plugins/unreal-kit",
-      "category": "development"
+      "category": "development",
+      "dependencies": [
+        "bootstrap"
+      ]
     },
     {
       "name": "cache-kit",
@@ -29,17 +32,20 @@
     {
       "name": "test-plugin",
       "description": "Test plugin exercising all 5 bootstrap steps including Claude-driven config setup",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "author": {
         "name": "Christina"
       },
       "source": "./plugins/test-plugin",
-      "category": "development"
+      "category": "development",
+      "dependencies": [
+        "bootstrap"
+      ]
     },
     {
       "name": "bootstrap",
       "description": "Centralized bootstrap engine for Claude Code plugins",
-      "version": "0.12.0",
+      "version": "0.12.1",
       "author": {
         "name": "Christina"
       },
@@ -49,72 +55,94 @@
     {
       "name": "p4-kit",
       "description": "Multi-agent code review of pending Perforce changelists via /p4-code-review (parallel Claude subagents). Shares chunking + CLAUDE.md primitives with git-kit via bootstrap_lib.code_review.",
-      "version": "0.11.2",
+      "version": "0.11.3",
       "author": {
         "name": "Christina"
       },
       "source": "./plugins/p4-kit",
-      "category": "development"
+      "category": "development",
+      "dependencies": [
+        "bootstrap"
+      ]
     },
     {
       "name": "git-kit",
       "description": "Git + GitHub multi-agent code review (/git-code-review) plus gh CLI bootstrap (auth + optional org membership). Shares chunking + CLAUDE.md primitives with p4-kit via bootstrap_lib.code_review.",
-      "version": "0.2.2",
+      "version": "0.2.3",
       "author": {
         "name": "Christina"
       },
       "source": "./plugins/git-kit",
-      "category": "development"
+      "category": "development",
+      "dependencies": [
+        "bootstrap"
+      ]
     },
     {
       "name": "skills-kit",
       "description": "Skill authoring + shared audit framework. Vocabulary, type contracts, single-skill audit (/skill-audit), cross-reference audit/remediation (/references-audit), and the canonical audit-framework (primitives, compositions, audit-kinds, viewer-kinds) that other plugins' audits and viewers ride on.",
-      "version": "0.14.2",
+      "version": "0.14.3",
       "author": {
         "name": "Christina"
       },
       "source": "./plugins/skills-kit",
-      "category": "development"
+      "category": "development",
+      "dependencies": [
+        "bootstrap"
+      ]
     },
     {
       "name": "claude-ui-kit",
       "description": "Claude Code status line with context-window and rate-limit threshold colors, plus the /statusline skill to inspect and customize it.",
-      "version": "0.4.1",
+      "version": "0.4.2",
       "author": {
         "name": "Christina"
       },
       "source": "./plugins/claude-ui-kit",
-      "category": "development"
+      "category": "development",
+      "dependencies": [
+        "bootstrap"
+      ]
     },
     {
       "name": "awesome-kit",
       "description": "Christina's cross-domain skills: a shared communication framework (hand-off + verbose-updates), the update-documentation meta-skill, /plugin-ecosystem (interactive 16:9 HTML poster of marketplaces and plugins), and /html-pdf (convert an HTML file to PDF via headless Chromium and open it). Depends on plugins-kit:skills-kit for the shared audit framework and knowledge-encoding. /claude-explorer moved to plugins-kit:prototypes in 0.5.0.",
-      "version": "0.6.4",
+      "version": "0.6.5",
       "author": {
         "name": "Christina"
       },
       "source": "./plugins/awesome-kit",
-      "category": "development"
+      "category": "development",
+      "dependencies": [
+        "bootstrap"
+      ]
     },
     {
       "name": "prototypes",
       "description": "Experimental skills that may graduate into their own plugins. Currently hosts /claude-explorer (Omarchy-style HTML browser of ~/.claude/ + the current project, Python crawl + local HTTP serve + embedded SPA). Depends on plugins-kit:skills-kit for the shared audit framework.",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "author": {
         "name": "Christina"
       },
       "source": "./plugins/prototypes",
-      "category": "development"
+      "category": "development",
+      "dependencies": [
+        "skills-kit",
+        "bootstrap"
+      ]
     },
     {
       "name": "openrouter-kit",
       "description": "OpenRouter API key management and account validation: shared library, CLI, and bootstrap-time credential check that other plugins/projects depend on for OpenRouter access",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "author": {
         "name": "Christina"
       },
       "source": "./plugins/openrouter-kit",
-      "category": "development"
+      "category": "development",
+      "dependencies": [
+        "bootstrap"
+      ]
     }
   ]
 }
