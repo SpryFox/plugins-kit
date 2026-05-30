@@ -25,8 +25,7 @@ plugins-kit/                          # Marketplace root
       scripts/                        # Config setup
     p4-kit/                           # P4 multi-agent code review plugin (Claude subagents)
       .claude-plugin/plugin.json      # Plugin manifest
-      bootstrap.json                  # Bootstrap manifest (tools + project_config with autodetect)
-      custom_bootstrap.py             # project_config autodetect — discovers P4PORT/P4USER from `p4 set`
+      bootstrap.json                  # Bootstrap manifest (tools)
       scripts/prepare_review.py       # Diff + CLAUDE.md gathering (stdlib-only, called by skill)
       skills/p4-code-review/          # Multi-agent review skill (3 reviewers + per-issue validators)
     unreal-kit/                       # The UE plugin

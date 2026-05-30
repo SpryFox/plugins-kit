@@ -23,7 +23,7 @@ claude_md:
       - dependency posture (pyyaml via bootstrap.json + pyproject.toml, never manual pip)
     excludes:
       - audit-driven framework decision provenance (covered by skills/skill-authoring/CLAUDE.md)
-      - validator and script internals (covered by skills/skill-authoring/scripts/CLAUDE.md)
+      - validator and script internals (covered by skills_kit_lib/CLAUDE.md)
       - per-plugin dependency posture for other plugins (covered by plugins-kit/CLAUDE.md)
   insights:
     - id: plugin_surface_overview
@@ -53,13 +53,13 @@ claude_md:
         - skills/skill-authoring/references/scripts.md -- script reference (purpose,
           usage, output verdicts, gotchas).
         - skills/skill-authoring/references/example-audit.md -- worked audit example.
-        - skills/skill-authoring/scripts/schemas.py -- canonical machine-readable
+        - skills_kit_lib/schema_registry.py -- canonical machine-readable
           per-type contract. SCHEMAS_BY_ROOT dispatches by YAML root key.
-        - skills/skill-authoring/scripts/audit.py -- per-skill or per-CLAUDE.md audit;
+        - skills_kit_lib/audit.py -- per-skill or per-CLAUDE.md audit;
           three states (yaml-validated / contract-staged / legacy-fallback).
-        - skills/skill-authoring/scripts/classify.py -- type inference; YAML root key
+        - skills_kit_lib/classify.py -- type inference; YAML root key
           is deterministic, heuristic scoring is the legacy fallback.
-        - skills/skill-authoring/scripts/tag.py -- idempotent skill-type: frontmatter
+        - skills_kit_lib/tag.py -- idempotent skill-type: frontmatter
           writer; refuses to overwrite existing differing values without --force;
           refuses missing-frontmatter cases (never invents).
     - id: which_surface_for_which_task
@@ -74,7 +74,7 @@ claude_md:
         - tag operation
       origin: Phase 4.6 P5 plugin-level orientation surface (2026-04-30).
       added: "2026-04-30"
-      summary: Vocabulary -> glossary.md. Contract floor -> schemas.py (or framework.md tables for human review). Audit-driven decisions and provenance -> skill-authoring/CLAUDE.md. Validator internals -> scripts/CLAUDE.md.
+      summary: Vocabulary -> glossary.md. Contract floor -> schemas.py (or framework.md tables for human review). Audit-driven decisions and provenance -> skill-authoring/CLAUDE.md. Validator internals -> skills_kit_lib/CLAUDE.md.
       detail: |
         - "What does <term> mean?" -> glossary.md, search the appropriate sub-grouping
           (files / conventions / external_binding / principles / patterns / skill_types
@@ -87,7 +87,7 @@ claude_md:
         - "Why does the framework forbid Y / require Z?" -> skill-authoring/CLAUDE.md
           insights. Each Dec-N entry cites surface / finding / follow-up.
         - "How does the validator decide between yaml-validated / contract-staged /
-          legacy-fallback?" -> scripts/CLAUDE.md three_audit_states insight.
+          legacy-fallback?" -> skills_kit_lib/CLAUDE.md three_audit_states insight.
     - id: merge_gate_convention
       keywords:
         - re-audit gate
@@ -97,7 +97,7 @@ claude_md:
         - zero fails
       origin: P1 convention (skill-authoring/CLAUDE.md) generalized to plugin level during P5 (2026-04-30).
       added: "2026-04-30"
-      summary: Any change touching schemas.py, glossary.md, or framework.md must re-audit all six plugins-kit SKILL.md files plus the three CLAUDE.md files (skill-authoring, scripts, plugins-kit root) to zero FAILs before shipping.
+      summary: Any change touching schemas.py, glossary.md, or framework.md must re-audit all six plugins-kit SKILL.md files plus the three CLAUDE.md files (skill-authoring, skills_kit_lib, plugins-kit root) to zero FAILs before shipping.
       detail: |
         The plugin advocates schema validation as the audit substrate. Shipping a
         contract change that breaks the plugin's own skills would violate the
@@ -107,10 +107,10 @@ claude_md:
 
           for f in plugins/*/skills/*/SKILL.md \\
                    plugins/skills-kit/skills/skill-authoring/CLAUDE.md \\
-                   plugins/skills-kit/skills/skill-authoring/scripts/CLAUDE.md \\
+                   plugins/skills-kit/skills_kit_lib/CLAUDE.md \\
                    plugins/skills-kit/CLAUDE.md \\
                    CLAUDE.md; do
-            python plugins/skills-kit/skills/skill-authoring/scripts/audit.py "$f"
+            (cd plugins/skills-kit && python -m skills_kit_lib.audit "../../$f")
           done
 
         Catch second-order effects: a tightened technique-skill row may force one or
@@ -157,9 +157,10 @@ claude_md:
 
           Example (Windows; analogous on Mac/Linux with .venv/bin/python):
 
-          ~/.claude/plugins/data/plugins-kit/skills-kit/.venv/Scripts/python.exe \\
-            plugins/skills-kit/skills/skill-authoring/scripts/audit.py \\
-            <path-to-SKILL.md-or-CLAUDE.md>
+          (cd plugins/skills-kit && \\
+            ~/.claude/plugins/data/plugins-kit/skills-kit/.venv/Scripts/python.exe \\
+            -m skills_kit_lib.audit \\
+            <path-to-SKILL.md-or-CLAUDE.md>)
 
         - Outside the venv (bare system Python): audit.py runs but reports
           judgment-required on the YAML contract row. classify.py and tag.py operate
@@ -172,7 +173,7 @@ claude_md:
         - paired update
         - second-order effects
       why: The plugin advocates schema validation as the audit substrate; shipping a contract change that breaks the plugin's own skills would violate the principle. The re-audit also catches second-order effects across SKILL.md files.
-    - rule: Surface a framework decision as a lessons-learned entry with surface / finding / follow-up provenance before the contract change ships. Land it in skill-authoring/CLAUDE.md (framework decisions) or scripts/CLAUDE.md (validator-side decisions).
+    - rule: Surface a framework decision as a lessons-learned entry with surface / finding / follow-up provenance before the contract change ships. Land it in skill-authoring/CLAUDE.md (framework decisions) or skills_kit_lib/CLAUDE.md (validator-side decisions).
       keywords:
         - provenance
         - decision log
