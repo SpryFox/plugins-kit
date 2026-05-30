@@ -138,7 +138,7 @@ audit_skill:
       goal: "For each target CLAUDE.md, run mechanical and judgment-based checks against the framework's contract, classify findings into the taxonomy, dispatch remediations to AUTO/DISCUSS/SPECIAL buckets, and emit a per-file compliance verdict."
       preconditions:
         - "audit.py is reachable (mechanical schema validator -- only needed if a claude_md: YAML block is present)."
-        - "content-allocation.md is loadable (cohesion-principle reference)."
+        - "references/audit-criteria.md is loadable (the single self-contained criteria doc; the upstream content-allocation.md is its derivation and is NOT loaded by the audit path)."
         - "The user is in a project directory so role classification works."
       steps:
         - n: 1
@@ -148,9 +148,9 @@ audit_skill:
           expected: "Resolved list of (path, role) tuples."
           on_failure: "If no CLAUDE.md resolves, surface cwd and stop."
         - n: 2
-          action: "Load content-allocation.md and references/audit-criteria.md into context."
+          action: "Load references/audit-criteria.md into context -- the single self-contained criteria doc, which states each testable rule with its CCP/CRP/ADP derivation inline. Do NOT also load content-allocation.md (it is the upstream derivation, redundant for applying criteria). Principle recap so you can apply them without re-derivation: CCP = content that changes for the same reason belongs together (a rule duplicated across scopes is a FAIL); CRP = a fact lives in the smallest scope whose readers all need it; ADP = cross-file references must resolve and run downward in load order (a broken or stale reference is a FAIL)."
           tool: "Read"
-          expected: "CCP / CRP / ADP rules and role-to-criteria map are now loaded."
+          expected: "The role-to-criteria map and all testable CCP / CRP / ADP / Hygiene rules are now loaded from the single criteria doc."
         - n: 3
           action: "For each target file, read it. If role is child, also read the parent CLAUDE.md (for CCP cross-file duplication checks)."
           tool: "Read"
