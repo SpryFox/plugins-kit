@@ -1340,6 +1340,48 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
     if tools_installed:
         action_entries.append(f"{prefix}tools installed: {_join_items(tools_installed)}")
 
+    # Check fonts (download + per-user install when missing). Fonts are
+    # OS-agnostic, so the `download` block is normally flat ({url, sha256});
+    # a per-OS nesting is still honored for the rare case it's needed. Install
+    # is unprivileged on every platform, so it runs silently here; a missing
+    # font is cosmetic (glyphs fall back to ASCII/emoji), so a failed download
+    # logs an action line and retries next session rather than blocking.
+    fonts_installed = []
+    for font_def in manifest.get("fonts", []):
+        from .font_check import check_font, install_font
+        # `fonts` is a layered-mergeable section (user/project bootstrap.json),
+        # so a hand-authored entry could omit `name`. Skip it with a logged
+        # action rather than letting a KeyError abort the whole bootstrap run.
+        name = font_def.get("name") if isinstance(font_def, dict) else None
+        if not name:
+            action_entries.append(f"{prefix}font: skipped malformed entry (missing 'name')")
+            continue
+        match = font_def.get("match") or name
+        res = check_font(match)
+        if res.passed:
+            ok_entries.append(f"{prefix}font {name}: ok - {res.message}")
+            continue
+
+        dl_def = font_def.get("download", {})
+        if isinstance(dl_def, dict) and "url" not in dl_def:
+            dl_def = _resolve_download_def(dl_def, current_os) or {}
+        if not (isinstance(dl_def, dict) and dl_def.get("url") and dl_def.get("sha256")):
+            action_entries.append(
+                f"{prefix}font {name}: not installed and no download declared for {current_os}"
+            )
+            continue
+
+        inst = install_font(dl_def["url"], dl_def["sha256"], archive_type=dl_def.get("archive_type"))
+        if inst.ok:
+            recheck = check_font(match)
+            detail = f"{len(inst.files)} files" + ("" if recheck.passed else " (not yet detected)")
+            fonts_installed.append((name, detail))
+        else:
+            action_entries.append(f"{prefix}font {name}: install failed - {inst.message}")
+
+    if fonts_installed:
+        action_entries.append(f"{prefix}fonts installed: {_join_items(fonts_installed)}")
+
     # Check path entries (consolidate adds into one line)
     paths_added = []
     for path_entry in manifest.get("path_entries", []):

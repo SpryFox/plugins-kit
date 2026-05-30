@@ -157,6 +157,76 @@ class TestTarGzArchive:
             assert f.read() == inner_payload
 
 
+class TestDownloadFonts:
+    def test_extracts_all_font_faces_from_zip(self, tmp_path):
+        archive = tmp_path / "FontFam.zip"
+        with zipfile.ZipFile(archive, "w") as z:
+            z.writestr("FontFam-Regular.ttf", b"regular face")
+            z.writestr("FontFam-Bold.ttf", b"bold face")
+            z.writestr("FontFam-Italic.otf", b"italic otf face")
+            z.writestr("README.md", b"not a font")
+            z.writestr("LICENSE", b"license text")
+        sha = _sha256_of(archive)
+
+        dest = tmp_path / "fonts"
+        result = downloader.download_fonts(_file_uri(archive), sha, str(dest))
+        assert result.ok, result.message
+        names = sorted(os.path.basename(p) for p in result.files)
+        assert names == ["FontFam-Bold.ttf", "FontFam-Italic.otf", "FontFam-Regular.ttf"]
+        # Non-font files are not extracted.
+        assert not (dest / "README.md").exists()
+        assert not (dest / "LICENSE").exists()
+        assert (dest / "FontFam-Regular.ttf").read_bytes() == b"regular face"
+
+    def test_flattens_nested_members_from_tar_xz(self, tmp_path):
+        # Some font archives nest faces in subdirs; extraction is by basename.
+        staging = tmp_path / "_staging" / "ttf"
+        staging.mkdir(parents=True)
+        (staging / "Nested-Regular.ttf").write_bytes(b"nested regular")
+        archive = tmp_path / "Nested.tar.xz"
+        with tarfile.open(archive, "w:xz") as t:
+            t.add(staging / "Nested-Regular.ttf", arcname="ttf/Nested-Regular.ttf")
+        sha = _sha256_of(archive)
+
+        dest = tmp_path / "fonts"
+        result = downloader.download_fonts(_file_uri(archive), sha, str(dest))
+        assert result.ok, result.message
+        # Flattened to basename directly under dest.
+        assert (dest / "Nested-Regular.ttf").is_file()
+        assert [os.path.basename(p) for p in result.files] == ["Nested-Regular.ttf"]
+
+    def test_hash_mismatch_extracts_nothing(self, tmp_path):
+        archive = tmp_path / "x.zip"
+        with zipfile.ZipFile(archive, "w") as z:
+            z.writestr("X-Regular.ttf", b"x")
+        dest = tmp_path / "fonts"
+        result = downloader.download_fonts(_file_uri(archive), "0" * 64, str(dest))
+        assert not result.ok
+        assert "sha256 mismatch" in result.message
+        assert not dest.exists() or list(dest.iterdir()) == []
+
+    def test_no_matching_members_fails(self, tmp_path):
+        archive = tmp_path / "nofonts.zip"
+        with zipfile.ZipFile(archive, "w") as z:
+            z.writestr("README.md", b"docs only")
+        sha = _sha256_of(archive)
+        dest = tmp_path / "fonts"
+        result = downloader.download_fonts(_file_uri(archive), sha, str(dest))
+        assert not result.ok
+        assert "no files matching" in result.message
+
+    def test_custom_suffixes(self, tmp_path):
+        archive = tmp_path / "woff.zip"
+        with zipfile.ZipFile(archive, "w") as z:
+            z.writestr("Face.woff2", b"woff2 bytes")
+            z.writestr("Face.ttf", b"ttf bytes")
+        sha = _sha256_of(archive)
+        dest = tmp_path / "fonts"
+        result = downloader.download_fonts(_file_uri(archive), sha, str(dest), suffixes=(".woff2",))
+        assert result.ok, result.message
+        assert [os.path.basename(p) for p in result.files] == ["Face.woff2"]
+
+
 class TestArchiveTypeDetection:
     @pytest.mark.parametrize("url,expected", [
         ("https://example.com/x.zip", "zip"),

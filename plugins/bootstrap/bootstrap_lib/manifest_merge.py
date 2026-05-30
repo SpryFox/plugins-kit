@@ -7,6 +7,7 @@ _IDENTITY_KEYS = {
     "plugins": "ref",
     "marketplaces": "name",
     "tools": "name",
+    "fonts": "name",
     "json_entries": "file",
     "ini_settings": None,  # composite key: file + section
     "pypi_packages": "package",

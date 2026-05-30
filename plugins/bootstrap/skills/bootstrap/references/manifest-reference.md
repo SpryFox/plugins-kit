@@ -11,6 +11,17 @@ A declarative configuration file covering automatable operations. The engine rea
     {"name": "uv", "install": {"darwin": "curl -LsSf https://astral.sh/uv/install.sh | sh", "linux": "curl -LsSf https://astral.sh/uv/install.sh | sh", "windows": "powershell -c \"irm https://astral.sh/uv/install.ps1 | iex\""}},
     {"name": "node", "installPath": "~/.local/share/node", "install": {"macos": "brew install node"}}
   ],
+  "fonts": [
+    {
+      "name": "JetBrainsMono Nerd Font",
+      "match": "*JetBrainsMono*NerdFont*",
+      "download": {
+        "url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.4.0/JetBrainsMono.tar.xz",
+        "sha256": "ef552a3e638f25125c6ad4c51176a6adcdce295ab1d2ffacf0db060caf8c1582",
+        "archive_type": "tar.xz"
+      }
+    }
+  ],
   "path_entries": ["~/.local/bin"],
   "python_stub_check": {
     "good_python_dir": "~/.local/share/python-standalone/python",
@@ -135,6 +146,52 @@ if Path(sys.executable).resolve() != Path(_venv).resolve():
 **Reach**: Exports in `CLAUDE_ENV_FILE` are sourced by Claude Code before every subsequent Bash tool invocation. They do NOT automatically propagate to hook script invocations — hook scripts that need the venv must either re-derive the path or source `$CLAUDE_ENV_FILE` themselves. For the common case (scripts called via Bash or re-exec'd via `os.execv`), the variable is always set.
 
 **Fail-fast semantics**: if bootstrap cannot create the venv, no export line is written. Consumer scripts then error out on the unset var rather than re-exec'ing an invalid interpreter path.
+
+## `fonts` — Per-User Font Installation
+
+A plugin declares a `fonts` array to ensure a font (e.g. a Nerd Font for
+statusline glyphs) is installed. Installation is **unprivileged on every
+platform** — no UAC, no `sudo` — so it runs silently inside the
+non-interactive SessionStart hook:
+
+| OS | Install location | Registration |
+|----|------------------|--------------|
+| Windows | `%LOCALAPPDATA%\Microsoft\Windows\Fonts` | HKCU `…\CurrentVersion\Fonts` + `AddFontResourceW` |
+| macOS | `~/Library/Fonts` | none needed |
+| Linux | `~/.local/share/fonts` | `fc-cache -f` |
+
+```json
+{
+  "fonts": [
+    {
+      "name": "JetBrainsMono Nerd Font",
+      "match": "*JetBrainsMono*NerdFont*",
+      "download": {
+        "url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.4.0/JetBrainsMono.tar.xz",
+        "sha256": "ef552a3e638f25125c6ad4c51176a6adcdce295ab1d2ffacf0db060caf8c1582",
+        "archive_type": "tar.xz"
+      }
+    }
+  ]
+}
+```
+
+| Field | Required? | Description |
+|-------|-----------|-------------|
+| `name` | Yes | Display name; also the merge identity key |
+| `match` | No (defaults to `name`) | Case-insensitive glob matched against installed font **filenames** (scanned across per-user and system font dirs). When a match exists, the font is considered installed and nothing is downloaded |
+| `download.url` | Yes (to install) | Archive of font faces (`.zip` / `.tar.gz` / `.tar.xz`). All `.ttf`/`.otf` members are extracted and flattened to basename |
+| `download.sha256` | Yes (to install) | Verified before extraction; a mismatch installs nothing |
+| `download.archive_type` | No | Autodetected from the URL extension when omitted |
+
+**Behavior**: detect → (present) log an ok entry / (absent) download, verify,
+extract every face into the per-user font dir, register, re-check. Fonts are
+OS-agnostic, so `download` is normally a flat `{url, sha256}`; a per-OS nesting
+(`{"windows": {...}, "macos": {...}}`) is still honored for the rare case it's
+needed. A missing font is **cosmetic** (glyphs fall back to ASCII/emoji), so a
+failed download logs an action line and retries next session rather than
+surfacing a blocking fix-all item. After install, restart the terminal so it
+picks up the new font.
 
 ## Variable Expansion
 
