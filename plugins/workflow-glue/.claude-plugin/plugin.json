@@ -1,10 +1,21 @@
 {
   "name": "workflow-glue",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Declarative front-end to the native Workflow tool: author durable, reviewable, human-owned workflows in YAML; workflow-glue validates and compiles them to a native Workflow script Claude runs. Tightly scoped, Claude-only (no multi-model). Experimental.",
   "author": {
     "name": "Christina"
   },
-  "keywords": ["workflow", "orchestration", "pipeline", "declarative", "yaml", "agents", "compiler"],
+  "keywords": [
+    "workflow",
+    "orchestration",
+    "pipeline",
+    "declarative",
+    "yaml",
+    "agents",
+    "compiler"
+  ],
+  "dependencies": [
+    "bootstrap"
+  ],
   "published": false
 }

@@ -58,6 +58,7 @@ technique_skill:
           expected: An absolute path to one .workflow.yaml.
         - n: 2
           action: |
+            PRECONDITION: confirm ~/.claude/plugins/data/plugins-kit/workflow-glue/bootstrap.log exists before invoking the plugin-venv interpreter; if it is missing, tell the user "the bootstrap plugin hasn't provisioned workflow-glue — install/enable plugins-kit:bootstrap and start a new session" and STOP.
             Compile it. Run the compiler via the plugin-venv interpreter (see paths above),
             writing the script next to the source under .compiled/.
           tool: Bash
@@ -98,7 +99,9 @@ technique_skill:
           action: Resolve the workflow file (as in run_workflow step 1).
           tool: Glob
         - n: 2
-          action: Run the compiler in validate-only mode via the plugin-venv interpreter.
+          action: |
+            PRECONDITION: confirm ~/.claude/plugins/data/plugins-kit/workflow-glue/bootstrap.log exists before invoking the plugin-venv interpreter; if it is missing, tell the user "the bootstrap plugin hasn't provisioned workflow-glue — install/enable plugins-kit:bootstrap and start a new session" and STOP.
+            Run the compiler in validate-only mode via the plugin-venv interpreter.
           tool: Bash
           input: "<plugin-venv-python> ${CLAUDE_PLUGIN_ROOT}/scripts/compile_workflow.py <yaml> --validate-only"
           expected: "Exit 0 prints `OK: <name> (<n> step(s))`. Exit 1 prints a located error to stderr -- relay it verbatim."
