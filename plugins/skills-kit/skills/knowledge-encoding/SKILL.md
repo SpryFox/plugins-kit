@@ -3,7 +3,7 @@ _schema_version: 1
 required_skills: ['md-read', 'skill-write']
 name: knowledge-encoding
 author: christina
-description: Encode conversation insights into persistent project locations
+description: Use when encoding a discovered insight into a persistent location (CLAUDE.md, skill, reference doc). Do NOT use for end-of-session doc review.
 ---
 
 ## Skill Purpose
@@ -346,3 +346,24 @@ This skill itself is an example of knowledge encoding:
 4. **Encoding**: Created this skill with the process documented
 
 The conversation that created this skill won't repeat—the knowledge now persists.
+
+## CLAUDE.md instance example
+
+CLAUDE.md is the canonical persistence target for the insights this skill encodes. The `claude_md:` schema validates the shape of that file's load-bearing content -- scope, insights, optional conventions and glossary. A minimal-valid instance block:
+
+```yaml
+claude_md:
+  scope:
+    directory: plugins/skills-kit
+    covers:
+      - skills-kit plugin conventions and persistent insights
+    excludes:
+      - per-skill SKILL.md content
+  insights:
+    - id: owner-doc-bidirectional-drift
+      keywords: [owner doc, schema drift, instance validation]
+      summary: Every registered schema declares an owner_doc that must carry a valid instance block; the corpus audit enforces bidirectional anti-drift.
+      detail: Schema changes break the owner doc's example block; owner-doc edits that drop or corrupt the block fail the audit on the next run.
+      origin: skills_kit_lib.checks.check_schema_owner_docs_validate, 2026-05-19.
+      added: "2026-05-19"
+```

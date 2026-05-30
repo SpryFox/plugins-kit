@@ -1,6 +1,8 @@
-"""Shared helpers for audit.py / classify.py / tag.py.
+"""Structural-shape detectors for SKILL.md body text.
 
-Stdlib-only. Heuristic detectors for SKILL.md structural shape.
+Stdlib-only heuristic detectors. Used by classify.py to score a SKILL.md
+against the canonical skill types, and by audit.py to flag mixed-type drift
+in skills that haven't adopted the YAML-contract layer.
 """
 
 import re
@@ -92,15 +94,7 @@ def has_step_tracker_invocation(body_text: str) -> bool:
     """Detect an explicit step-tracker invocation in the procedure body.
 
     Per Dec-8: the workflow-checklist conditional row is satisfied by EITHER a
-    paste-able `- [ ]` checklist OR an explicit step-tracker invocation. The
-    underlying goal is the discipline of explicit step-tracking; the markdown
-    syntax is one path, not the only one.
-
-    Recognized markers:
-    - TaskCreate / TaskWrite / TodoWrite tool invocations (the harness's own
-      step-tracker tools)
-    - explicit prose like "track steps in", "scratch file for steps",
-      "step tracker", "track progress in"
+    paste-able `- [ ]` checklist OR an explicit step-tracker invocation.
     """
     if re.search(r"\b(TaskCreate|TaskWrite|TodoWrite)\b", body_text):
         return True
@@ -171,17 +165,7 @@ def is_user_only(fm) -> bool:
 def type_signals(body_text: str, fm=None) -> dict:
     """Score each canonical skill type based on structural markers in the body.
 
-    Returns a dict mapping each of the five canonical type names to an integer
-    score. Higher = more evidence the skill is that type.
-
-    Heuristic operates on body with fenced code blocks stripped. Code blocks
-    (yaml, json, python) are structured reference data for machine comprehension
-    and do not signal type by their internal content. Presence of a YAML block
-    is itself a reference-content signal (separate from its contents).
-
-    If frontmatter is provided, user-only skills (disable-model-invocation: true)
-    receive a strong technique-skill signal even when their body has no ordered
-    steps -- the technique is the slash-command itself.
+    Returns a dict mapping canonical type names to integer scores.
     """
     narrative = strip_code_fences(body_text)
     scores = {t: 0 for t in CANONICAL_TYPES}
@@ -227,9 +211,7 @@ def type_signals(body_text: str, fm=None) -> dict:
     if has_companion_declaration(narrative):
         scores["domain-skill"] += 2
 
-    # capability signals (conservative; the YAML root is the deterministic
-    # signal -- false positives here are worse than missing the type, since
-    # most legacy skills use other markers)
+    # capability signals
     if re.search(r"\bwraps?\s+(?:the\s+)?(?:\w+\s+){0,3}(?:tool|server|api|service|ide|framework|cli)\b",
                  narrative, re.IGNORECASE):
         scores["capability-skill"] += 2

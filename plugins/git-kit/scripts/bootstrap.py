@@ -17,14 +17,36 @@ import shutil
 import subprocess
 from pathlib import Path
 
+try:
+    # bootstrap_lib is installed in this plugin's venv; on a clean install
+    # the very first session may run this script before bootstrap_lib is
+    # importable. Fall back to shutil.which in that case.
+    from bootstrap_lib import tool_paths
+except ImportError:
+    tool_paths = None
+
 
 GH_AUTH_LOGIN_CMD = "gh auth login --hostname github.com --git-protocol https --web"
 
 
+def _resolve_gh() -> str | None:
+    """Find the gh binary via tool_paths (preferred) or PATH (fallback).
+
+    Prefers the absolute path bootstrap recorded so we don't depend on the
+    inherited PATH being fresh. See
+    docs/planning/bootstrap/tool-resolution-redesign.md.
+    """
+    if tool_paths is not None:
+        recorded = tool_paths.resolve(tool_paths.canonical_data_dir(), "gh")
+        if recorded:
+            return recorded
+    return shutil.which("gh")
+
+
 def bootstrap(ctx) -> None:
-    gh = shutil.which("gh")
+    gh = _resolve_gh()
     if not gh:
-        ctx.log("gh: not found on PATH after install phase, skipping auth check")
+        ctx.log("gh: not found via tool_paths or PATH after install phase, skipping auth check")
         return
 
     auth_ok, auth_user = _check_auth(gh)

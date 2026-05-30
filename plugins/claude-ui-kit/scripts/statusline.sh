@@ -3,9 +3,13 @@ set -euo pipefail
 
 DATA=$(cat)
 
+# Prefer the absolute path bootstrap recorded; fall back to PATH lookup.
+# See docs/planning/bootstrap/tool-resolution-redesign.md.
+JQ="${BOOTSTRAP_BIN_JQ:-jq}"
+
 # Extract fields via single jq call
 IFS=$'\t' read -r MODEL MODEL_ID DIR PCT SESS WEEK SESS_RESET WEEK_RESET < <(
-    echo "$DATA" | jq -r '[
+    echo "$DATA" | "$JQ" -r '[
         (.model.display_name // "Claude"),
         (try (.model.id // "unknown") catch "unknown"),
         (.cwd // "~" | split("/") | last),
@@ -28,7 +32,7 @@ IFS=$'\t' read -r MODEL MODEL_ID DIR PCT SESS WEEK SESS_RESET WEEK_RESET < <(
 
 # System message: most recently modified file in <cwd>/.local-data/claude-ui-kit/
 # matching systemmessage.*.txt. First line, capped at 20 chars.
-CWD=$(echo "$DATA" | jq -r '.cwd // ""')
+CWD=$(echo "$DATA" | "$JQ" -r '.cwd // ""')
 SYSMSG=""
 if [ -n "$CWD" ] && [ -d "$CWD/.local-data/claude-ui-kit" ]; then
     LATEST=""

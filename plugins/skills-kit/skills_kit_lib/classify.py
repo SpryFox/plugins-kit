@@ -1,25 +1,20 @@
-#!/usr/bin/env python3
-"""classify.py -- infer a SKILL.md's type from its YAML contract or content shape.
+"""classify -- infer a SKILL.md's type from its YAML contract or content shape.
 
 Usage:
-    python classify.py <path-to-SKILL.md>
-    python classify.py <path-to-SKILL.md> --json
+    python -m skills_kit_lib.classify <path-to-SKILL.md>
+    python -m skills_kit_lib.classify <path-to-SKILL.md> --json
 
 Two-path classification:
 
 1. YAML-contract path (preferred): if the SKILL.md carries a fenced YAML
-   block with a recognized contract root key (reference_skill,
-   pattern_skill, technique_skill, discipline_skill, domain_skill), that
-   root key is the deterministic type. Multiple roots = mixed-type.
-   Frontmatter `skill-type:` is checked for agreement.
+   block with a recognized contract root key, that root key is the
+   deterministic type. Multiple roots = mixed-type.
 
 2. Heuristic fallback: for legacy / not-yet-migrated skills without a
    YAML contract block, score the body against each canonical type.
-   Highest score wins; multiple high scorers = mixed-type.
-
-Useful for organic skills that haven't adopted the framework yet.
-The agent reviews the suggestion and applies it via tag.py.
 """
+
+from __future__ import annotations
 
 import argparse
 import json
@@ -27,7 +22,7 @@ import re
 import sys
 from pathlib import Path
 
-from _shared import parse_frontmatter, parse_body, type_signals
+from .markdown_heuristics import parse_body, parse_frontmatter, type_signals
 
 try:
     import yaml as _pyyaml
@@ -37,7 +32,7 @@ except ImportError:
     HAVE_YAML = False
 
 
-MIXED_THRESHOLD = 2  # number of types scoring this high or above => flag mixed
+MIXED_THRESHOLD = 2
 
 CONTRACT_ROOT_TO_TYPE = {
     "reference_skill": "reference-skill",
@@ -46,6 +41,7 @@ CONTRACT_ROOT_TO_TYPE = {
     "discipline_skill": "discipline-skill",
     "domain_skill": "domain-skill",
     "capability_skill": "capability-skill",
+    "audit_skill": "audit-skill",
 }
 
 _YAML_BLOCK_RE = re.compile(r"^```ya?ml\s*\n(.*?)^```", re.MULTILINE | re.DOTALL)
@@ -53,11 +49,9 @@ _YAML_BLOCK_RE = re.compile(r"^```ya?ml\s*\n(.*?)^```", re.MULTILINE | re.DOTALL
 
 def extract_yaml_roots(body_text: str) -> list[str]:
     """Return the list of canonical contract root keys present in any fenced
-    YAML block in the body. Empty list when no YAML block parses or no
-    recognized root key is present.
+    YAML block in the body.
     """
     if not HAVE_YAML:
-        # Regex fallback: detect contract root keys without parsing
         roots: list[str] = []
         for m in _YAML_BLOCK_RE.finditer(body_text):
             text = m.group(1)
@@ -198,7 +192,7 @@ def render_text(report: dict) -> str:
     return "\n".join(lines)
 
 
-def main(argv: list[str]) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Classify a SKILL.md by inferring its type from content shape.",
     )

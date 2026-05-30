@@ -2,7 +2,7 @@
 
 Per-directory insight repository for the skill-authoring domain-skill: the canonical contract surface (glossary + framework), the audit-driven evolution that shaped schema v1, and the operating norms a future agent picks up cold. The YAML block below is the load-bearing surface; this file is not narrative.
 
-Insights here capture decision provenance -- the audits that reshaped the framework -- not the canonical content itself. The contract surface lives in `references/glossary.md`, `references/framework.md`, and `scripts/schemas.py` (SSOT); this file records *why those contracts look the way they do* so a future agent can rewind the reasoning.
+Insights here capture decision provenance -- the audits that reshaped the framework -- not the canonical content itself. The contract surface lives in `references/glossary.md`, `references/framework.md`, and `skills_kit_lib/schema_registry.py` (SSOT); this file records *why those contracts look the way they do* so a future agent can rewind the reasoning.
 
 **Phase / finding identifier legend.** Provenance fields below cite project-side history markers. They are decision-log breadcrumbs, not active references:
 
@@ -24,7 +24,7 @@ claude_md:
       - form-choice in practice on the framework's own content
       - SSOT discipline between glossary, framework, schemas, and the scripts directory
     excludes:
-      - validator / audit / classify / tag script internals (covered by scripts/CLAUDE.md)
+      - validator / audit / classify / tag script internals (covered by skills_kit_lib/CLAUDE.md)
       - per-plugin-dependency posture (covered by plugins-kit/CLAUDE.md and plugins/skills-kit/CLAUDE.md)
       - per-skill SKILL.md insights for other skills
   insights:
@@ -124,13 +124,13 @@ claude_md:
         discipline-skills). Unknown keys not in the forbidden list pass silently.
 
         Codified in: framework.md "Schemas are floors, not ceilings" section;
-        schemas.py module docstring; scripts/CLAUDE.md insight extra_keys_allowed
+        schemas.py module docstring; skills_kit_lib/CLAUDE.md insight extra_keys_allowed
         which is the validator-side detail of the same decision. yaml-refactor-design-spec
         Q3 marked resolved.
       origin: |
         Audit-prep work unit 2026-04-29. Surface: yaml-refactor-design-spec Open
         Questions section 3. Finding: the validator already permitted unknown keys
-        (extra_keys_allowed insight in scripts/CLAUDE.md); the framework documents
+        (extra_keys_allowed insight in skills_kit_lib/CLAUDE.md); the framework documents
         needed to make this an explicit principle rather than an implementation
         accident. Decision recorded as Dec-3 in the project's lessons-learned log;
         PR #12 landed the documentation.
@@ -170,7 +170,7 @@ claude_md:
         value propositions on top of the embodiment-closure gap fixes; anti_patterns:
         as a first-class field was one of the four. Finding: anti-patterns lists were
         already a documented schemas-are-floors example (in framework.md and
-        scripts/CLAUDE.md), but unstandardized; promoting to a typed shape benefits
+        skills_kit_lib/CLAUDE.md), but unstandardized; promoting to a typed shape benefits
         consistency across plugins-kit skills.
       added: "2026-04-30"
     - id: dec_5_hook_killed_keyword_surface_retained
@@ -644,7 +644,7 @@ claude_md:
         - schemas authoritative
         - markdown table review
         - divergence rule
-      summary: Vocabulary lives in glossary.md, contracts in framework.md, machine-readable schemas in scripts/schemas.py. Schemas win on divergence with framework.md tables; framework.md tables stay for human review.
+      summary: Vocabulary lives in glossary.md, contracts in framework.md, machine-readable schemas in skills_kit_lib/schema_registry.py. Schemas win on divergence with framework.md tables; framework.md tables stay for human review.
       detail: |
         The three artifacts have different jobs and one canonical owner per fact:
         - glossary.md owns vocabulary (terms, principles, patterns, type names,
@@ -652,7 +652,7 @@ claude_md:
         - framework.md owns contracts (per-type required/conditional/prohibited rows,
           description requirements, content-form choice, schemas-as-floors section).
           The markdown contract tables are kept for human review clarity.
-        - scripts/schemas.py owns the machine-readable contract. When schemas.py and
+        - skills_kit_lib/schema_registry.py owns the machine-readable contract. When schemas.py and
           framework.md tables diverge, schemas.py wins. Framework tables get updated
           to match; the schema does not get loosened to match an out-of-date table.
 
@@ -692,7 +692,7 @@ claude_md:
         audit-driven decisions, not theoretical ones).
       added: "2026-04-28"
   conventions:
-    - rule: When changing a schema in scripts/schemas.py, update framework.md table rows in the same change so the human-review surface stays in sync.
+    - rule: When changing a schema in skills_kit_lib/schema_registry.py, update framework.md table rows in the same change so the human-review surface stays in sync.
       keywords:
         - schema change
         - framework sync

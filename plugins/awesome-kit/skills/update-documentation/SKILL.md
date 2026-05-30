@@ -2,7 +2,7 @@
 _schema_version: 1
 name: update-documentation
 author: christina
-description: End-of-session documentation review - evaluates session work and recommends documentation updates
+description: Use when ending a session to review work and recommend doc updates to CLAUDE.md, skills, and reference docs. Do NOT use for new skills or one-off notes.
 activation_contexts:
   - "update documentation based on session"
   - "end of session documentation review"

@@ -278,6 +278,31 @@ Worked example: a tool-wrapper skill for a shell language with quoting gotchas. 
 
 Counter-worked-example: a tool-wrapper skill layering audit (April 2026) found 5 of 7 SKILL.md gotchas were also common across most sessions outside that tool's domain and should have been in CLAUDE.md (L1) -- frequency criterion fired and trigger-relevance did not. The audit surfaced that the framework named the levels but did not articulate the visibility-decision criterion at the example/anti-pattern grain; this section closes that gap.
 
+## Portable typed units
+
+A *typed unit* is a top-level YAML key with a registered schema. Skill-type units (`reference_skill`, `pattern_skill`, `technique_skill`, `discipline_skill`, `domain_skill`, `capability_skill`, `audit_skill`) are the per-skill contracts. *Portable typed units* are non-skill-type units that may appear in any of three layouts:
+
+- as a sub-field of a skill-type unit (the original convention)
+- as their own top-level unit in a separate fenced yaml block
+- as one of multiple top-level keys sharing a fenced yaml block
+
+All three are semantically equivalent; the schema validates each unit independently against its registered shape. Layout is the author's choice.
+
+Today's portable unit registry:
+
+| Unit root | Schema | Notes |
+|---|---|---|
+| `references` | `REFERENCES_SCHEMA` (list of `{id, path, keywords, summary}`) | May appear as `reference_skill.references` (nested) OR as a top-level `references:` block. Both validate. Used by reference-skill, domain-skill, capability-skill, and any document that wants a structured pointer list. |
+| `facts` | `FACTS_SCHEMA` (list of fact records sharing `FACT_ITEM_RULE`) | May appear as `reference_skill.facts` (nested) OR as a top-level `facts:` block (or both -- the audit unions all sources). Cross-rules (≥1 fact carries gotchas, ≥1 fact carries example, ≥1 fact exists somewhere) are enforced at audit time across the union, not per-source. Used by reference-skill; permitted in other documents that want fact-shaped content. |
+
+**Mixed-type drift** detection fires only on multiple skill-type roots across a document. Portable units coexist freely with any skill-type unit.
+
+**Backward compatibility.** A skill that keeps `references:` nested inside its skill-type unit continues to validate without change. Migration to a separate block is optional, never required.
+
+**Cross-block validation.** The audit walker collects every recognized typed unit across every fenced yaml block in a document and validates each. The walker does not partition validation by block; every unit in every block is in scope.
+
+See `/skills-kit:content-authoring`'s `typed_unit_composition` fact for the design rationale and worked encoding examples.
+
 ## Type contracts
 
 A skill claiming a type must satisfy the **required** rows and the
@@ -292,6 +317,7 @@ Tables are kept for human review; the canonical machine-readable contract is in 
 |---|---|
 | **Required blocks** | SKILL.md file with frontmatter and trigger; >=1 example; >=1 gotcha |
 | **Required patterns** | activation metadata, exclusion clause, in-skill examples, known gotchas, context efficiency |
+| **Optional fact fields** | `category:` -- an optional cluster label per fact (string). When facts are ordered by category, a flat `facts:` list reads as conceptually grouped without requiring a separate `groupings:` block. The `groupings:` top-level block remains available for skills that prefer the macro-cluster shape with per-cluster keywords. |
 | **Conditionally required patterns** | progressive disclosure -- CONSIDERED if SKILL.md body exceeds 500 lines or 3000 tokens (criterion: line/token count); REQUIRED only if a CRP-passing decomposition exists (sections serve different reading tasks). If no decomposition passes CRP, keep the larger SKILL.md rather than create a stub-plus-always-co-loaded reference; domain-specific organization -- IF reference content covers more than one mutually-exclusive sub-domain (criterion: are sub-domains independently loadable without cross-references) |
 | **Prohibited patterns** | adversarial pressure testing, rule + counter pairs, workflow checklists |
 | **Audit** | Drop a fresh agent into a topic the skill covers. Does it retrieve and apply the right fact? Are gotchas current? |
@@ -385,3 +411,220 @@ folder with friends.
 | **Audit** | Does a fresh agent dropped into the domain (a) operate fluently in vocabulary and conventions without re-orientation, (b) find and load the right member skill when a specific trigger fires, (c) recognize the boundary between this domain and its declared companions? Is the index complete relative to the actual member set on disk? |
 
 Examples: `/ue-python-api` (plugins-kit) -- Unreal Editor automation domain with its own vocabulary, scripts, and reference set, paired with the `unreal-kit-a` agent.
+
+## Instance examples
+
+Minimal-valid instance blocks for the typed-unit schemas this document owns. Each block is the smallest legal instance of its root key: required fields only, list-length minimums met, no forbidden keys. The corpus audit (`check_schema_owner_docs_validate`) validates each block on every run, so these examples cannot silently drift from the schema.
+
+Portable unit -- `references:` (a Conditional Loading entry list):
+
+```yaml
+references:
+  - id: framework-doc
+    path: skills/skill-authoring/references/framework.md
+    keywords: [framework, contracts, type definitions]
+    summary: Canonical per-type contracts for the skill-types framework.
+```
+
+Portable unit -- `facts:` (a flat list of reference-skill facts):
+
+```yaml
+facts:
+  - id: schemas-are-floors
+    summary: Per-type schemas declare the required minimum, not a ceiling.
+    keywords: [schema floor, required minimum, extras allowed]
+    detail: Authors may add load-bearing structured keys beyond what the schema enumerates; the schema enforces the floor.
+```
+
+Skill-type -- `reference_skill:` (minimal one-fact reference):
+
+```yaml
+reference_skill:
+  identity: Reference skill that catalogs framework contracts for chat-time retrieval.
+  scope:
+    covers: [framework facts retrieval]
+    excludes: [authoring procedure, audit enforcement]
+  facts:
+    - id: scope-block-shape
+      summary: Every skill carries a covers/excludes scope at the root of its type unit.
+      keywords: [scope block, covers list, excludes list]
+      detail: Both covers and excludes are non-empty lists; the exclusion clause is materialized in YAML, not implied in prose.
+```
+
+Skill-type -- `pattern_skill:` (one pattern with required sub-records):
+
+```yaml
+pattern_skill:
+  identity: Pattern skill that names the structured-extras-over-prose recognition.
+  scope:
+    covers: [recognition of where to extract structure from prose]
+    excludes: [step-by-step authoring procedure]
+  patterns:
+    - id: structure-asserts
+      name: Containment-asserts-membership
+      keywords: [structured records, list of typed records, implicit assertion]
+      problem: A bullet list of items asserts nothing about their kind; a list of typed records asserts every entry is that kind.
+      mechanic: Promote a recurring structured extension to a first-class optional field with a known record shape.
+      why: The record shape itself carries the cross-item invariant the prose otherwise has to state and the audit otherwise has to infer.
+      apply_when:
+        - signal: A recurring extension uses the same key set across many skills.
+          example: Three skills carry an ad-hoc anti_patterns bullet list with the same fields.
+      do_not_apply_when:
+        - signal: The extension is one-off and the field set is unstable.
+          counter_example: A single skill carries a one-time troubleshooting note with bespoke fields.
+      examples:
+        - title: Anti-pattern promotion
+          before: Bullet list of mixed-shape items inside a technique skill.
+          after: First-class optional anti_patterns list with a fixed record shape on technique-skill and discipline-skill.
+```
+
+Skill-type -- `technique_skill:` (one technique, ordered steps, required gotcha):
+
+```yaml
+technique_skill:
+  identity: Technique skill that procedurally authors a minimal-valid instance block.
+  scope:
+    covers: [authoring a passing instance block for a schema]
+    excludes: [designing new schemas, audit corpus operations]
+  techniques:
+    - id: author-instance
+      name: Author a minimal-valid instance block
+      keywords: [instance block, minimal valid, schema fixture]
+      goal: Produce a fenced YAML block that validates against its target schema and passes the corpus audit.
+      steps:
+        - n: 1
+          action: Read the target schema and list required keys and list-length minimums.
+        - n: 2
+          action: Draft the smallest instance that satisfies every required key.
+        - n: 3
+          action: Run the corpus audit and confirm a pass status.
+      gotchas:
+        - The keywords list must hold at least three entries on every load-bearing record.
+```
+
+Skill-type -- `discipline_skill:` (rule + counter + pressure_test):
+
+```yaml
+discipline_skill:
+  identity: Discipline skill that enforces the keywords-cluster floor on every load-bearing record.
+  scope:
+    covers: [keywords-cluster authoring discipline]
+    excludes: [other schema-floor rules, audit reporting]
+  target:
+    type: skill
+    ref: skills/skill-authoring/SKILL.md
+  rules:
+    - id: keywords-min-three
+      keywords: [keywords cluster, minimum three, routing floor]
+      statement: Every load-bearing record carries a keywords cluster of at least three entries.
+      why: The chat-term router cannot disambiguate records whose keyword surface is too thin; below three entries the routing precision collapses.
+      counters:
+        - excuse: This record is small so two keywords are enough.
+          reality: Routing precision is set by surface area not record size; small records still need three entries.
+          observed_in: baseline-2026-04-28
+      red_flags:
+        - A keywords list shorter than three entries.
+  pressure_test:
+    baseline: A reference-skill draft with several fact records carrying two-entry keywords lists.
+    green: Every record now carries at least three keywords and the audit reports a clean pass.
+    refactor:
+      - loophole: Authors split one record into two to dodge the floor on each.
+        closed_by: The floor applies per record after split; the audit re-runs on the new records.
+```
+
+Skill-type -- `domain_skill:` (container with required floor blocks):
+
+```yaml
+domain_skill:
+  identity: Domain skill that owns the framework's authoring vocabulary and its reference index.
+  companions:
+    siblings: []
+    note: No sibling domains at this layer.
+  scope:
+    covers: [framework vocabulary, type contracts index]
+    excludes: [content-authoring patterns, runtime audit operations]
+  orientation:
+    summary: This domain orients a fresh agent in the skill-types framework's vocabulary and routes them to the right per-type contract.
+    behavioral_guardrails:
+      - Read the glossary before authoring; type contracts reference glossary terms without redefining them.
+  index:
+    references:
+      - id: framework-doc
+        path: skills/skill-authoring/references/framework.md
+        keywords: [framework, type contracts, schemas as floors]
+        summary: Canonical per-type contracts and the schemas-as-floors stance.
+```
+
+Skill-type -- `capability_skill:` (external capability + layering + capability record):
+
+```yaml
+capability_skill:
+  identity: Capability skill that wraps the corpus audit CLI for skill-types validation.
+  scope:
+    covers: [running the corpus audit, reading its rendered report]
+    excludes: [authoring new schemas, modifying owner docs]
+  external_capability:
+    kind: tool
+    name: skills-kit corpus audit
+    description: The skills_kit_lib check that validates schema owner docs against their declared schemas.
+  layering:
+    claude_md: []
+    skill_md:
+      - The capability surface for invoking the audit and reading its output.
+    references: []
+  capabilities:
+    - id: run-owner-doc-audit
+      keywords: [owner doc audit, schema validation, corpus check]
+      user_objective: Confirm every registered schema has a valid instance block in its owner doc.
+      operation: Invoke check_schema_owner_docs_validate and render its results.
+  gotchas:
+    - The audit must run from the skills-kit plugin root so the relative owner_doc paths resolve.
+```
+
+Skill-type -- `audit_skill:` (subject + criteria + taxonomy + procedures + remediations):
+
+```yaml
+audit_skill:
+  identity: Audit skill that validates owner-doc instance blocks against their schemas across the corpus.
+  scope:
+    covers: [owner-doc instance validation across registered schemas]
+    excludes: [single-skill SKILL.md audits, content-authoring audits]
+  subject:
+    what: All schemas registered in skills_kit_lib.schema_registry that declare an owner_doc.
+    subject_type: corpus
+  criteria:
+    - id: instance-present
+      name: Owner doc contains a root-key instance block
+      keywords: [instance present, missing instance, root key block]
+      summary: Every registered schema's owner doc carries at least one fenced YAML block whose root key matches the schema.
+      severity: FAIL
+      detail: The walker collects every recognized typed unit in the document; absence of the schema's root key triggers missing-instance.
+  taxonomy:
+    - id: missing-instance
+      name: Owner doc lacks the root-key block
+      keywords: [missing instance, no root block, schema unanchored]
+      detection_signal: The walker returns no units with root equal to the schema's root key.
+      default_remediation: Author a minimal-valid instance block in the owner doc and re-run the audit.
+      bucket: AUTO
+  procedures:
+    - id: run-audit
+      name: Run the owner-doc validation pass
+      keywords: [run audit, validation pass, owner doc check]
+      goal: Produce a per-schema pass/fail report across the corpus.
+      steps:
+        - n: 1
+          action: Invoke check_schema_owner_docs_validate from skills_kit_lib.checks.
+        - n: 2
+          action: Render the result list via render_owner_doc_results and inspect each line.
+      gotchas:
+        - Run from the plugin root so plugin-root-relative owner_doc paths resolve.
+  remediations:
+    auto:
+      - category: missing-instance
+        procedure: run-audit
+    discuss: []
+    special:
+      procedure: run-audit
+  gotchas:
+    - A schema with an owner_doc value that does not point at an existing file produces missing-file, not missing-instance.
+```

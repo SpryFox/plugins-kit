@@ -1,23 +1,13 @@
-"""_corpus.py -- shared discovery of the SKILL.md corpus.
+"""SKILL.md corpus discovery across user/project/plugin tiers.
 
 Single source of truth for "what skills exist in this session's universe?",
-consumed by both renderers in this plugin:
-
-    skills/skill-audit/scripts/report.py              (dispatch + roster)
-    skills/skill-audit/scripts/skill_hierarchy_report.py  (HTML hierarchy)
+consumed by skill-audit's report.py and skill_hierarchy_report.py.
 
 The corpus has three tiers:
-
     - User skills    ~/.claude/skills/**/SKILL.md
     - Project skills <project_root>/.claude/skills/**/SKILL.md
     - Plugin skills  per ~/.claude/plugins/installed_plugins.json,
                      one entry per active install
-
-Each SKILL.md is parsed for its YAML frontmatter and (optionally) the first
-fenced YAML block in its body -- the type contract. The latter is what lets
-us detect skill-type even when the frontmatter omits the `skill-type:` tag.
-
-Stdlib + PyYAML (a skills-kit dependency).
 """
 
 from __future__ import annotations
@@ -29,15 +19,12 @@ from pathlib import Path
 
 import yaml
 
+from .schema_registry import SKILL_TYPE_ROOTS
 
-CONTRACT_ROOTS = (
-    "reference_skill",
-    "pattern_skill",
-    "technique_skill",
-    "discipline_skill",
-    "domain_skill",
-    "capability_skill",
-)
+
+# Contract roots for body-type detection -- excludes audit_skill historically
+# (older callers expected this slimmer set); align with skill registry now.
+CONTRACT_ROOTS = SKILL_TYPE_ROOTS
 
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?\n)^---\s*\n", re.DOTALL | re.MULTILINE)
 YAML_FENCE_RE = re.compile(r"```yaml\s*\n(.*?)```", re.DOTALL)
@@ -48,9 +35,9 @@ class SkillRecord:
     """One SKILL.md, parsed."""
 
     path: Path
-    skill_name: str  # directory name (the skill's slug on disk)
+    skill_name: str
     frontmatter: dict = field(default_factory=dict)
-    body_contract: dict | None = None  # first fenced YAML block (if present)
+    body_contract: dict | None = None
 
 
 @dataclass
@@ -79,11 +66,6 @@ class SkillCorpus:
             + len(self.project)
             + sum(len(p.skills) for p in self.plugins)
         )
-
-
-# ----------------------------------------------------------------------------
-# Parsing
-# ----------------------------------------------------------------------------
 
 
 def parse_skill_md(path: Path) -> SkillRecord | None:
@@ -123,21 +105,12 @@ def parse_skill_md(path: Path) -> SkillRecord | None:
     )
 
 
-# ----------------------------------------------------------------------------
-# Skill-type detection
-# ----------------------------------------------------------------------------
-
-
 def detect_skill_type(record: SkillRecord) -> tuple[str, str]:
     """Return (skill_type, variant).
 
     skill_type: a canonical skill-type slug (`reference-skill`, etc.), or
                 `(unknown)` when neither frontmatter nor body contract declares one.
     variant:    `user-only` / `auto` for technique-skill, else empty string.
-
-    Detection order: frontmatter `skill-type:` first, then the body contract's
-    root key. The technique-skill variant comes from
-    `technique_skill.trigger_model` in the body contract.
     """
     fm = record.frontmatter or {}
     body = record.body_contract or {}
@@ -164,18 +137,7 @@ def detect_skill_type(record: SkillRecord) -> tuple[str, str]:
     return skill_type, variant
 
 
-# ----------------------------------------------------------------------------
-# Discovery
-# ----------------------------------------------------------------------------
-
-
 def _find_skill_mds(root: Path) -> list[Path]:
-    """Return every SKILL.md under `root`.
-
-    Prefers the flat layout (`root/<skill>/SKILL.md`) and falls back to a
-    recursive walk when that yields nothing. Mirrors the heuristic used by
-    skill_hierarchy_report.py historically.
-    """
     if not root.is_dir():
         return []
     flat = sorted(root.glob("*/SKILL.md"))
@@ -199,11 +161,7 @@ def discover_corpus(
     user_skills_root: Path | None = None,
     installed_plugins_json: Path | None = None,
 ) -> SkillCorpus:
-    """Walk all three tiers and return a single SkillCorpus.
-
-    Arguments are optional; any omitted argument falls back to the
-    Claude Code-standard install layout.
-    """
+    """Walk all three tiers and return a single SkillCorpus."""
     home = home or Path.home()
     user_skills_root = user_skills_root or (home / ".claude" / "skills")
     installed_plugins_json = (

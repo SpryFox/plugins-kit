@@ -1,27 +1,23 @@
-#!/usr/bin/env python3
-"""tag.py -- write a `skill-type:` value into SKILL.md frontmatter.
+"""tag -- write a `skill-type:` value into SKILL.md frontmatter.
 
 Usage:
-    python tag.py <path-to-SKILL.md> <skill-type>
-    python tag.py <path-to-SKILL.md> <skill-type> --check
+    python -m skills_kit_lib.tag <path-to-SKILL.md> <skill-type>
+    python -m skills_kit_lib.tag <path-to-SKILL.md> <skill-type> --check
 
-Idempotent. If the file already has the requested `skill-type:` value,
-the script is a no-op. If the file has a different `skill-type:` value,
-the script refuses unless --force is passed.
-
-Skills without YAML frontmatter are flagged, never patched. Inventing
-frontmatter would silently regularize a skill the framework expects to
-treat as flagged.
+Idempotent. Refuses to overwrite an existing value without --force.
+Skills without YAML frontmatter are flagged, never patched.
 """
+
+from __future__ import annotations
 
 import argparse
 import re
 import sys
 from pathlib import Path
 
-from _shared import (
-    FRONTMATTER_RE,
+from .markdown_heuristics import (
     CANONICAL_TYPES,
+    FRONTMATTER_RE,
     parse_frontmatter,
 )
 
@@ -43,7 +39,7 @@ def tag(skill_md_path: Path, new_type: str, force: bool, check_only: bool) -> di
     if fm is None:
         return {
             "ok": False,
-            "error": "no YAML frontmatter; flagged for manual authoring (tag.py never invents frontmatter)",
+            "error": "no YAML frontmatter; flagged for manual authoring (tag never invents frontmatter)",
             "action": "flag",
         }
 
@@ -84,7 +80,7 @@ def tag(skill_md_path: Path, new_type: str, force: bool, check_only: bool) -> di
     }
 
 
-def main(argv: list[str]) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Tag a SKILL.md with a skill-type advisory frontmatter value.",
     )

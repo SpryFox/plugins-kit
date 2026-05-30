@@ -183,7 +183,7 @@ Audit scaffolding produces findings; viewer scaffolding produces representations
 
 ## Extending the framework
 
-Treat additions as encoding decisions per `awesome-kit:knowledge-encoding`. Before adding a term, verify it is genuinely shared across audits (or about to be); if it lives in only one skill, it stays in that skill, not here. The framework's value is the canonical reference; expanding it with audit-specific concepts defeats that.
+Treat additions as encoding decisions per `skills-kit:knowledge-encoding`. Before adding a term, verify it is genuinely shared across audits (or about to be); if it lives in only one skill, it stays in that skill, not here. The framework's value is the canonical reference; expanding it with audit-specific concepts defeats that.
 
 Mechanical extension paths:
 
