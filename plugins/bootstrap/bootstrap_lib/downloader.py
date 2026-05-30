@@ -27,6 +27,12 @@ class DownloadResult(NamedTuple):
     message: str          # human-readable status/error
 
 
+class FontDownloadResult(NamedTuple):
+    ok: bool
+    files: list          # absolute paths of font files extracted on success
+    message: str         # human-readable status/error
+
+
 def install_dir():
     """The canonical install directory for bootstrap-managed binaries."""
     return os.path.expanduser("~/.local/bin")
@@ -165,3 +171,98 @@ def download_and_install(
             return DownloadResult(False, None, f"install to {final_path} failed: {e}")
 
     return DownloadResult(True, final_path, f"installed at {final_path}")
+
+
+def _extract_fonts_from_archive(archive_path, archive_type, dest_dir, suffixes):
+    """Extract every archive member whose basename ends with one of `suffixes`
+    into `dest_dir` (flattened to basename). Returns the list of written paths.
+
+    Unlike _extract_from_archive (single named member), this pulls a whole font
+    family out of one archive. Members are written by basename only, so nested
+    archive paths can't escape dest_dir (path-traversal safe).
+    """
+    written = []
+    suffixes = tuple(s.lower() for s in suffixes)
+
+    def _match(name):
+        base = os.path.basename(name)
+        return bool(base) and base.lower().endswith(suffixes)
+
+    if archive_type == "zip":
+        with zipfile.ZipFile(archive_path) as z:
+            for info in z.infolist():
+                if info.is_dir() or not _match(info.filename):
+                    continue
+                out_path = os.path.join(dest_dir, os.path.basename(info.filename))
+                with z.open(info) as src, open(out_path, "wb") as out:
+                    shutil.copyfileobj(src, out)
+                written.append(out_path)
+        return written
+
+    if archive_type in ("tar", "tar.gz", "tar.xz"):
+        mode = {"tar": "r:", "tar.gz": "r:gz", "tar.xz": "r:xz"}[archive_type]
+        with tarfile.open(archive_path, mode) as t:
+            for member in t.getmembers():
+                if not member.isfile() or not _match(member.name):
+                    continue
+                extracted = t.extractfile(member)
+                if extracted is None:
+                    continue
+                out_path = os.path.join(dest_dir, os.path.basename(member.name))
+                with extracted as src, open(out_path, "wb") as out:
+                    shutil.copyfileobj(src, out)
+                written.append(out_path)
+        return written
+
+    raise ValueError(f"unsupported archive type: {archive_type!r}")
+
+
+def download_fonts(
+    url: str,
+    sha256: str,
+    dest_dir: str,
+    *,
+    archive_type: Optional[str] = None,
+    suffixes=(".ttf", ".otf"),
+) -> FontDownloadResult:
+    """Fetch a font archive at `url`, verify sha256, and extract every font
+    file (by `suffixes`) into `dest_dir`.
+
+    Fonts ship as archives of many faces (Regular, Bold, Italic, …), so this
+    extracts the whole family rather than a single named member. `dest_dir` is
+    created if missing; existing files with the same basename are overwritten.
+
+    On success: (ok=True, files=[<abs paths>], message=...).
+    On failure: (ok=False, files=[], message=<reason>). Never raises for
+    "expected" failures (network, hash mismatch, no matching members).
+    """
+    os.makedirs(dest_dir, exist_ok=True)
+    detected_type = _detect_archive_type(url, archive_type)
+    if detected_type is None:
+        return FontDownloadResult(False, [], f"could not detect archive type from {url!r}")
+
+    with tempfile.TemporaryDirectory(prefix="bootstrap-font-") as tmp:
+        download_path = os.path.join(tmp, "download.bin")
+        try:
+            actual_hash = _fetch(url, download_path)
+        except Exception as e:
+            return FontDownloadResult(False, [], f"fetch failed: {e}")
+
+        if actual_hash.lower() != sha256.lower():
+            return FontDownloadResult(
+                False, [],
+                f"sha256 mismatch: expected {sha256}, got {actual_hash}",
+            )
+
+        try:
+            written = _extract_fonts_from_archive(download_path, detected_type, dest_dir, suffixes)
+        except Exception as e:
+            return FontDownloadResult(False, [], f"extract failed: {e}")
+
+    if not written:
+        return FontDownloadResult(
+            False, [],
+            f"no files matching {suffixes} found in archive",
+        )
+
+    return FontDownloadResult(True, written, f"extracted {len(written)} files to {dest_dir}")
