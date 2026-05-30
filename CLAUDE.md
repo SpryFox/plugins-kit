@@ -25,8 +25,7 @@ plugins-kit/                          # Marketplace root
       scripts/                        # Config setup
     p4-kit/                           # P4 multi-agent code review plugin (Claude subagents)
       .claude-plugin/plugin.json      # Plugin manifest
-      bootstrap.json                  # Bootstrap manifest (tools + project_config with autodetect)
-      custom_bootstrap.py             # project_config autodetect — discovers P4PORT/P4USER from `p4 set`
+      bootstrap.json                  # Bootstrap manifest (tools)
       scripts/prepare_review.py       # Diff + CLAUDE.md gathering (stdlib-only, called by skill)
       skills/p4-code-review/          # Multi-agent review skill (3 reviewers + per-issue validators)
     unreal-kit/                       # The UE plugin
@@ -143,11 +142,68 @@ After publish:
 
 Some plugins live on `dev` for in-development work and must not reach consumers until they are ready. Each such plugin sets `"published": false` in its `plugins/<name>/.claude-plugin/plugin.json`. The marketplace regenerator (`scripts/regen_marketplace.py`) filters those plugins out of `marketplace.json`, so they are excluded structurally — not by memory — even if their files land on master via a cherry-pick.
 
-When you see commits for a dev-only plugin in `git log origin/master..origin/dev`, branch from master, cherry-pick only the publish-ready commits, and leave the dev-only commits on `dev`. The regenerator is a backstop for the marketplace listing, not a substitute for picking the right commits to merge.
+**Current dev-only plugins** (the field, not this list, is load-bearing — this is just a human-readable inventory):
+
+- `agent-glue` — graph-orchestration kit, design + scaffolding phase. Heavy new Python deps (pydantic, jinja2, jsonschema), no `bootstrap.json` yet, no skills wired up. Tested locally via `--plugin-dir`.
+- `workflow-glue` — declarative front-end to the native Workflow tool. Authors `*.workflow.yaml`, compiles it to a native Workflow script the skill runs (compile-to-native; does not reimplement execution). Claude-only, tightly scoped. Deps: pyyaml only. Has `bootstrap.json` + a `workflow-glue` skill; tests in `tests/workflow-glue/`. Conceptually supersedes agent-glue's graph-system + claude-dispatch now that the Workflow tool exists.
+
+When you see commits for a dev-only plugin in `git log origin/master..origin/dev`, that's still gotcha 1 territory — branch from master, cherry-pick only the publish-ready commits, and leave the dev-only commits on `dev`. The regenerator is a backstop for the marketplace listing, not a substitute for picking the right commits to merge.
+
+### Pre-publish validation (default)
+
+**Default gate: before any publish, smoke-test the dev working copy with `claudx`.** `claudx` (defined in `~/.bashrc`) launches a `claude` session loading every `plugins/<name>` dir via one `--plugin-dir` each, so the session runs each plugin's skills/hooks/engine **code** straight from disk — no cache, no `installed_plugins.json` change, reverts on exit. Run it, exercise the changed surface (invoke the skill, trigger the hook, run the command), confirm it behaves, then publish.
+
+```bash
+claudx        # claude + --plugin-dir for every plugins-kit plugin (see ~/.bashrc)
+```
+
+**Known blind spot — manifest content.** Under `--plugin-dir`, the bootstrap engine still reads each plugin's `bootstrap.json` from its **cached** `installPath`, not from disk (insight `plugin_dir_doesnt_test_cross_plugin`). So `claudx` validates code paths but **not** new `bootstrap.json` content (added tools, `download:` recipes, `venv.check_imports`). When your change touches manifest content, escalate to **`claude-dev`** (also in `~/.bashrc`) — it uses `scripts/dev-tree.py` to repoint installPaths at the dev tree, so the engine loads `bootstrap.json` from disk too, then auto-restores normal cache mode on exit.
+
+| Change touches… | Default validator |
+|---|---|
+| skills / hooks / commands / engine code | `claudx` |
+| `bootstrap.json` / manifest content | `claude-dev` (dev-tree mode) |
+
+**Bypassable at your discretion.** This is a default, not a hard gate. Trivial changes — a version-only bump, a doc/CLAUDE.md edit, a single-file mechanical fix — don't need a smoke session; skip it and say so. An unambiguous publish go-signal does not silently waive validation, but you may explicitly bypass when the change can't plausibly break a runtime surface.
+
+### Safe-publish practices
+
+Publishing is the riskiest moment in this repo because it broadcasts to every consumer. Two failure modes have happened, both recoverable but visible (the retraction commits in `git log master` are the scars). Avoid them with these checks.
+
+**Gotcha 1: fast-forwarding dev → master sweeps unrelated commits.** `dev` typically contains in-flight work from other plugins. A fast-forward merge ships *everything* between `master` and `dev`, not just your feature. **Mandatory check before any dev → master merge:**
+
+```bash
+git fetch origin
+git log --oneline origin/master..origin/dev
+```
+
+If that list contains anything beyond the commits you intend to publish, **stop** — do not fast-forward. Pick a safe path instead:
+
+1. **Branch from master, cherry-pick, PR to master.** Cleanest when dev has unrelated WIP. `git checkout -b <feature> origin/master`, cherry-pick the feature commit(s), push, open a PR. Doesn't touch `dev`. After master merges, merge master back into dev to keep dev current.
+2. **Wait for the other dev work to ship first.** If those commits are nearly ready, finish their version bumps and publish them properly (every plugin you're shipping needs its own `plugin.json` + `marketplace.json` bump — without that, fresh installs silently diverge). Then publish your feature on top.
+3. **Squash-merge a feature branch.** Same as (1) but one squashed commit on master.
+
+Fast-forward `dev` → `master` is only safe when `git log origin/master..origin/dev` shows *exactly* the commits you intend to publish.
+
+**Gotcha 2: `git add <file>` sweeps pre-existing working-tree modifications.** If a tracked file already had uncommitted local edits and you touch it for your feature, `git add <file>` stages *all* the changes in that file, not just yours. The feature commit then ships unrelated WIP. **Mandatory check before any publish commit:**
+
+```bash
+git diff --staged
+```
+
+Read every line. If anything is unrelated to the feature, `git restore --staged <file>` and use `git add -p` (or `git stash` the WIP first) to stage only the intended hunks. Same discipline for untracked files — don't `git add .` from a dirty tree.
+
+**Gotcha 3: a botched publish burns the version number.** Cache entries on consumer machines key off `(plugin, version)`. If a bad version is pushed to master, retracting it doesn't evict caches that already pulled it — same version = same code, forever, from the cache's view. The fix is a patch-bump *past* the burned number (e.g. 0.11.0 broken → don't ship 0.11.1, jump to 0.12.0) so every consumer's cache invalidates cleanly. The 0.11.1 / `patch-bump 4 plugins to force-refresh post-retraction caches` commits on master are an example of this recovery pattern.
+
+**Gotcha 4: unauthorized publish.** A publish go-signal authorizes the full three-step flow (version bumps, push to dev, merge to master). It does **not** authorize sweeping in adjacent unrelated work just because it happens to be staged or sitting on `dev`. If your feature commit is clean but `dev` has other commits, that's gotcha 1 territory — branch from master. The publish authorization is scoped to the work the user actually approved.
+
+**Recovery: how to retract.** A bad publish on master is fixed forward, never with `push --force` to master. Push a follow-up commit that either (a) reverts the bad commit and patch-bumps the affected plugins past the burned version, or (b) re-implements correctly under a new version. Consumers with `autoUpdate: true` then refresh on their next session start. Never rewrite master history — other machines have already fetched it.
 
 **Why both files**: Claude Code uses the `marketplace.json` version to decide whether to fetch a new cache entry. If you only bump `plugin.json` but not `marketplace.json`, consumers won't see the update. The regenerator + a pre-commit hook (`scripts/pre-commit-version-check.sh`) keep them in sync automatically.
 
 **The cache keys on version** — same version = same code. The cache will NOT refresh without a version bump, even if you push new commits. Fresh installs between releases copy HEAD code under the old version string, creating **silent divergence** — two users on the "same version" with different code. The dev-branch strategy above prevents this. Never copy files directly into the plugin cache — always use this publish flow.
+
+**Manifest edits count as code edits.** Adding a tool to `bootstrap.json`, changing a `download:` recipe, bumping a `venv.check_imports` list — all need a version bump too. The engine reads each plugin's `bootstrap.json` from its cached `installPath`, so a manifest edit without a version bump is structurally invisible to consumers (see the `manifest_changes_need_version_bump` insight below).
 
 **Don't omit the version field** hoping for rolling updates. Claude Code substitutes a truncated git SHA, which becomes a static cache key at install time — identical behavior to a version string, with worse readability.
 
@@ -358,8 +414,44 @@ claude_md:
           macOS/Linux: ~/.claude/plugins/data/<marketplace>/<plugin>/.venv/bin/python
         The path does not change across plugin versions and resolves correctly from any cwd.
         Use it directly in SKILL.md examples instead of `uv run python`.
-      origin: Surfaced 2026-05-05 in unreal-kit fix-up-redirectors -- broke Phase 2 with ModuleNotFoundError: yaml. Fixed in 0.9.4.
+      origin: "Surfaced 2026-05-05 in unreal-kit fix-up-redirectors -- broke Phase 2 with ModuleNotFoundError: yaml. Fixed in 0.9.4."
       added: "2026-05-05"
+    - id: manifest_changes_need_version_bump
+      keywords: [bootstrap.json, manifest change, version bump, cache key, silent divergence, download recipe, dead config, install path, installPath]
+      summary: Edits to bootstrap.json (or any per-plugin manifest) need a version bump to reach consumers, same rule as code changes -- the engine reads each plugin's bootstrap.json from its cached installPath.
+      detail: |
+        The bootstrap engine's per-plugin loop reads `bootstrap.json` from the plugin's
+        `installPath` recorded in `~/.claude/plugins/installed_plugins.json`. That installPath
+        is the cache directory (`~/.claude/plugins/cache/<mkt>/<plugin>/<version>/`), keyed on
+        version. Adding a new tool, a `download:` block, a new venv import, etc. to bootstrap.json
+        without bumping the plugin version means consumers still see the OLD bootstrap.json
+        from their cache. The new manifest content is structurally invisible until a version
+        bump triggers a cache refresh. Same "burned version" failure mode as code changes
+        (CLAUDE.md gotcha 3). Surfaced when the tool-resolution redesign added jq's download
+        recipe to bootstrap.json on dev without bumping bootstrap's version -- master and dev
+        both showed v0.10.14 with completely different bootstrap.json content. Recovery: bump
+        to a fresh version (e.g. 0.10.14 -> 0.11.0) and republish.
+      origin: "Surfaced 2026-05-27 while smoke-testing the tool-resolution redesign via claudx (--plugin-dir all dev plugins). jq/gh never got download-recorded because the engine was reading the cached 0.10.14 bootstrap.json which had no download: block."
+      added: "2026-05-27"
+    - id: plugin_dir_doesnt_test_cross_plugin
+      keywords: [--plugin-dir, claudx, smoke test, cross-plugin, bootstrap testing, installPath, dev tree, cache, layered manifests]
+      summary: --plugin-dir overrides Claude Code's load of one plugin from disk, but the bootstrap engine's per-plugin iteration still reads OTHER plugins' bootstrap.json from their cached installPath.
+      detail: |
+        Loading a plugin via `--plugin-dir <dev tree>` only overrides Claude Code's loading of
+        THAT plugin's hooks/skills. The bootstrap engine's per-plugin loop iterates
+        `installed_plugins.json` and reads each plugin's bootstrap.json from its cached
+        installPath. So when claudx loads all 12 dev plugins via --plugin-dir, the engine
+        still sees each plugin's CACHED bootstrap.json -- not the dev-tree version.
+        Implication: --plugin-dir smoke tests can exercise the new engine code paths (the
+        engine binary is loaded from dev), but they cannot exercise new bootstrap.json content
+        for any plugin without first publishing that plugin. Workarounds: (a) bump versions
+        and publish to test for real; (b) use the `pk-dev` mode helper, which rewrites
+        installed_plugins.json to point installPaths at the dev tree -- that does exercise
+        new bootstrap.json content; (c) test new bootstrap.json content via layered manifests
+        in `~/.claude/bootstrap.json` or `<project>/.claude/bootstrap.json`, which DO go
+        through the engine without an installPath lookup.
+      origin: Surfaced 2026-05-27 -- the claudx smoke test couldn't validate jq's new download recipe because the engine kept reading the cached bootstrap.json.
+      added: "2026-05-27"
   conventions:
     - rule: When adding a new plugin Python dependency, update <plugin>/pyproject.toml AND <plugin>/bootstrap.json venv.check_imports together.
       keywords: [pyproject.toml, bootstrap.json, dependency, venv, check_imports]
@@ -367,4 +459,7 @@ claude_md:
     - rule: Never invoke pip, python -m venv, or any other Python package manager manually for plugin dependencies.
       keywords: [no manual install, pip, venv, plugin deps, bootstrap-only]
       why: Plugin dependency installs go through the bootstrap engine so they end up in the right per-plugin venv at ~/.claude/plugins/data/<marketplace>/<plugin>/.venv/. Manual installs land in the wrong location and confuse the engine's cache.
+    - rule: Always run /git-code-review on non-trivial changelists before committing.
+      keywords: [git-code-review, code review, pre-commit, non-trivial CL, multi-file commit, before submit, multi-agent review]
+      why: Multi-agent review catches bugs and CLAUDE.md violations the author may miss; running it before commit lets the author fix issues in the same staging cycle rather than after the fact. "Non-trivial" = anything beyond a single-file mechanical change (typo fix, version bump). When in doubt, run it.
 ```
