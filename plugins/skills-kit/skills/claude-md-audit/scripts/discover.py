@@ -11,9 +11,11 @@ CLAUDE.local.md files, then walks downward up to a depth limit collecting
 descendants. Outputs a numbered list (or JSON) with role classification:
 
     role values:
-      root       -- CLAUDE.md at cwd
+      root       -- CLAUDE.md at cwd, when no CLAUDE.md exists above it (claude
+                    was launched at the project top)
       ancestor   -- CLAUDE.md above cwd
-      child      -- CLAUDE.md below cwd
+      child      -- CLAUDE.md below cwd, OR at cwd when an ancestor CLAUDE.md
+                    exists above it (a subordinate file, not the project root)
       local      -- CLAUDE.local.md at any of the above locations
 
 Stdlib-only.
@@ -57,9 +59,14 @@ def collect_ancestors(cwd: Path) -> list[tuple[Path, str]]:
     return out
 
 
-def collect_at_cwd(cwd: Path) -> list[tuple[Path, str]]:
+def collect_at_cwd(cwd: Path, has_ancestor_root: bool = False) -> list[tuple[Path, str]]:
     out: list[tuple[Path, str]] = []
-    for name, role in (("CLAUDE.md", "root"), ("CLAUDE.local.md", "local")):
+    # The cwd CLAUDE.md is `root` only when it is the project top. If a CLAUDE.md
+    # was found above cwd, claude was launched inside a larger project, so this
+    # file is a subordinate (`child`) -- the project-root-only hygiene checks
+    # (H1/H2/H3) belong to the real root above, not to the launch-dir file.
+    cwd_role = "child" if has_ancestor_root else "root"
+    for name, role in (("CLAUDE.md", cwd_role), ("CLAUDE.local.md", "local")):
         candidate = cwd / name
         if candidate.exists():
             out.append((candidate, role))
@@ -92,9 +99,13 @@ def collect_descendants(cwd: Path) -> list[tuple[Path, str]]:
 
 
 def discover(cwd: Path) -> list[tuple[Path, str]]:
+    ancestors = collect_ancestors(cwd)
+    # A CLAUDE.md ancestor (not a personal CLAUDE.local.md) above cwd means cwd
+    # is not the project top, so the cwd CLAUDE.md is classified `child`.
+    has_ancestor_root = any(role == "ancestor" for _, role in ancestors)
     out: list[tuple[Path, str]] = []
-    out.extend(collect_ancestors(cwd))
-    out.extend(collect_at_cwd(cwd))
+    out.extend(ancestors)
+    out.extend(collect_at_cwd(cwd, has_ancestor_root))
     out.extend(collect_descendants(cwd))
     return out
 

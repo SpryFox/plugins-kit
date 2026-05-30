@@ -192,7 +192,7 @@ audit_skill:
         Verdict: COMPLIANT | NON-COMPLIANT
         Remediation routed: AUTO=<N>, DISCUSS=<N>, SPECIAL=<N>
       gotchas:
-        - "Role classification depends on cwd. A CLAUDE.md at cwd is `root` from the audit's perspective even if the broader project has a CLAUDE.md higher up. The audit reports the cwd-relative role and notes any ancestor walked."
+        - "Role classification is anchored on cwd (the directory claude was launched in). The cwd CLAUDE.md is `root` only when no CLAUDE.md exists above it; if an ancestor CLAUDE.md is found, the cwd file is classified `child` so the project-root-only hygiene checks (H1/H2/H3) do not fire on a subordinate file and the parent-child duplication check runs against the ancestor."
         - "INFO findings are advisory (size signals, migration opportunities). They do NOT escalate to FAIL on subsequent runs even if unaddressed."
         - "When auditing a child CLAUDE.md, the parent must be read for CCP duplication checks. If the parent cannot be located (e.g. standalone file with no project context), report 'parent unavailable' for parent-relative criteria rather than failing them silently."
         - "For role=local (CLAUDE.local.md), only D-group criteria apply (see role-to-criteria map). Hygiene and ADP rules are skipped because the file is by design personal-scoped."
