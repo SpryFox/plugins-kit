@@ -415,7 +415,7 @@ claude_md:
         recipe to bootstrap.json on dev without bumping bootstrap's version -- master and dev
         both showed v0.10.14 with completely different bootstrap.json content. Recovery: bump
         to a fresh version (e.g. 0.10.14 -> 0.11.0) and republish.
-      origin: Surfaced 2026-05-27 while smoke-testing the tool-resolution redesign via claudx (--plugin-dir all dev plugins). jq/gh never got download-recorded because the engine was reading the cached 0.10.14 bootstrap.json which had no download: block.
+      origin: "Surfaced 2026-05-27 while smoke-testing the tool-resolution redesign via claudx (--plugin-dir all dev plugins). jq/gh never got download-recorded because the engine was reading the cached 0.10.14 bootstrap.json which had no download: block."
       added: "2026-05-27"
     - id: plugin_dir_doesnt_test_cross_plugin
       keywords: [--plugin-dir, claudx, smoke test, cross-plugin, bootstrap testing, installPath, dev tree, cache, layered manifests]
