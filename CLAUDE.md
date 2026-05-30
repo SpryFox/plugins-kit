@@ -146,8 +146,26 @@ Some plugins live on `dev` for in-development work and must not reach consumers 
 **Current dev-only plugins** (the field, not this list, is load-bearing — this is just a human-readable inventory):
 
 - `agent-glue` — graph-orchestration kit, design + scaffolding phase. Heavy new Python deps (pydantic, jinja2, jsonschema), no `bootstrap.json` yet, no skills wired up. Tested locally via `--plugin-dir`.
+- `workflow-glue` — declarative front-end to the native Workflow tool. Authors `*.workflow.yaml`, compiles it to a native Workflow script the skill runs (compile-to-native; does not reimplement execution). Claude-only, tightly scoped. Deps: pyyaml only. Has `bootstrap.json` + a `workflow-glue` skill; tests in `tests/workflow-glue/`. Conceptually supersedes agent-glue's graph-system + claude-dispatch now that the Workflow tool exists.
 
 When you see commits for a dev-only plugin in `git log origin/master..origin/dev`, that's still gotcha 1 territory — branch from master, cherry-pick only the publish-ready commits, and leave the dev-only commits on `dev`. The regenerator is a backstop for the marketplace listing, not a substitute for picking the right commits to merge.
+
+### Pre-publish validation (default)
+
+**Default gate: before any publish, smoke-test the dev working copy with `claudx`.** `claudx` (defined in `~/.bashrc`) launches a `claude` session loading every `plugins/<name>` dir via one `--plugin-dir` each, so the session runs each plugin's skills/hooks/engine **code** straight from disk — no cache, no `installed_plugins.json` change, reverts on exit. Run it, exercise the changed surface (invoke the skill, trigger the hook, run the command), confirm it behaves, then publish.
+
+```bash
+claudx        # claude + --plugin-dir for every plugins-kit plugin (see ~/.bashrc)
+```
+
+**Known blind spot — manifest content.** Under `--plugin-dir`, the bootstrap engine still reads each plugin's `bootstrap.json` from its **cached** `installPath`, not from disk (insight `plugin_dir_doesnt_test_cross_plugin`). So `claudx` validates code paths but **not** new `bootstrap.json` content (added tools, `download:` recipes, `venv.check_imports`). When your change touches manifest content, escalate to **`claude-dev`** (also in `~/.bashrc`) — it uses `scripts/dev-tree.py` to repoint installPaths at the dev tree, so the engine loads `bootstrap.json` from disk too, then auto-restores normal cache mode on exit.
+
+| Change touches… | Default validator |
+|---|---|
+| skills / hooks / commands / engine code | `claudx` |
+| `bootstrap.json` / manifest content | `claude-dev` (dev-tree mode) |
+
+**Bypassable at your discretion.** This is a default, not a hard gate. Trivial changes — a version-only bump, a doc/CLAUDE.md edit, a single-file mechanical fix — don't need a smoke session; skip it and say so. An unambiguous publish go-signal does not silently waive validation, but you may explicitly bypass when the change can't plausibly break a runtime surface.
 
 ### Safe-publish practices
 
