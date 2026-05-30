@@ -138,7 +138,7 @@ audit_skill:
       goal: "For each target CLAUDE.md, run mechanical and judgment-based checks against the framework's contract, classify findings into the taxonomy, dispatch remediations to AUTO/DISCUSS/SPECIAL buckets, and emit a per-file compliance verdict."
       preconditions:
         - "audit.py is reachable (mechanical schema validator -- only needed if a claude_md: YAML block is present)."
-        - "content-allocation.md is loadable (cohesion-principle reference)."
+        - "references/audit-criteria.md is loadable (the single self-contained criteria doc; the upstream content-allocation.md is its derivation and is NOT loaded by the audit path)."
         - "The user is in a project directory so role classification works."
       steps:
         - n: 1
@@ -148,9 +148,9 @@ audit_skill:
           expected: "Resolved (path, role, parentPath) tuples + non_interactive flag."
           on_failure: "If no CLAUDE.md resolves, surface cwd and stop."
         - n: 2
-          action: "DETECT phase (before-Q&A). Choose execution mode by file count -- this threshold equalizes the Workflow tool's per-run overhead. ONE file: audit inline in the main loop (read the file + its parent if child; Read references/audit-criteria.md and skill-authoring/references/content-allocation.md; apply the role-to-criteria map; if a `claude_md:` block is present run the schema validator; classify each finding into taxonomy + bucket). TWO OR MORE files: call the Workflow tool with scriptPath ${CLAUDE_PLUGIN_ROOT}/skills/claude-md-audit/workflow/detect.js and args = { files:[{path,role,parentPath}], refs:{criteria, contentAllocation, pluginRoot, venvPython} }. The workflow fans one lane out per file and returns { perFile:[...], totals }. Detection only -- no file is edited in this phase."
+          action: "DETECT phase (before-Q&A). Choose execution mode by file count -- this threshold equalizes the Workflow tool's per-run overhead. ONE file: audit inline in the main loop (read the file + its parent if child; Read references/audit-criteria.md -- the single self-contained criteria doc, which states each testable rule with its CCP/CRP/ADP derivation inline; do NOT also load content-allocation.md; apply the role-to-criteria map; if a `claude_md:` block is present run the schema validator; classify each finding into taxonomy + bucket). TWO OR MORE files: call the Workflow tool with scriptPath ${CLAUDE_PLUGIN_ROOT}/skills/claude-md-audit/workflow/detect.js and args = { files:[{path,role,parentPath}], refs:{criteria, pluginRoot, venvPython} }. The workflow fans one lane out per file and returns { perFile:[...], totals }. Detection only -- no file is edited in this phase."
           tool: "Workflow | inline"
-          input: "detect.js args.refs: criteria=${CLAUDE_PLUGIN_ROOT}/skills/claude-md-audit/references/audit-criteria.md; contentAllocation=${CLAUDE_PLUGIN_ROOT}/skills/skill-authoring/references/content-allocation.md; pluginRoot=${CLAUDE_PLUGIN_ROOT}; venvPython=<plugin venv python>. Schema validator is run as: (cd ${CLAUDE_PLUGIN_ROOT} && <venvPython> -m skills_kit_lib.audit <path> --json)."
+          input: "detect.js args.refs: criteria=${CLAUDE_PLUGIN_ROOT}/skills/claude-md-audit/references/audit-criteria.md; pluginRoot=${CLAUDE_PLUGIN_ROOT}; venvPython=<plugin venv python>. (content-allocation.md is intentionally NOT passed -- lanes load only the single self-contained criteria doc for cache efficiency.) Schema validator is run as: (cd ${CLAUDE_PLUGIN_ROOT} && <venvPython> -m skills_kit_lib.audit <path> --json)."
           expected: "Structured per-file findings (group, severity, criterion, message, line, taxonomy, bucket, remediation) + per-file verdict."
           on_failure: "If the schema validator is unavailable, the lane marks the Schema group JUDGMENT ('validator unavailable') and continues -- never fail a file for that."
         - n: 3

@@ -1,10 +1,15 @@
 // claude-md-audit — DETECT workflow (before-Q&A phase).
 //
 // Fan-out detection + classification, one lane per target CLAUDE.md file. Each
-// lane reads the file (and its parent, for child role), loads the audit
-// criteria, applies the role-to-criteria map, optionally runs the mechanical
-// schema validator, and classifies every finding into the taxonomy + a
-// remediation bucket. Pure detection — NO file is modified here (the skill's
+// lane reads the file (and its parent, for child role), loads the SINGLE
+// self-contained audit-criteria doc, applies the role-to-criteria map,
+// optionally runs the mechanical schema validator, and classifies every finding
+// into the taxonomy + a remediation bucket. Cache efficiency: each fan-out lane
+// is an isolated context whose prompt prefix is NOT shared across siblings (the
+// Workflow tool re-creates per-lane cache beyond a fixed harness shell), so the
+// lane loads exactly ONE criteria doc -- the upstream content-allocation
+// framework is the derivation, not the operative rules, and is intentionally not
+// read here. Pure detection — NO file is modified here (the skill's
 // `audit_then_self_remediate` anti-pattern keeps detection and remediation in
 // separate phases). Returns structured per-file findings for the main loop to
 // render and dispatch.
@@ -17,9 +22,10 @@
 //   files: [ { path: string, role: "root"|"ancestor"|"child"|"local",
 //              parentPath: string|null } ],
 //   refs:  { criteria: <abs path to references/audit-criteria.md>,
-//            contentAllocation: <abs path to skill-authoring content-allocation.md>,
 //            pluginRoot: <abs path to plugins/skills-kit (parent of skills_kit_lib)>,
 //            venvPython: <abs path to skills-kit venv python> }
+// NOTE: contentAllocation is no longer consumed by lanes (dropped for cache
+// efficiency); SKILL.md need not pass it. A stale ref is harmless (unused).
 // }
 // The schema validator is invoked as a module:
 //   (cd <pluginRoot> && <venvPython> -m skills_kit_lib.audit <file> --json)
@@ -90,18 +96,17 @@ Role:   ${f.role}
 
 Steps:
 1. Read the target file. Count its lines and estimate tokens (~chars/4).
-2. Read the audit criteria and role-to-criteria map at ${refs.criteria}.
-3. Read the canonical placement framework at ${refs.contentAllocation} (CCP / CRP / ADP definitions).
-4. ${parentClause}
-5. Apply the criteria that the role-to-criteria map says apply to role=${f.role}. Produce findings tagged with group (CCP / CRP / ADP / Hygiene) and severity (PASS / FAIL / INFO / JUDGMENT). For role=local, only the D-group / local criteria apply (skip Hygiene and ADP per the map).
-6. ${schemaClause}
-7. Classify EVERY non-PASS finding into a taxonomy id (A-G, or K if nothing fits) and a remediation bucket:
+2. Read the audit criteria and role-to-criteria map at ${refs.criteria}. This file is self-contained: every testable rule is stated together with the CCP / CRP / ADP principle it derives from. Do NOT load any other framework document -- everything needed to classify is in this one file. (Principle recap so you can apply them without re-derivation: CCP = content that changes for the same reason belongs together; a rule duplicated across scopes is a FAIL. CRP = a fact lives in the smallest scope whose readers all need it. ADP = cross-file references must resolve and run downward in load order; a broken or stale reference is a FAIL.)
+3. ${parentClause}
+4. Apply the criteria that the role-to-criteria map says apply to role=${f.role}. Produce findings tagged with group (CCP / CRP / ADP / Hygiene) and severity (PASS / FAIL / INFO / JUDGMENT). For role=local, only the D-group / local criteria apply (skip Hygiene and ADP per the map).
+5. ${schemaClause}
+6. Classify EVERY non-PASS finding into a taxonomy id (A-G, or K if nothing fits) and a remediation bucket:
      - AUTO    = mechanical, safe to auto-apply (e.g. B: delete restated parent rule)
      - DISCUSS = needs a user decision (A, C, D, E-authorial, F, G)
      - SPECIAL = K, unclassified
    PASS / INFO / JUDGMENT findings that need no remediation get taxonomy "none" and bucket "NONE".
    For each AUTO/DISCUSS/SPECIAL finding write a concrete \`remediation\` (what edit you propose, with line refs).
-8. Verdict: NON-COMPLIANT if ANY finding has severity FAIL; otherwise COMPLIANT. INFO/JUDGMENT never gate.
+7. Verdict: NON-COMPLIANT if ANY finding has severity FAIL; otherwise COMPLIANT. INFO/JUDGMENT never gate.
 
 Idempotency matters: apply the fixed criteria and taxonomy deterministically. Do not invent findings; report only what the criteria actually surface. Return the structured object.`
 }
