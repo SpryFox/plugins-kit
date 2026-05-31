@@ -15,7 +15,8 @@ Run this with WORKFLOW-KIT's OWN venv python, which bootstrap provisions with:
 Run it with workflow-kit's venv python (which has both):
 
     <workflow-kit-venv-python> scripts/openrouter_run.py \
-        --model <slug> --prompt-file <req.txt> --out <OUT> [--system <s>] [--status <STATUS>]
+        [--model <alias|slug>] [--cheap] --prompt-file <req.txt> --out <OUT> \
+        [--system <s>] [--status <STATUS>]
 
 Contract: writes the reply to --out; exits 0 on success, non-zero on failure
 (the workflow-kit-agent reports the exit code). Optionally writes a small JSON

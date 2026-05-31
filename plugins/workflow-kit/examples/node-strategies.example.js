@@ -6,7 +6,7 @@
 // writing to a file, then have ONE Claude reasoning node read the files. Payloads
 // travel by file ($OUT); only the final node pays the token cost of reading them.
 //
-// To use: paste references/preamble.js where indicated and pass args:
+// To use: paste skills/workflow-kit/references/preamble.js where indicated and pass args:
 //   { runId, pluginRoot, workflowKitVenvPython, source }
 // - pluginRoot            = ${CLAUDE_PLUGIN_ROOT} for workflow-kit
 // - workflowKitVenvPython = ~/.claude/plugins/data/plugins-kit/workflow-kit/.venv/
@@ -19,7 +19,7 @@ export const meta = {
   phases: [{ title: 'Prepare' }, { title: 'Classify' }, { title: 'Reason' }],
 }
 
-// <<< paste references/preamble.js here (wkNode / wkScript / wkOpenRouter) >>>
+// <<< paste skills/workflow-kit/references/preamble.js here (wkNode / wkScript / wkOpenRouter) >>>
 
 const dir = `./.workflow-kit/${args.runId}`
 const wordcount = `${args.pluginRoot}/examples/scripts/wordcount.py`
@@ -27,8 +27,10 @@ const runner = `"${args.workflowKitVenvPython}" "${args.pluginRoot}/scripts/open
 
 phase('Prepare')
 // script strategy: deterministic stats, no LLM in the loop. stdout -> $OUT.
+// Use the plugin-venv python (not bare `python`): deps resolve from any cwd and
+// it dodges the Windows Store python stub. See node-strategies.md "script strategy".
 const stats = await wkScript(
-  `python "${wordcount}" "${args.source}"`,
+  `"${args.workflowKitVenvPython}" "${wordcount}" "${args.source}"`,
   `${dir}/stats.json`,
   { label: 'wordcount', phase: 'Prepare' },
 )
