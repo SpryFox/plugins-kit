@@ -142,6 +142,26 @@ After publish:
 - Users with `autoUpdate: true` receive the update on next session start.
 - Users without auto-update run `/plugin marketplace update` then `/plugin update`.
 
+### The marketplace landing page (`index.html`) — regenerate at publish time
+
+The repo-root **`index.html`** is the marketplace's public landing page (the GitHub-Pages-style poster listing every plugin and its skills). It is **generated, not hand-edited** — by awesome-kit's plugin-ecosystem skill. Regenerate it with:
+
+```bash
+python plugins/awesome-kit/skills/plugin-ecosystem/scripts/generate.py \
+  --marketplace plugins-kit --title "plugins-kit marketplace" \
+  --output ./index.html --no-open
+```
+
+**It crawls the cache, not the dev tree.** `generate.py` reads `~/.claude/plugins/installed_plugins.json` and walks each plugin's **cached `installPath`** (`~/.claude/plugins/cache/<mkt>/<plugin>/<version>/`), filtered by `marketplace.json`. So it reflects the **installed/published** skill roster — **not** unpublished skills sitting on `dev`. Consequence: regenerating `index.html` from a normal session **before** publishing reproduces the *old* landing page (a new skill like `cohesion-audit` won't appear until its plugin version is published and the local cache refetches it).
+
+**Therefore `index.html` regeneration is a publish step, not a dev step.** A dev-branch skill change is not "done" for the landing page until it is published and the page is regenerated. The correct sequence:
+
+1. Publish (version bumps + push dev + merge master), so consumers' — and your own next-session — caches refetch the new versions.
+2. In a session where the local cache reflects the published versions (i.e. after a SessionStart bootstrap has updated the cache — clear the cooldown if needed), run the `generate.py` command above.
+3. Commit the refreshed `index.html` (to master, where the page is served).
+
+To **preview** the page against unpublished dev skills without publishing, run the generator under a dev-tree-pointed session (`claude-dev` / `pk-dev`, which rewrite `installed_plugins.json` `installPath`s at the dev tree) — but do not commit a dev-preview page as the published landing page.
+
 ### Dev-only plugins — do not publish to master
 
 Some plugins live on `dev` for in-development work and must not reach consumers until they are ready. Each such plugin sets `"published": false` in its `plugins/<name>/.claude-plugin/plugin.json`. The marketplace regenerator (`scripts/regen_marketplace.py`) filters those plugins out of `marketplace.json`, so they are excluded structurally — not by memory — even if their files land on master via a cherry-pick.
