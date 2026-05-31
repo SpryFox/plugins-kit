@@ -109,9 +109,9 @@ uv run --extra dev pytest tests/bootstrap/test_marketplace_lifecycle.py::TestChe
 
 Only run the full suite (`uv run --extra dev pytest -v`) when explicitly asked or before a release.
 
-**Known pre-existing failures (don't chase as regressions).** Two clusters fail independent of your changes:
-- 4 `tests/skills-kit/` schema tests (`test_schemas`, `test_anti_patterns`, `test_capability_skill_schema`, `test_step_tracker_or_checklist`) fail to *collect* — they `import schemas` / `_shared`, which moved into `skills_kit_lib` (now `schema_registry`) / were deleted at the library extraction. They need a rewrite against the current `skills_kit_lib` API, not an import tweak.
-- ~8 bootstrap `engine`/`venv` tests (`test_engine_background`, `test_engine_multiplugin`, `test_venv_check`) throw `CalledProcessError` under **uv's default Python 3.14 on Windows** but pass under the 3.12 `.venv` — likely a 3.14 incompatibility, not a regression. Pin the interpreter (`uv run -p 3.12 ...` or the `.venv` python) when running these.
+**Interpreter: the repo is pinned to Python 3.12** via a repo-root `.python-version`, so bare `uv run` / `uv venv` select 3.12 everywhere — no `-p 3.12` needed. Nothing needs 3.14 (four plugins exclude it: `requires-python ">=3.12,!=3.14.*"`); it used to leak in only as uv's global default when no pin was present.
+
+The two formerly-documented "pre-existing failure" clusters (the `tests/skills-kit/` collection errors and the bootstrap `engine`/`venv` `CalledProcessError`s) were **fixed**, not version quirks — both were test-only issues: skills-kit imported the pre-extraction `schemas`/`_shared` modules, and the bootstrap tests spawned WSL `bash` to `source` a Windows env file and didn't isolate `HOME`. The full suite is green; investigate any failure as a real regression.
 
 **Local development** — use `--plugin-dir` to test plugins from the working copy:
 
