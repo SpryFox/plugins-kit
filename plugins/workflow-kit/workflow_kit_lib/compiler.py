@@ -8,11 +8,17 @@ file) to the native Workflow tool, which runs it.
 Mapping (see the skill / plan for the authoring format):
   - doc                      -> meta + body
   - schemas.NAME             -> `const schema_NAME = {...};`  passed as agent {schema}
+  - (always)                 -> `const inputs = ...JSON.parse(args)...;`  (args arrives
+                                as a JSON string in this runtime; inputs.X targets it)
   - agent step, no fan-out   -> `const VAR = await agent(...)`
   - agent step, for_each     -> `const VAR = await parallel(OVER.map((item) => () => agent(...)))`
   - pipeline step            -> `const VAR = await pipeline(OVER, stageFn, ...)`
       each stage callback is `(prev, AS, i) => agent(...)`; a stage with fan_out
       wraps its body in a nested `parallel(...)` (the canonical Workflow pattern).
+  - script step              -> `const VAR = await wkScript(cmd, out, opts)`  (node strategy)
+  - openrouter step          -> `const VAR = await wkOpenRouter(runner, spec, opts)`  (node strategy)
+      script/openrouter steps inline preamble.js (wkScript/wkOpenRouter) once; both
+      support for_each (fan-out indexes the default out path so payloads do not collide).
   - output                   -> `return EXPR;`  (default: object of all step results)
 """
 
@@ -20,6 +26,7 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 
 from .errors import WorkflowError
 from .expr import Scope, compile_expr, compile_single, compile_template
@@ -31,6 +38,14 @@ _GENERATED_HEADER = (
 )
 
 PREV_VAR = "prev"  # name of the first param of every pipeline stage callback
+
+# The Workflow tool delivers the `args` global as a JSON string in this runtime,
+# so the compiled script normalizes it once into a real object named `inputs`
+# (what every {{ inputs.X }} expression compiles against). Harmless if a future
+# runtime hands over a real object instead.
+_ARGS_NORMALIZE = (
+    'const inputs = typeof args === "string" ? JSON.parse(args) : (args || {});'
+)
 
 
 def _var(step_id: str) -> str:
@@ -83,6 +98,102 @@ def _over_js(over, scope: Scope) -> str:
     if isinstance(over, list):
         return json.dumps(over)
     return compile_single(over, scope)
+
+
+# --------------------------------------------------------------------------- #
+# node strategies (script / openrouter) -- compile to the inlined preamble
+# helpers wkScript / wkOpenRouter, which run via the workflow-kit-agent executor.
+# --------------------------------------------------------------------------- #
+def _load_preamble() -> str:
+    """Read the node-strategy preamble (wkNode/wkScript/wkOpenRouter) for inlining.
+
+    Sandboxed Workflow scripts cannot import, so the helpers are spliced into the
+    compiled output verbatim. The preamble is the single source of truth and ships
+    with the plugin's skill alongside this package.
+    """
+    p = (
+        Path(__file__).resolve().parent.parent
+        / "skills" / "workflow-kit" / "references" / "preamble.js"
+    )
+    try:
+        return p.read_text(encoding="utf-8").rstrip("\n")
+    except OSError as exc:
+        raise WorkflowError(f"cannot read node-strategy preamble at {p}: {exc}")
+
+
+def _safe_id(step_id: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", step_id)
+
+
+def _default_out_js(step_id: str, suffix: str, fanout: bool) -> str:
+    """Default `$OUT` path as a JS template literal under ./.workflow-kit/<runId>/."""
+    base = f"./.workflow-kit/${{inputs.runId}}/{_safe_id(step_id)}"
+    return f"`{base}.${{i}}{suffix}`" if fanout else f"`{base}{suffix}`"
+
+
+def _node_opts(label, phase_id, phase_titles, status_js=None) -> str:
+    parts = []
+    if label:
+        parts.append(f"label: {json.dumps(label)}")
+    if phase_id:
+        parts.append(f"phase: {json.dumps(phase_titles[phase_id])}")
+    if status_js:
+        parts.append(f"status: {status_js}")
+    return "{ " + ", ".join(parts) + " }" if parts else "{}"
+
+
+def _node_scope(step: Step, defined: dict):
+    """(scope, over_js|None) for a node step, honoring an optional flat for_each."""
+    base = Scope(step_vars=defined)
+    if step.for_each is None:
+        return base, None
+    over_js = _over_js(step.for_each, base)
+    return Scope(step_vars=defined, locals={"item": "item"}), over_js
+
+
+def _wrap_node(var: str, call: str, over_js) -> str:
+    if over_js is None:
+        return f"const {var} = await {call};"
+    # fan-out: `i` indexes the default out path so payloads do not collide.
+    return f"const {var} = await parallel({over_js}.map((item, i) => () => {call}));"
+
+
+def _emit_script_node(step: Step, defined: dict, phase_titles: dict) -> str:
+    sp = step.script
+    scope, over_js = _node_scope(step, defined)
+    fan = over_js is not None
+    cmd_js = compile_template(sp.command, scope)
+    out_js = compile_template(sp.out, scope) if sp.out else _default_out_js(step.id, ".out", fan)
+    status_js = compile_template(sp.status, scope) if sp.status else None
+    opts = _node_opts(sp.label, step.phase, phase_titles, status_js)
+    call = f"wkScript({cmd_js}, {out_js}, {opts})"
+    return _wrap_node(_var(step.id), call, over_js)
+
+
+def _emit_openrouter_node(step: Step, defined: dict, phase_titles: dict) -> str:
+    op = step.openrouter
+    scope, over_js = _node_scope(step, defined)
+    fan = over_js is not None
+    runner_js = (
+        '`"${inputs.workflowKitVenvPython}" '
+        '"${inputs.pluginRoot}/scripts/openrouter_run.py"`'
+    )
+    out_js = compile_template(op.out, scope) if op.out else _default_out_js(step.id, ".out", fan)
+    spec = []
+    if op.model:
+        spec.append(f"model: {json.dumps(op.model)}")
+    if op.cheap:
+        spec.append("cheap: true")
+    spec.append(f"promptFile: {compile_template(op.prompt_file, scope)}")
+    if op.system is not None:
+        spec.append(f"system: {compile_template(op.system, scope)}")
+    spec.append(f"out: {out_js}")
+    if op.status:
+        spec.append(f"status: {compile_template(op.status, scope)}")
+    spec_js = "{ " + ", ".join(spec) + " }"
+    opts = _node_opts(op.label, step.phase, phase_titles)
+    call = f"wkOpenRouter({runner_js}, {spec_js}, {opts})"
+    return _wrap_node(_var(step.id), call, over_js)
 
 
 def _emit_flat_step(step: Step, defined: dict, phase_titles: dict) -> str:
@@ -177,12 +288,24 @@ def compile_doc(doc: WorkflowDoc) -> str:
             schema_lines.append(f"const schema_{name} = {json.dumps(body, indent=2)};")
         lines.append("\n".join(schema_lines))
 
+    # normalize args (the Workflow tool delivers `args` as a JSON string)
+    lines.append(_ARGS_NORMALIZE)
+
+    # inline the node-strategy preamble when any script/openrouter node is present
+    if any(s.kind in ("script", "openrouter") for s in doc.steps):
+        lines.append(_load_preamble())
+
     # body
     defined = {}
     body = []
     for step in doc.steps:
-        if step.is_pipeline:
+        kind = step.kind
+        if kind == "pipeline":
             body.append(_emit_pipeline_step(step, defined, phase_titles))
+        elif kind == "script":
+            body.append(_emit_script_node(step, defined, phase_titles))
+        elif kind == "openrouter":
+            body.append(_emit_openrouter_node(step, defined, phase_titles))
         else:
             body.append(_emit_flat_step(step, defined, phase_titles))
         defined[step.id] = _var(step.id)

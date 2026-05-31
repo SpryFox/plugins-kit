@@ -7,7 +7,9 @@ a bare value (an `over:` or `output:`) becomes a JS expression.
 
 Supported expressions (anything else is a compile error -- v1 stays tight):
 
-    {{ inputs.X[.Y...] }}        -> args.X[.Y...]
+    {{ inputs.X[.Y...] }}        -> inputs.X[.Y...]  (the compiler emits a normalized
+                                    `const inputs` from the runtime `args`, which the
+                                    Workflow tool delivers as a JSON string)
     {{ steps.ID[.Y...] }}        -> <stepvar>[.Y...]
     {{ steps.ID[*].F[.Y...] }}   -> <stepvar>.flatMap((r) => r.F[.Y...])
     {{ <local> [.Y...] }}        -> the item identifier in scope (pipeline `as`,
@@ -99,7 +101,7 @@ def compile_expr(expr: str, scope: Scope) -> str:
 
     m = _INPUTS_RE.match(e)
     if m:
-        return "args" + _member(_split_idents(m.group(1), e))
+        return "inputs" + _member(_split_idents(m.group(1), e))
 
     parts = _split_idents(e, e)
     head, tail = parts[0], parts[1:]

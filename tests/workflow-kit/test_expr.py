@@ -7,8 +7,8 @@ from workflow_kit_lib.expr import Scope, compile_expr, compile_single, compile_t
 
 
 def test_inputs_reference():
-    assert compile_expr("inputs.diff", Scope()) == "args.diff"
-    assert compile_expr("inputs.a.b", Scope()) == "args.a.b"
+    assert compile_expr("inputs.diff", Scope()) == "inputs.diff"
+    assert compile_expr("inputs.a.b", Scope()) == "inputs.a.b"
 
 
 def test_step_reference():
@@ -65,6 +65,6 @@ def test_template_escapes_backtick_and_dollar_brace():
 
 
 def test_compile_single_requires_single_expression():
-    assert compile_single("{{ inputs.x }}", Scope()) == "args.x"
+    assert compile_single("{{ inputs.x }}", Scope()) == "inputs.x"
     with pytest.raises(WorkflowError, match="single"):
         compile_single("prefix {{ inputs.x }}", Scope())

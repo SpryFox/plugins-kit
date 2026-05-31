@@ -5,9 +5,11 @@ A *node strategy* is a recipe for building a contract-fulfilling shell command
 executor agent; strategies differ only in the command they generate. New
 strategies are new command templates -- no new agent.
 
-Wire them into a native Workflow script by inlining `preamble.js` (workflow
-scripts are sandboxed and cannot `import`, so the helpers are pasted in) and
-calling `wkScript(...)` / `wkOpenRouter(...)`.
+Two ways to use them. **Declaratively** (preferred for humans): a `.workflow.yaml`
+`script:` or `openrouter:` step -- the compiler inlines the preamble and emits the
+call for you (see `workflow-yaml.md`). **By hand**: inline `preamble.js` into a
+native Workflow script (scripts are sandboxed and cannot `import`, so the helpers
+are pasted in) and call `wkScript(...)` / `wkOpenRouter(...)` -- shown below.
 
 ## The executor
 

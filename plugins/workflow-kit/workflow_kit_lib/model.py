@@ -14,10 +14,14 @@ The grammar, mirroring the steps-wrap-pipelines format:
       phases: [PhaseSpec]          optional; else inferred from step.phase
       schemas: {name: <json>}      optional named JSON-Schema blocks
       steps: [Step]                required, ordered
-        Step = agent-step | pipeline-step   (exactly one)
-          agent-step: agent + optional for_each/mode (flat fan-out)
-          pipeline-step: pipeline (over/as/stages), each Stage an agent
-                         optionally with a nested fan_out
+        Step = agent | pipeline | script | openrouter   (exactly one)
+          agent-step:      agent + optional for_each/mode (flat fan-out)
+          pipeline-step:   pipeline (over/as/stages), each Stage an agent
+                           optionally with a nested fan_out
+          script-step:     script (command, out?, status?) -- a node strategy;
+                           optional for_each/mode (flat fan-out)
+          openrouter-step: openrouter (prompt_file, model?, cheap?, system?,
+                           out?, status?) -- a node strategy; optional for_each
       output                       optional return expression
 """
 
@@ -136,6 +140,67 @@ class AgentSpec:
 
 
 @dataclass
+class ScriptSpec:
+    """A `script:` node -- a shell command whose stdout is captured to `$OUT`."""
+
+    command: str
+    out: Optional[str] = None      # payload path; default derived from runId + step id
+    status: Optional[str] = None   # optional small JSON status path
+    label: Optional[str] = None
+
+    @classmethod
+    def parse(cls, raw: Any, where: str) -> "ScriptSpec":
+        d = _as_dict(raw, where)
+        _forbid_extra(d, {"command", "out", "status", "label"}, where)
+        return cls(
+            command=_str(_req(d, "command", where), "command", where),
+            out=_opt_str(d, "out", where),
+            status=_opt_str(d, "status", where),
+            label=_opt_str(d, "label", where),
+        )
+
+
+@dataclass
+class OpenRouterSpec:
+    """An `openrouter:` node -- one non-Claude model call whose reply lands in `$OUT`.
+
+    `model` is an openrouter-kit registry alias or a raw slug (NOT a Claude model);
+    omit it to use the configured `default`, or set `cheap: true` for `defaultCheap`.
+    """
+
+    prompt_file: str
+    model: Optional[str] = None
+    cheap: bool = False
+    system: Optional[str] = None
+    out: Optional[str] = None
+    status: Optional[str] = None
+    label: Optional[str] = None
+
+    @classmethod
+    def parse(cls, raw: Any, where: str) -> "OpenRouterSpec":
+        d = _as_dict(raw, where)
+        _forbid_extra(
+            d,
+            {"prompt_file", "model", "cheap", "system", "out", "status", "label"},
+            where,
+        )
+        cheap = d.get("cheap", False)
+        if not isinstance(cheap, bool):
+            raise WorkflowError(
+                f"{where}: 'cheap' must be a boolean, got {type(cheap).__name__}"
+            )
+        return cls(
+            prompt_file=_str(_req(d, "prompt_file", where), "prompt_file", where),
+            model=_opt_str(d, "model", where),  # alias/slug -- not the Claude model set
+            cheap=cheap,
+            system=_opt_str(d, "system", where),
+            out=_opt_str(d, "out", where),
+            status=_opt_str(d, "status", where),
+            label=_opt_str(d, "label", where),
+        )
+
+
+@dataclass
 class FanOut:
     over: Union[str, list]
     as_: str
@@ -210,38 +275,61 @@ class Step:
     for_each: Optional[str] = None
     mode: str = "parallel"
     pipeline: Optional[PipelineSpec] = None
+    script: Optional[ScriptSpec] = None
+    openrouter: Optional[OpenRouterSpec] = None
 
     @property
     def is_pipeline(self) -> bool:
         return self.pipeline is not None
+
+    @property
+    def kind(self) -> str:
+        if self.pipeline is not None:
+            return "pipeline"
+        if self.script is not None:
+            return "script"
+        if self.openrouter is not None:
+            return "openrouter"
+        return "agent"
 
     @classmethod
     def parse(cls, raw: Any, where: str) -> "Step":
         d = _as_dict(raw, where)
         sid = _str(_req(d, "id", where), "id", where)
         loc = f"step {sid!r}"
-        _forbid_extra(d, {"id", "phase", "agent", "for_each", "mode", "pipeline"}, loc)
+        _forbid_extra(
+            d,
+            {"id", "phase", "agent", "for_each", "mode", "pipeline", "script", "openrouter"},
+            loc,
+        )
 
-        has_agent = d.get("agent") is not None
-        has_pipe = d.get("pipeline") is not None
-        if has_agent == has_pipe:
+        present = [k for k in ("agent", "pipeline", "script", "openrouter") if d.get(k) is not None]
+        if len(present) != 1:
             raise WorkflowError(
-                f"{loc}: exactly one of `agent` or `pipeline` is required"
+                f"{loc}: exactly one of `agent`, `pipeline`, `script`, or `openrouter` is required"
             )
-        if has_pipe and d.get("for_each") is not None:
+        kind = present[0]
+        if kind == "pipeline" and d.get("for_each") is not None:
             raise WorkflowError(
                 f"{loc}: `for_each` is not allowed on a pipeline step (use pipeline.over)"
             )
 
-        agent = AgentSpec.parse(d["agent"], f"{loc}.agent") if has_agent else None
+        agent = AgentSpec.parse(d["agent"], f"{loc}.agent") if kind == "agent" else None
         pipeline = (
-            PipelineSpec.parse(d["pipeline"], f"{loc}.pipeline") if has_pipe else None
+            PipelineSpec.parse(d["pipeline"], f"{loc}.pipeline") if kind == "pipeline" else None
+        )
+        script = ScriptSpec.parse(d["script"], f"{loc}.script") if kind == "script" else None
+        openrouter = (
+            OpenRouterSpec.parse(d["openrouter"], f"{loc}.openrouter")
+            if kind == "openrouter"
+            else None
         )
         for_each = _opt_str(d, "for_each", loc)
         mode = _enum(_opt_str(d, "mode", loc) or "parallel", VALID_MODE, "mode", loc)
         return cls(
             id=sid, phase=_opt_str(d, "phase", loc), agent=agent,
             for_each=for_each, mode=mode, pipeline=pipeline,
+            script=script, openrouter=openrouter,
         )
 
 

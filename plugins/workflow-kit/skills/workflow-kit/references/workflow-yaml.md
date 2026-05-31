@@ -38,9 +38,17 @@ plugins-kit:bootstrap and start a new session" and STOP.
    error) and STOP -- do not run.
 3. **Gather inputs.** Read the `inputs:` block; for each declared input collect a
    value from the user's request (ask via AskUserQuestion only if a required
-   input is missing and cannot be inferred). Assemble into an args object.
-4. **Run it.** Pass the compiled path as `scriptPath` and the inputs as `args` to
-   the native Workflow tool. This is the opt-in boundary.
+   input is missing and cannot be inferred). Assemble into an args object. **If the
+   workflow uses any `script` or `openrouter` node, also inject the reserved args**
+   the compiled script references (not declared in `inputs:`):
+   - `runId` -- a short id for this run (namespaces `$OUT` paths).
+   - `pluginRoot` -- `${CLAUDE_PLUGIN_ROOT}` for workflow-kit.
+   - `workflowKitVenvPython` -- the plugin-venv python
+     (`~/.claude/plugins/data/plugins-kit/workflow-kit/.venv/{Scripts/python.exe|bin/python}`);
+     when workflow-kit is dev-only (no own venv), use the bootstrap standalone python.
+4. **Run it.** Pass the compiled path as `scriptPath` and the args object as `args`
+   to the native Workflow tool. This is the opt-in boundary. (The compiled script
+   normalizes `args` itself -- this runtime delivers it as a JSON string.)
 5. **Relay the result** to the user in readable form (the tool result is not
    shown to them directly).
 
@@ -75,7 +83,8 @@ See `${CLAUDE_PLUGIN_ROOT}/examples/review-changes.workflow.yaml` for a complete
 example. Top-level keys: `name`, `description` (required); `inputs`, `phases`,
 `schemas`, `output` (optional); `steps` (required, ordered).
 
-A **step** is either an agent step or a pipeline step (exactly one):
+A **step** is exactly one of: an agent step, a pipeline step, a `script` node, or an
+`openrouter` node.
 
 - **agent step** -- `agent: { prompt, schema?, model?, agentType?, isolation?, label? }`.
   Add `for_each: "{{ ... }}"` + `mode: parallel` to fan out (the item is bound to
@@ -84,12 +93,32 @@ A **step** is either an agent step or a pipeline step (exactly one):
   agent step; a stage may add `fan_out: { over, as, mode }` to fan out within the
   stage. Stages run with no barrier (item A reaches stage 2 while item B is still
   in stage 1).
+- **script node** -- `script: { command, out?, status?, label? }`. Runs `command`
+  (a shell command, templated) via the workflow-kit-agent executor with stdout
+  captured to `$OUT`. `out` defaults to `./.workflow-kit/{{runId}}/<step-id>.out`.
+  Add `for_each` to fan out (the index `i` is appended to the default out path so
+  payloads do not collide). See `node-strategies.md`.
+- **openrouter node** -- `openrouter: { prompt_file, model?, cheap?, system?, out?,
+  status?, label? }`. One non-Claude model call whose reply lands in `$OUT`.
+  `prompt_file` is a path (an input, or an upstream node's `{{ steps.ID.path }}`).
+  Omit `model` to use openrouter-kit's configured `default` (or set `cheap: true`
+  for `defaultCheap`); or pass a registry alias / raw slug. See `node-strategies.md`.
 
 **Templating** -- `{{ inputs.X }}`, `{{ steps.ID }}`, `{{ steps.ID[*].field }}`
 (flatten), `{{ <as> }}` (pipeline/fan_out item), `{{ <prevStage>.field }}`
 (preceding stage's result). Anything outside this grammar is a compile error.
 
-> Node strategies (script / openrouter) are not yet exposed as `.workflow.yaml`
-> step types -- they are used today by inlining `preamble.js` into a hand-written
-> native script (see `node-strategies.md`). Adding `script:` / `openrouter:` step
-> kinds to this compiler is a planned extension.
+### Reserved inputs (auto-injected for node steps)
+
+`script` and `openrouter` nodes need three runtime values the skill supplies
+automatically (do NOT declare them in `inputs:`; the run procedure injects them):
+
+- `{{ inputs.runId }}` -- a per-run id used to namespace default `$OUT` paths.
+- `{{ inputs.pluginRoot }}` -- the workflow-kit plugin dir (for the openrouter runner).
+- `{{ inputs.workflowKitVenvPython }}` -- the interpreter that runs the openrouter
+  runner and your `script` Python commands. Reference it in a `script` `command`
+  instead of bare `python` (which the Windows Store stub hijacks).
+
+A node step's result is its executor metadata `{ exit_code, path, bytes, sha256,
+status }`; a downstream `agent` step reads the payload via `{{ steps.ID.path }}` --
+that is the only place the file body enters a context.
