@@ -25,7 +25,7 @@ The first line of your response MUST be the `Running ...` line printed above. Th
 
 ## Framework
 
-The per-skill audit operationalizes the **skill-md-audit** audit-kind under the shared audit framework. The canonical glossary -- `subject`, `primitive`, `composition`, `discovery`, `audit-kind`, `rule`, `finding`, `severity`, `taxonomy`, `bucket`, `corpus`, `scaffolding` -- lives at `references/audit-framework.md`, with the data model at `references/audit-framework.yaml`. The sibling skill `/references-audit` operationalizes the other audit-kind defined in the same framework. Definitions live in the framework; this file describes only how the audit applies them.
+The per-skill audit operationalizes the **skill-md-audit** audit-kind under the shared audit framework. The canonical glossary -- `subject`, `primitive`, `composition`, `discovery`, `audit-kind`, `rule`, `finding`, `severity`, `taxonomy`, `bucket`, `corpus`, `scaffolding` -- lives at `skills-kit:cohesion-audit/references/audit-framework.md`, with the data model at `skills-kit:cohesion-audit/references/audit-framework.yaml`. The sibling skill `/references-audit` operationalizes the other audit-kind defined in the same framework. Definitions live in the framework; this file describes only how the audit applies them.
 
 In framework terms, the per-skill audit procedure is:
 
@@ -44,7 +44,7 @@ audit_skill:
   scope:
     covers:
       - "auditing a single SKILL.md against its declared type contract (schema validation via audit.py)"
-      - "auditing a SKILL.md against CCP / CRP / ADP placement rules (judgment-based from content-allocation.md)"
+      - "auditing a SKILL.md against CCP / CRP / ADP placement rules (judgment-based from cohesion-principles)"
       - "auditing description hygiene (length, directive form, exclusion clause) and decision-provenance leakage"
       - "categorizing per-file findings into remediation buckets (AUTO / DISCUSS / SPECIAL)"
       - "listing all SKILL.md files visible from cwd (the cwd-relative discover.py helper for index-based selection)"
@@ -87,7 +87,7 @@ audit_skill:
       keywords: ["ccp", "common closure principle", "content allocation", "change cadence"]
       summary: "SKILL.md content belongs there only when it changes with the skill's contract. Project-convention content (changes with project conventions) belongs in the co-located CLAUDE.md, not SKILL.md."
       severity: "JUDGMENT"
-      detail: "Judgment call per content-allocation.md per_artifact_role.skill_md.audit_rules. The agent reads the body and asks: does this content change with the skill's contract or with project conventions?"
+      detail: "Judgment call per cohesion-principles per_artifact_role.skill_md.audit_rules. The agent reads the body and asks: does this content change with the skill's contract or with project conventions?"
     - id: "crp_placement"
       name: "CRP -- read-together rule for SKILL.md vs references/"
       keywords: ["crp", "common reuse principle", "progressive disclosure", "reference split"]
@@ -146,7 +146,7 @@ audit_skill:
     - id: "F_ccp_misallocation"
       name: "CCP violation -- project-convention content in SKILL.md"
       keywords: ["ccp", "project convention", "wrong home", "claude.md", "content allocation"]
-      detection_signal: "Agent judgment from content-allocation.md per_artifact_role.skill_md.audit_rules. Body section changes with project conventions (e.g. local code-review rules, project-specific tool preferences) rather than the skill's contract."
+      detection_signal: "Agent judgment from cohesion-principles per_artifact_role.skill_md.audit_rules. Body section changes with project conventions (e.g. local code-review rules, project-specific tool preferences) rather than the skill's contract."
       default_remediation: "Propose moving the misallocated section into the co-located CLAUDE.md (or the project root CLAUDE.md if the convention is project-wide). User confirms the move."
       bucket: "DISCUSS"
     - id: "G_crp_violation"
@@ -186,7 +186,7 @@ audit_skill:
       goal: "For each target SKILL.md, run mechanical and judgment-based checks against the framework's contract, classify findings into the taxonomy, dispatch remediations to AUTO/DISCUSS/SPECIAL buckets, and emit a per-file compliance verdict (COMPLIANT or NON-COMPLIANT)."
       preconditions:
         - "audit.py is reachable (mechanical schema validator)."
-        - "content-allocation.md is loadable (cohesion-principle reference)."
+        - "cohesion-principles is loadable (cohesion-principle reference)."
       steps:
         - n: 1
           action: "Resolve the audit target set from $ARGUMENTS. Empty -> cwd/SKILL.md if present, else stop. 'list' -> emit numbered list via discover.py and stop. Integers -> map to paths from last list output. Path -> use it directly."
@@ -195,9 +195,9 @@ audit_skill:
           expected: "A resolved list of SKILL.md file paths to audit."
           on_failure: "If no target resolves, surface cwd and stop. Do not improvise a target."
         - n: 2
-          action: "Load content-allocation.md into context (the cohesion-principles audit rules)."
+          action: "Load cohesion-principles into context (the cohesion-principles audit rules)."
           tool: "Read"
-          input: "skills-kit:skill-authoring -- content-allocation.md"
+          input: "skills-kit:cohesion-principles -- the content_allocation framework"
           expected: "CCP / CRP / ADP placement rules and per-artifact audit criteria are now loaded."
         - n: 3
           action: "For each target, run audit.py to get mechanical schema validation findings."
@@ -206,7 +206,7 @@ audit_skill:
           expected: "Per-row PASS / FAIL / JUDGMENT-REQUIRED verdicts for universal rules, YAML schema, type-specific checks, and mixed-type signal."
           on_failure: "If pyyaml is unavailable, mark Schema group as 'unavailable' and proceed with cohesion-principle judgment only."
         - n: 4
-          action: "For each target, read the SKILL.md and apply cohesion-principle judgment from content-allocation.md per_artifact_role.skill_md.audit_rules. Output findings under CCP / CRP / ADP / Hygiene groups."
+          action: "For each target, read the SKILL.md and apply cohesion-principle judgment from cohesion-principles per_artifact_role.skill_md.audit_rules. Output findings under CCP / CRP / ADP / Hygiene groups."
           expected: "Judgment-based finding list per file."
         - n: 5
           action: "Classify every finding into a taxonomy category (A-J, or K for SPECIAL). For each category, assign the bucket per the taxonomy's bucket field."
@@ -377,8 +377,8 @@ Typical workflows:
 
 ## Cross-references
 
-- Canonical audit framework (shared with `/references-audit`): `references/audit-framework.md` and `references/audit-framework.yaml`.
-- Canonical placement framework: `content-allocation.md (in skills-kit:skill-authoring)`.
+- Canonical audit framework (shared with `/references-audit`): `skills-kit:cohesion-audit/references/audit-framework.md` and `skills-kit:cohesion-audit/references/audit-framework.yaml`.
+- Canonical placement framework: `cohesion-principles (in skills-kit)`.
 - Canonical type contracts: `framework.md (in skills-kit:skill-authoring)` and `plugins/skills-kit/skills/skill-authoring/scripts/schemas.py`.
 - Mechanical validator: `plugins/skills-kit/skills/skill-authoring/scripts/audit.py`.
 - Type classifier (for category C remediation): `plugins/skills-kit/skills/skill-authoring/scripts/classify.py`.

@@ -30,7 +30,7 @@ if [[ "$INPUT" =~ \"cwd\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
 fi
 [[ -n "$CWD" ]] || exit 0
 
-MARKER="$CWD/.local-data/unreal-kit/editor-stale.flag"
+MARKER="$CWD/.local-data/plugins-kit/unreal-kit/editor-stale.flag"
 
 if [[ -f "$MARKER" ]]; then
     # PreToolUse hook output shape:

@@ -242,17 +242,70 @@ Variable references are expanded by the engine from plugin context and config:
 | `${data_dir}` | Plugin's data directory |
 | `${uproject_dir}` | From plugin config (if applicable) |
 
-## Tool `installPath`
+## Tool resolution: `installPath`, `check`, and PATH linkage
 
-The optional `installPath` field on a tool entry tells the engine where the tool binary lives (or will live after install). This solves the chicken-and-egg problem where a tool is installed to a known directory that isn't in PATH yet at check time.
+A tool entry is resolved in this order: **`installPath` candidates** (file
+exists) → **`check` command** (exit 0) → **`shutil.which(name)`** (on PATH).
+First hit wins. A tool that resolves on disk but whose directory is not on PATH
+is **auto-linked onto PATH** by the engine (see "Tool → PATH linkage" below) —
+"installed but not reachable by name" is treated as actionable, not done.
+
+### `installPath` — one dir or a list
+
+Tells the engine where the binary lives (or will live after install). Solves the
+chicken-and-egg case where a tool is installed to a known directory not yet on
+PATH at check time. Accepts a single string **or a list of candidate dirs**
+(tried in order — useful when an installer may land in more than one place):
 
 ```json
 {"name": "node", "installPath": "~/.local/share/node", "install": {"windows": "..."}}
+{"name": "draw.io", "installPath": ["/c/Program Files/draw.io", "$LOCALAPPDATA/Programs/draw.io"]}
 ```
 
-- Supports `~` expansion
-- The engine checks `<installPath>/<name>` (and `<installPath>/<name>.exe` on Windows) before falling back to `shutil.which()`
-- The same `installPath` is used for the recheck after install
+- Supports `~` and `$VAR` / `${VAR}` expansion.
+- The engine checks `<dir>/<name>` (and `<dir>/<name>.exe` on Windows) for each
+  candidate before falling back to the `check` command, then `shutil.which()`.
+- The same `installPath` is used for the recheck after install.
+
+### `check` — a presence command
+
+Optional shell command whose **exit code 0 means "present."** Use it when a
+tool's presence can't be expressed as name-on-PATH or a fixed install dir (app
+bundles, a `--version` smoke test, multiple acceptable locations). Runs via the
+same bash-on-Windows shim as `install`, so Unix syntax works regardless of the
+launching shell.
+
+```json
+{"name": "draw.io",
+ "check": "command -v draw.io || test -f \"/c/Program Files/draw.io/draw.io.exe\"",
+ "install": {"windows": "winget install --id JGraph.Draw"}}
+```
+
+A `check`-resolved tool yields no concrete binary path, so it is not recorded in
+`tool_paths.json` and gets no PATH auto-link (the engine has no directory to add)
+— prefer `installPath` when you know the directory, since that path *is*
+recorded and linked.
+
+### Tool → PATH linkage
+
+When a tool resolves via `installPath` (or `which` from a dir off the persistent
+PATH) but its directory isn't on PATH, the engine adds that directory to PATH
+itself — shell RC files + Windows User PATH (registry) + the live process PATH —
+and logs `tool: on disk but not on PATH — added <dir>`. This is the linkage
+between `tools[]` and `path_entries[]`: a resolved tool pulls its own dir onto
+PATH, so you don't have to declare a separate `path_entries` entry, and a tool
+that's present-but-unreachable becomes reachable without any "restart your shell"
+instruction (per dependency-philosophy.md principle 4).
+
+### Install exit codes are advisory
+
+After running a tool's `install` command, the engine **re-checks regardless of
+the installer's exit code.** Some installers exit non-zero for "already
+installed / no upgrade available" (winget exit 43); the re-check, not the exit
+code, decides whether the tool is present. Only when the re-check still fails is
+a failure recorded (`install_failed` if the installer also errored,
+`installed_but_path_stale` if it reported success but the binary is still
+unfindable).
 
 ## `self_setup.python_stub_check`
 

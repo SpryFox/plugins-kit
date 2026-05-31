@@ -77,8 +77,11 @@ class TestBootstrapMissingKey:
         f = ctx.failures[0]
         assert f["type"] == "openrouter_credential"
         assert f["field"] == "OPENROUTER_API_KEY"
-        assert "openrouter-kit set-key" in f["user_msg"]
-        assert "openrouter.ai/keys" in f["user_msg"]
+        # The brief user_msg points at the fix-all flow; the detailed remediation
+        # (set-key + where to get a key) lives in the agent_msg.
+        assert "fix-all" in f["user_msg"]
+        assert "openrouter-kit set-key" in f["agent_msg"]
+        assert "openrouter.ai/keys" in f["agent_msg"]
 
 
 class TestBootstrapValidationOk:

@@ -295,26 +295,6 @@ cross_skill_references:
   design_domain: "For design vs implementation alignment decisions"
   architectural_decision_making: "For where capabilities should live"
   document_optimization: "For documentation structure decisions"
-
-documentation_references:
-  disclosure_architecture: "~/.claude/docs/reference/DISCLOSURE-ARCHITECTURE.md"
-  orphaned_document_policy: "~/.claude/docs/reference/ORPHANED-DOCUMENT-POLICY.md"
-  skill_consolidation_criteria: "~/.claude/docs/reference/SKILL-CONSOLIDATION-CRITERIA.md"
-
-conditional_loading:
-  - condition:
-      name: disclosure_architecture_detail
-      if_request_contains: [entry point, depth level, disclosure chain, progressive disclosure]
-    then:
-      load_references:
-        - "~/.claude/docs/reference/DISCLOSURE-ARCHITECTURE.md"
-
-  - condition:
-      name: orphan_policy_detail
-      if_request_contains: [orphan, searchable, archive, not referenced]
-    then:
-      load_references:
-        - "~/.claude/docs/reference/ORPHANED-DOCUMENT-POLICY.md"
 ```
 
 ## Quick Reference: Encoding Checklist

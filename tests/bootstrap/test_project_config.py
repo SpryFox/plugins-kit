@@ -512,6 +512,67 @@ class TestLegacyFileMigration:
         # Action must be logged (no silent bootstrap operations).
         assert any("migrated" in e for e in action_entries)
 
+    def test_migration_removes_empty_legacy_dir(self, tmp_path, monkeypatch):
+        """Cleanup: the now-empty legacy directory is removed after migration."""
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        monkeypatch.chdir(project_dir)
+
+        legacy_dir = project_dir / ".local-data" / "oldplace"
+        legacy_dir.mkdir(parents=True)
+        legacy_path = legacy_dir / "config.yaml"
+        save_yaml_config(str(legacy_path), {"foo": "bar"})
+
+        plugin_root = str(tmp_path / "plugin")
+        os.makedirs(plugin_root)
+        plugin_data_dir = str(tmp_path / "data")
+        os.makedirs(plugin_data_dir)
+
+        section = {
+            "file": ".local-data/plugins-kit/myplugin/config.yaml",
+            "legacy_file": ".local-data/oldplace/config.yaml",
+            "required_fields": ["foo"],
+        }
+        _process_project_config(
+            section, plugin_data_dir, plugin_root, [], ok_entries=[], plugin_name="myplugin",
+        )
+
+        new_path = project_dir / ".local-data" / "plugins-kit" / "myplugin" / "config.yaml"
+        assert new_path.is_file()
+        assert not legacy_path.exists()
+        assert not legacy_dir.exists(), "empty legacy dir should be cleaned up"
+
+    def test_migration_keeps_nonempty_legacy_dir(self, tmp_path, monkeypatch):
+        """Cleanup is best-effort: a legacy dir with other files is left in place."""
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        monkeypatch.chdir(project_dir)
+
+        legacy_dir = project_dir / ".local-data" / "oldplace"
+        legacy_dir.mkdir(parents=True)
+        legacy_path = legacy_dir / "config.yaml"
+        save_yaml_config(str(legacy_path), {"foo": "bar"})
+        sibling = legacy_dir / "other.flag"
+        sibling.write_text("x", encoding="utf-8")
+
+        plugin_root = str(tmp_path / "plugin")
+        os.makedirs(plugin_root)
+        plugin_data_dir = str(tmp_path / "data")
+        os.makedirs(plugin_data_dir)
+
+        section = {
+            "file": ".local-data/plugins-kit/myplugin/config.yaml",
+            "legacy_file": ".local-data/oldplace/config.yaml",
+            "required_fields": ["foo"],
+        }
+        _process_project_config(
+            section, plugin_data_dir, plugin_root, [], ok_entries=[], plugin_name="myplugin",
+        )
+
+        assert not legacy_path.exists()
+        assert legacy_dir.exists(), "non-empty legacy dir must be preserved"
+        assert sibling.exists()
+
     def test_idempotent_when_only_new_path_exists(self, tmp_path, monkeypatch):
         """Second session: legacy file already gone, new file present -> no-op."""
         project_dir = tmp_path / "project"

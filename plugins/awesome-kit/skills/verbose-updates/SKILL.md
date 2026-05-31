@@ -18,6 +18,60 @@ The protocol is built around one central rule: every end-of-turn reply uses the 
 
 The template depends on the agent maintaining awareness of the current `work-unit`. If you cannot name the current work-unit, you cannot write the template -- ask the user to clarify it before continuing.
 
+## Contract
+
+The load-bearing contract; the prose below is the detailed protocol the steps reference.
+
+```yaml
+technique_skill:
+  _schema_version: "1"
+  trigger_model: user-only
+  identity: Communicate turn-level progress to a context-switched user via the framework's three-part end-of-turn template.
+  scope:
+    covers:
+      - composing every end-of-turn reply as What changed / Where it sits / Required user action
+      - classifying the turn as State A (action required) or State B (all work complete)
+      - splitting the reply at work-unit boundaries
+      - argument modes (e.g. strategy) that replace the default template
+    excludes:
+      - standard reporting when the user is tracking closely (do not over-apply)
+      - project-specific protocols (audit logs, provenance shape) which live in the project plan
+  techniques:
+    - id: end-of-turn-update
+      name: Write the three-part end-of-turn update
+      keywords: [end of turn, what changed, where it sits, required action, state a state b]
+      goal: Leave a context-switched user fully re-oriented from the end-of-turn message alone, with exactly one required action or a verified State B.
+      steps:
+        - n: 1
+          action: Name the current work-unit. If you cannot name it, ask the user to clarify before writing anything else.
+        - n: 2
+          action: "Write the What-changed part -- name each artifact and the action, measured against the work-unit, not the previous turn. On the first update after invocation, summarize the substantive work of the preceding 1-3 turns (the orientation moment), not the skill invocation itself."
+        - n: 3
+          action: "Write the Where-it-sits part -- re-anchor the change in the broader in-flight state (the CL, the atom sequence, the plan). If the change is standalone, say so explicitly."
+        - n: 4
+          action: "Write the Required-user-action part -- enumerate every requested item against live state, then classify. State A names one concrete next decision in one sentence; State B uses the exact phrase 'all requested work complete - ready to end session' only when every item verifies as done."
+          on_failure: A false State B silently abandons work; when unsure after the enumeration, you are in State A and owe a concrete action. If you have more work, do not end the turn -- do the work.
+        - n: 5
+          action: At a work-unit boundary, emit two back-to-back updates (close the finished unit, then open the next), each using the full template. Do not ask permission to move to the next unit -- the plan authorizes it.
+      gotchas:
+        - The ordered-step heuristic counts explanatory numbered lists as procedure steps; the real procedure is the three-part template, not those lists.
+        - Auto mode authorizes execution, not chasing already-done work or fabricating next steps -- when the next decision is the user's, surface it and stop.
+        - Every artifact gets its absolute or project-relative path; never make the user remember which file is the current surface.
+  anti_patterns:
+    - id: permission-to-proceed
+      name: Asking permission to move to the next work-unit
+      keywords: [permission gate, should i proceed, next phase, round trip]
+      why_it_seems_right: Confirming the transition feels safe and collaborative.
+      why_it_is_wrong: The plan or phase sequence already authorizes the transition; the gate costs a round-trip the user did not need to pay.
+      alternative: Move forward by default; surface only a genuine decision (scope ambiguity, risk, missing input) in the next update's Required-user-action slot.
+    - id: stacked-deliverables
+      name: Re-issuing unrequested work while-I-am-at-it
+      keywords: [stacked deliverable, scope creep, extra work, single action]
+      why_it_seems_right: Doing more than asked looks proactive.
+      why_it_is_wrong: It violates the template's single-required-action rule and produces stacked-deliverable replies a distracted user cannot parse.
+      alternative: When the user asks for X, deliver X; park any Y in the plan, not the chat.
+```
+
 ## The end-of-turn template (required)
 
 Every reply that ends a turn -- whether parking work, handing back for a decision, or just confirming a small change -- uses the framework's three-part template: **What changed / Where it sits / Required user action**. The framework defines the parts; this section specifies what each part must contain at the operational level.

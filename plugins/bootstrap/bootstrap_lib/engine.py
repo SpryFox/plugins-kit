@@ -587,6 +587,139 @@ def _join_items(items):
     return ", ".join(parts)
 
 
+def _link_tool_dir_to_path(result, prefix, action_entries):
+    """When a tool resolved on disk but its dir isn't on PATH, own the chain.
+
+    Per dependency-philosophy.md principle 4 (find-or-download, never tell the
+    user to "restart your IDE to pick up PATH"), the engine persists the tool's
+    directory to PATH itself: shell RC files + Windows User PATH (registry), and
+    the live process PATH so subsequent phases this run can find it. Idempotent.
+
+    A tool that is present-on-disk but absent-from-PATH is, for any consumer that
+    invokes it by bare name, effectively not installed. This is the missing
+    linkage between `tools[]` and `path_entries[]`: a resolved tool pulls its own
+    directory onto PATH instead of relying on a separate, hand-authored
+    path_entries entry that may or may not exist.
+
+    No-op when the tool resolved with no concrete path (e.g. via a `check`
+    command) or is already on PATH.
+    """
+    if result.on_path or not result.path:
+        return
+    tool_dir = os.path.dirname(result.path)
+    if not tool_dir:
+        return
+    from .path_check import add_path_to_shell_config
+    _ok, msg = add_path_to_shell_config(tool_dir)
+    current_path = os.environ.get("PATH", "")
+    norm = [os.path.normcase(os.path.normpath(d)) for d in current_path.split(os.pathsep)]
+    if os.path.normcase(os.path.normpath(tool_dir)) not in norm:
+        os.environ["PATH"] = tool_dir + os.pathsep + current_path
+    action_entries.append(
+        f"{prefix}{result.name}: on disk but not on PATH — added {tool_dir} ({msg})"
+    )
+
+
+def _process_tool_entry(tool_def, current_os, data_dir, prefix, action_entries,
+                        ok_entries, tools_installed, plugin_name):
+    """Resolve one tool entry: check -> link-to-PATH -> download -> install.
+
+    Shared by _process_self_setup and _process_manifest (previously two
+    near-identical copies). Mutates action_entries / ok_entries / tools_installed
+    in place. Returns a failure dict, or None on success.
+
+    Resolution policy:
+      - check_tool() resolves via installPath candidates / `check` cmd / which.
+      - If resolved but not on PATH, _link_tool_dir_to_path() persists its dir
+        (owning the chain; no user "restart" instruction — philosophy P4).
+      - On miss: prefer a `download` recipe (our own copy under ~/.local/bin),
+        else run the install command. After ANY install attempt we re-check
+        regardless of the installer's exit code — installers exit non-zero for
+        "already installed / no upgrade" (winget 43), so the re-check, not the
+        exit code, decides "is it there now."
+    """
+    from .tool_check import check_tool
+    from . import tool_paths
+
+    name = tool_def["name"]
+    install_cmds = tool_def.get("install", {})
+    tool_install_path = tool_def.get("installPath")
+    check_cmd = tool_def.get("check")
+    download_def = _resolve_download_def(tool_def.get("download", {}), current_os)
+
+    result = check_tool(name, install_cmds, current_os,
+                        install_path=tool_install_path, check_cmd=check_cmd)
+
+    if result.passed:
+        if result.path:
+            tool_paths.record(data_dir, result.name, result.path)
+        _link_tool_dir_to_path(result, prefix, action_entries)
+        ok_entries.append(f"{prefix}{result.name}: ok - {result.message}")
+        return None
+
+    # Phase-2 path: prefer downloading our own copy to ~/.local/bin over shelling
+    # out to a system package manager. See tool-resolution-redesign.md.
+    if download_def and download_def.get("url") and download_def.get("sha256"):
+        from .downloader import download_and_install
+        dl = download_and_install(
+            name,
+            download_def["url"],
+            download_def["sha256"],
+            binary_name=download_def.get("binary_name"),
+            archive_path=download_def.get("archive_path"),
+            archive_type=download_def.get("archive_type"),
+        )
+        if dl.ok:
+            tool_paths.record(data_dir, name, dl.path)
+            tools_installed.append((name, f"downloaded to {dl.path}"))
+            return None
+        action_entries.append(f"{prefix}{name}: download failed - {dl.message}")
+        # Fall through to legacy install fallback below.
+
+    # Tool not found — attempt remediation if an install command is available.
+    install_state = "no_install_cmd"
+    if result.install_cmd:
+        from .tool_check import run_install
+        from .path_repair import repair_path
+        ok, _output = run_install(result.install_cmd)
+        # Re-check regardless of the installer's exit code: a non-zero exit can
+        # mean "already installed / no upgrade available" (winget 43), which is
+        # success from our standpoint. repair_path() first so a registry PATH
+        # update from the installer is visible to this already-running process.
+        repair_path()
+        recheck = check_tool(name, install_cmds, current_os,
+                             install_path=tool_install_path, check_cmd=check_cmd)
+        if recheck.passed:
+            if recheck.path:
+                tool_paths.record(data_dir, recheck.name, recheck.path)
+            _link_tool_dir_to_path(recheck, prefix, action_entries)
+            verb = "via" if ok else "already present after"
+            tools_installed.append((result.name, f"{verb} `{result.install_cmd}`"))
+            return None
+        # Re-check failed: distinguish "installer ran but we still can't find it"
+        # from "installer itself errored".
+        install_state = "installed_but_path_stale" if ok else "install_failed"
+
+    if install_state == "installed_but_path_stale":
+        action_entries.append(
+            f"{prefix}{result.name}: install succeeded but binary not findable afterward "
+            f"(add an installPath hint, or a download recipe to fetch our own copy)"
+        )
+    elif install_state == "install_failed":
+        action_entries.append(f"{prefix}{result.name}: install command failed - `{result.install_cmd}`")
+    else:
+        action_entries.append(f"{prefix}{result.name}: FAILED - {result.message}")
+
+    return {
+        "type": "tool",
+        "name": result.name,
+        "message": result.message,
+        "install_state": install_state,
+        "install_cmd": result.install_cmd,
+        "plugin": plugin_name,
+    }
+
+
 def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_entries, ok_entries, plugin_name="bootstrap"):
     """Process engine self-setup: tools, path_entries, venv.
 
@@ -605,82 +738,12 @@ def _process_self_setup(self_setup, current_os, data_dir, plugin_root, action_en
     # Check tools (consolidate installs into one line; failures stay per-line)
     tools_installed = []
     for tool_def in self_setup.get("tools", []):
-        name = tool_def["name"]
-        install_cmds = tool_def.get("install", {})
-        tool_install_path = tool_def.get("installPath")
-        download_def = _resolve_download_def(tool_def.get("download", {}), current_os)
-        result = check_tool(name, install_cmds, current_os, install_path=tool_install_path)
-
-        if result.passed:
-            if result.path:
-                tool_paths.record(data_dir, result.name, result.path)
-            ok_entries.append(f"{p}{result.name}: ok - {result.message}")
-            continue
-
-        # Phase-2 path: prefer downloading our own copy to ~/.local/bin over
-        # shelling out to a system package manager. See
-        # docs/planning/bootstrap/tool-resolution-redesign.md.
-        if download_def and download_def.get("url") and download_def.get("sha256"):
-            from .downloader import download_and_install
-            dl = download_and_install(
-                name,
-                download_def["url"],
-                download_def["sha256"],
-                binary_name=download_def.get("binary_name"),
-                archive_path=download_def.get("archive_path"),
-                archive_type=download_def.get("archive_type"),
-            )
-            if dl.ok:
-                tool_paths.record(data_dir, name, dl.path)
-                tools_installed.append((name, f"downloaded to {dl.path}"))
-                continue
-            action_entries.append(f"{p}{name}: download failed - {dl.message}")
-            # Fall through to legacy install fallback below.
-
-        install_state = "no_install_cmd"
-        if result.install_cmd:
-            from .tool_check import run_install
-            from .path_repair import repair_path
-            ok, _output = run_install(result.install_cmd)
-            if ok:
-                # Installers (winget, etc.) update HKLM/HKCU PATH but the
-                # change isn't visible to this already-running process.
-                # Re-merge the registry PATH so the recheck can see the
-                # freshly-installed binary's directory.
-                repair_path()
-                recheck = check_tool(name, install_cmds, current_os, install_path=tool_install_path)
-                if recheck.passed:
-                    if recheck.path:
-                        tool_paths.record(data_dir, recheck.name, recheck.path)
-                    tools_installed.append((result.name, f"via `{result.install_cmd}`"))
-                    continue
-                install_state = "installed_but_path_stale"
-            else:
-                install_state = "install_failed"
-
-        if install_state == "installed_but_path_stale":
-            # We installed it but still can't find it. Per the "we install
-            # what we need to a location we control" philosophy this should
-            # not happen -- if it does, the installer put the binary
-            # somewhere that's not in HKLM/HKCU Path. Bootstrap bug, not a
-            # user instruction.
-            action_entries.append(
-                f"{p}{result.name}: install succeeded but binary not findable afterward "
-                f"(bootstrap should download to ~/.local/bin instead)"
-            )
-        elif install_state == "install_failed":
-            action_entries.append(f"{p}{result.name}: install command failed - `{result.install_cmd}`")
-        else:
-            action_entries.append(f"{p}{result.name}: FAILED - {result.message}")
-
-        failures.append({
-            "type": "tool",
-            "name": result.name,
-            "message": result.message,
-            "install_state": install_state,
-            "install_cmd": result.install_cmd,
-            "plugin": "bootstrap",
-        })
+        failure = _process_tool_entry(
+            tool_def, current_os, data_dir, p,
+            action_entries, ok_entries, tools_installed, plugin_name="bootstrap",
+        )
+        if failure:
+            failures.append(failure)
 
     if tools_installed:
         action_entries.append(f"{p}tools installed: {_join_items(tools_installed)}")
@@ -1046,6 +1109,20 @@ def _legacy_replace(src, dst):
         os.replace(src, dst)
 
 
+def _rmdir_if_empty(path):
+    """Best-effort: remove a directory only if it is now empty. Never raises.
+
+    Used after a legacy-file migration to leave nothing behind -- if the old
+    file was the sole occupant of its directory, drop the empty directory too.
+    A non-empty dir (siblings still present), a missing dir, or a permission
+    error all simply leave the directory in place.
+    """
+    try:
+        os.rmdir(path)
+    except OSError:
+        pass
+
+
 def _process_project_config(project_config_section, plugin_data_dir, plugin_root, action_entries, ok_entries=None, plugin_name="", failures=None):
     """Process the project_config section of a plugin manifest.
 
@@ -1091,23 +1168,31 @@ def _process_project_config(project_config_section, plugin_data_dir, plugin_root
         try:
             legacy_exists = os.path.isfile(legacy_path)
             new_exists = os.path.isfile(project_config_path)
+            migrated = False
             if legacy_exists and not new_exists:
                 os.makedirs(os.path.dirname(project_config_path), exist_ok=True)
                 _legacy_replace(legacy_path, project_config_path)
+                migrated = True
                 action_entries.append(
                     f"project config: migrated {legacy_path} -> {project_config_path}"
                 )
             elif legacy_exists and new_exists:
                 if os.path.getmtime(legacy_path) <= os.path.getmtime(project_config_path):
                     _legacy_remove(legacy_path)
+                    migrated = True
                     action_entries.append(
                         f"project config: removed stale legacy {legacy_path} (new path {project_config_path} is fresher)"
                     )
                 else:
                     _legacy_replace(legacy_path, project_config_path)
+                    migrated = True
                     action_entries.append(
                         f"project config: migrated {legacy_path} -> {project_config_path} (overwrote stale new path)"
                     )
+            # Clean up after the migration: if the legacy file was the only thing
+            # in its directory, drop the now-empty directory too.
+            if migrated:
+                _rmdir_if_empty(os.path.dirname(legacy_path))
         except OSError as e:
             # Most common cause on Windows: the legacy file is read-only because
             # source control (e.g. Perforce) hasn't checked it out for delete.
@@ -1264,78 +1349,12 @@ def _process_manifest(manifest, current_os, data_dir, plugin_root, action_entrie
     # Check tools (consolidate installs into one line; failures stay per-line)
     tools_installed = []
     for tool_def in manifest.get("tools", []):
-        name = tool_def["name"]
-        install_cmds = tool_def.get("install", {})
-        tool_install_path = tool_def.get("installPath")
-        download_def = _resolve_download_def(tool_def.get("download", {}), current_os)
-        result = check_tool(name, install_cmds, current_os, install_path=tool_install_path)
-
-        if result.passed:
-            if result.path:
-                tool_paths.record(data_dir, result.name, result.path)
-            ok_entries.append(f"{prefix}{result.name}: ok - {result.message}")
-            continue
-
-        # Phase-2 path: prefer downloading our own copy to ~/.local/bin over
-        # shelling out to a system package manager. See
-        # docs/planning/bootstrap/tool-resolution-redesign.md.
-        if download_def and download_def.get("url") and download_def.get("sha256"):
-            from .downloader import download_and_install
-            dl = download_and_install(
-                name,
-                download_def["url"],
-                download_def["sha256"],
-                binary_name=download_def.get("binary_name"),
-                archive_path=download_def.get("archive_path"),
-                archive_type=download_def.get("archive_type"),
-            )
-            if dl.ok:
-                tool_paths.record(data_dir, name, dl.path)
-                tools_installed.append((name, f"downloaded to {dl.path}"))
-                continue
-            action_entries.append(f"{prefix}{name}: download failed - {dl.message}")
-            # Fall through to legacy install fallback below.
-
-        # Tool not found — attempt remediation if install command available
-        install_state = "no_install_cmd"
-        if result.install_cmd:
-            from .tool_check import run_install
-            from .path_repair import repair_path
-            ok, _output = run_install(result.install_cmd)
-            if ok:
-                # Installers (winget, etc.) update HKLM/HKCU PATH but the
-                # change isn't visible to this already-running process.
-                # Re-merge the registry PATH so the recheck can see the
-                # freshly-installed binary's directory.
-                repair_path()
-                recheck = check_tool(name, install_cmds, current_os, install_path=tool_install_path)
-                if recheck.passed:
-                    if recheck.path:
-                        tool_paths.record(data_dir, recheck.name, recheck.path)
-                    tools_installed.append((result.name, f"via `{result.install_cmd}`"))
-                    continue  # no failure to record
-                install_state = "installed_but_path_stale"
-            else:
-                install_state = "install_failed"
-
-        if install_state == "installed_but_path_stale":
-            action_entries.append(
-                f"{prefix}{result.name}: install succeeded but binary not findable afterward "
-                f"(bootstrap should download to ~/.local/bin instead)"
-            )
-        elif install_state == "install_failed":
-            action_entries.append(f"{prefix}{result.name}: install command failed - `{result.install_cmd}`")
-        else:
-            action_entries.append(f"{prefix}{result.name}: FAILED - {result.message}")
-
-        failures.append({
-            "type": "tool",
-            "name": result.name,
-            "message": result.message,
-            "install_state": install_state,
-            "install_cmd": result.install_cmd,
-            "plugin": plugin_name,
-        })
+        failure = _process_tool_entry(
+            tool_def, current_os, data_dir, prefix,
+            action_entries, ok_entries, tools_installed, plugin_name=plugin_name,
+        )
+        if failure:
+            failures.append(failure)
 
     if tools_installed:
         action_entries.append(f"{prefix}tools installed: {_join_items(tools_installed)}")

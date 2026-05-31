@@ -122,9 +122,6 @@ capability_skill:
       path: references/script-bootstrap.md
       keywords: [two dependency sets, UE-side packages, host-side venv, stdlib constraint, ensure_dependencies internals, interaction flow]
       summary: How ensure_dependencies bootstraps UE-side packages from inside a script.
-  companion:
-    skill: unreal-kit-a
-    description: Sub-agent companion that pairs with this skill for UE Python automation tasks; auto-loaded for unreal-kit work.
 ```
 
 ## Vocabulary

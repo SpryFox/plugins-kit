@@ -4,7 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
-from typing import NamedTuple, Optional
+from typing import NamedTuple, Optional, Union
 
 
 class CheckResult(NamedTuple):
@@ -13,36 +13,100 @@ class CheckResult(NamedTuple):
     message: str
     install_cmd: Optional[str] = None
     path: Optional[str] = None  # absolute path to the resolved binary, when passed=True
+    on_path: bool = False       # True when the tool is reachable by bare name on PATH
 
 
-def check_tool(name: str, install_cmds: Optional[dict] = None, current_os: Optional[str] = None, install_path: Optional[str] = None) -> CheckResult:
-    """Check if a CLI tool is installed via shutil.which() or install_path.
+def _dir_on_path(directory: str) -> bool:
+    """True if `directory` is present in the current process PATH."""
+    target = os.path.normcase(os.path.normpath(directory))
+    for d in os.environ.get("PATH", "").split(os.pathsep):
+        if d and os.path.normcase(os.path.normpath(d)) == target:
+            return True
+    return False
+
+
+def _run_check_cmd(check_cmd: str) -> bool:
+    """Run a manifest `check` command; return True iff it exits 0.
+
+    Uses the same bash-on-Windows shim as run_install so check commands can use
+    Unix syntax (command -v, &&, test -f) regardless of the launching shell.
+    """
+    try:
+        if sys.platform == "win32" or "MSYSTEM" in os.environ:
+            bash = shutil.which("bash")
+            if bash:
+                result = subprocess.run([bash, "-c", check_cmd], capture_output=True, text=True, timeout=30)
+            else:
+                result = subprocess.run(check_cmd, shell=True, capture_output=True, text=True, timeout=30)
+        else:
+            result = subprocess.run(check_cmd, shell=True, capture_output=True, text=True, timeout=30)
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+
+
+def check_tool(
+    name: str,
+    install_cmds: Optional[dict] = None,
+    current_os: Optional[str] = None,
+    install_path: Optional[Union[str, list]] = None,
+    check_cmd: Optional[str] = None,
+) -> CheckResult:
+    """Check if a CLI tool is installed.
+
+    Resolution order: installPath candidates (file exists) -> check command
+    (exit 0) -> shutil.which(name). The first hit wins.
 
     Args:
         name: Tool name (e.g. "uv", "git")
         install_cmds: Platform-keyed install commands (e.g. {"macos": "brew install git"})
         current_os: Current OS string from detect_os()
-        install_path: Directory where the tool binary lives (supports ~ expansion).
-                      Checked before falling back to shutil.which().
+        install_path: Directory (or list of candidate directories) where the tool
+                      binary may live. Supports ~ and $VAR expansion. Checked
+                      before the check command and before shutil.which().
+        check_cmd: Optional shell command whose exit-0 means "present". Used for
+                   tools whose presence can't be expressed as name-on-PATH (app
+                   bundles, version probes). Resolves the tool but yields no
+                   concrete binary path.
 
     Returns:
-        CheckResult with pass/fail and optional install command
+        CheckResult. `on_path` reports whether the tool is reachable by bare name
+        on the current PATH — a tool can be `passed=True` (found on disk) yet
+        `on_path=False` (its directory isn't on PATH), which the engine treats as
+        an actionable "link this dir onto PATH" rather than a pass-and-forget.
     """
-    # Check install_path first (covers tools not yet in PATH)
+    # 1. install_path candidates (covers tools not yet in PATH)
     if install_path:
-        expanded = os.path.expanduser(install_path)
-        candidates = [os.path.join(expanded, name)]
-        if sys.platform == "win32" or "MSYSTEM" in os.environ:
-            candidates.append(os.path.join(expanded, name + ".exe"))
-        for candidate in candidates:
-            if os.path.isfile(candidate):
-                return CheckResult(
-                    name=name,
-                    passed=True,
-                    message=f"found at {candidate}",
-                    path=candidate,
-                )
+        candidates_dirs = [install_path] if isinstance(install_path, str) else list(install_path)
+        for raw_dir in candidates_dirs:
+            if not raw_dir:
+                continue
+            expanded_dir = os.path.expanduser(os.path.expandvars(raw_dir))
+            candidates = [os.path.join(expanded_dir, name)]
+            if sys.platform == "win32" or "MSYSTEM" in os.environ:
+                candidates.append(os.path.join(expanded_dir, name + ".exe"))
+            for candidate in candidates:
+                if os.path.isfile(candidate):
+                    return CheckResult(
+                        name=name,
+                        passed=True,
+                        message=f"found at {candidate}",
+                        path=candidate,
+                        on_path=_dir_on_path(expanded_dir),
+                    )
 
+    # 2. check command (exit 0 => present). No concrete binary path is known, so
+    # on_path is reported True — the engine has no directory to link onto PATH.
+    if check_cmd and _run_check_cmd(check_cmd):
+        return CheckResult(
+            name=name,
+            passed=True,
+            message="check command passed",
+            path=None,
+            on_path=True,
+        )
+
+    # 3. PATH lookup — by definition reachable by name when found here.
     path = shutil.which(name)
     if path:
         return CheckResult(
@@ -50,6 +114,7 @@ def check_tool(name: str, install_cmds: Optional[dict] = None, current_os: Optio
             passed=True,
             message=f"found at {path}",
             path=path,
+            on_path=True,
         )
 
     install_cmd = None
@@ -59,7 +124,7 @@ def check_tool(name: str, install_cmds: Optional[dict] = None, current_os: Optio
     return CheckResult(
         name=name,
         passed=False,
-        message=f"not found in PATH",
+        message="not found in PATH",
         install_cmd=install_cmd,
     )
 
@@ -73,6 +138,11 @@ def run_install(install_cmd: str) -> tuple[bool, str]:
 
     Returns:
         (success, output) — success=True if returncode==0
+
+    NOTE: a non-zero exit is advisory, not authoritative — some installers exit
+    non-zero for "already installed / no upgrade available" (winget exit 43).
+    Callers should re-check the tool after install regardless of this bool; the
+    re-check, not the exit code, is the source of truth for "is it there now."
     """
     try:
         if sys.platform == "win32" or "MSYSTEM" in os.environ:

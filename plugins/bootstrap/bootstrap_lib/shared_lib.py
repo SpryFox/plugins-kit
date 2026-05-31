@@ -172,7 +172,14 @@ def link_shared_lib(name: str, python: Optional[str], shared_root: str) -> Share
         return SharedLibResult(name, "skipped", f"could not resolve site-packages; skipped linking {name}")
 
     pth = os.path.join(site, f"{name}.pth")
-    desired = entry_dir
+    # Executable .pth that PREPENDS the shared dir to sys.path. A plain-path .pth
+    # only APPENDS (after this interpreter's own site-packages), so a stale
+    # pip-installed copy of <name> sitting in site-packages -- e.g. left over from
+    # a former `bootstrap @ git+` dependency that uv sync didn't prune -- would
+    # shadow the shared copy. Prepending makes the shared copy authoritative (the
+    # single source of truth) regardless of any such leftover. site.py executes
+    # .pth lines that begin with "import".
+    desired = 'import sys; sys.path.insert(0, r"%s")' % entry_dir
     if _read_text(pth) == desired:
         return SharedLibResult(name, "cached", f"shared lib {name} linked (cached, {pth})")
 

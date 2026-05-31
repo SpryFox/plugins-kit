@@ -92,6 +92,99 @@ class TestInstallPath:
         assert "found at" in result.message
 
 
+class TestInstallPathList:
+    """installPath may be a list of candidate directories; first hit wins."""
+
+    def test_first_candidate_hits(self, tmp_path):
+        d1 = tmp_path / "a"
+        d1.mkdir()
+        tool = d1 / "mytool"
+        tool.write_text("#!/bin/sh\n")
+        tool.chmod(tool.stat().st_mode | stat.S_IEXEC)
+        result = check_tool("mytool", install_path=[str(d1), str(tmp_path / "b")])
+        assert result.passed is True
+        assert str(d1) in result.message
+
+    def test_second_candidate_hits(self, tmp_path):
+        d1 = tmp_path / "a"
+        d1.mkdir()
+        d2 = tmp_path / "b"
+        d2.mkdir()
+        tool = d2 / "mytool"
+        tool.write_text("#!/bin/sh\n")
+        tool.chmod(tool.stat().st_mode | stat.S_IEXEC)
+        result = check_tool("mytool", install_path=[str(d1), str(d2)])
+        assert result.passed is True
+        assert str(d2) in result.message
+
+    def test_no_candidate_hits_falls_through(self, tmp_path):
+        result = check_tool(
+            "nonexistent_xyz_tool",
+            install_path=[str(tmp_path / "a"), str(tmp_path / "b")],
+        )
+        assert result.passed is False
+
+    def test_env_var_expansion(self, tmp_path, monkeypatch):
+        d = tmp_path / "progs"
+        d.mkdir()
+        tool = d / "mytool"
+        tool.write_text("#!/bin/sh\n")
+        tool.chmod(tool.stat().st_mode | stat.S_IEXEC)
+        monkeypatch.setenv("MYPROGS", str(d))
+        result = check_tool("mytool", install_path="$MYPROGS")
+        assert result.passed is True
+
+
+class TestCheckCommand:
+    """A `check` command resolves a tool when its exit code is 0."""
+
+    def test_check_cmd_pass(self):
+        result = check_tool("whatever_name", check_cmd="exit 0")
+        assert result.passed is True
+        assert result.on_path is True  # no concrete dir to link
+
+    def test_check_cmd_fail_falls_through_to_which(self):
+        # check fails, name not on PATH -> overall fail
+        result = check_tool("nonexistent_xyz_tool", check_cmd="exit 1")
+        assert result.passed is False
+
+    def test_install_path_takes_priority_over_check(self, tmp_path):
+        tool = tmp_path / "mytool"
+        tool.write_text("#!/bin/sh\n")
+        tool.chmod(tool.stat().st_mode | stat.S_IEXEC)
+        # install_path hits first; check_cmd (would fail) never runs
+        result = check_tool("mytool", install_path=str(tmp_path), check_cmd="exit 1")
+        assert result.passed is True
+
+
+class TestOnPath:
+    """on_path reports whether the resolved tool is reachable by bare name."""
+
+    def test_which_resolution_is_on_path(self):
+        result = check_tool("python3")
+        assert result.passed is True
+        assert result.on_path is True
+
+    def test_install_path_off_path_reports_false(self, tmp_path, monkeypatch):
+        # A tool found only via install_path in a dir NOT on PATH -> on_path False
+        monkeypatch.setenv("PATH", os.pathsep.join(["/usr/bin", "/bin"]))
+        tool = tmp_path / "offpathtool"
+        tool.write_text("#!/bin/sh\n")
+        tool.chmod(tool.stat().st_mode | stat.S_IEXEC)
+        result = check_tool("offpathtool", install_path=str(tmp_path))
+        assert result.passed is True
+        assert result.on_path is False
+
+    def test_install_path_on_path_reports_true(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("PATH", str(tmp_path))
+        tool = tmp_path / "onpathtool"
+        tool.write_text("#!/bin/sh\n")
+        tool.chmod(tool.stat().st_mode | stat.S_IEXEC)
+        result = check_tool("onpathtool", install_path=str(tmp_path))
+        assert result.passed is True
+        assert result.on_path is True
+
+
 class TestRunInstall:
     def test_success(self):
         ok, output = run_install("echo ok")

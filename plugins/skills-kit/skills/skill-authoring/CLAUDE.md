@@ -636,6 +636,75 @@ claude_md:
         reference doc; new pytest cases (6 covering omitted, minimal,
         full, multi-sub-area, missing-name, wrong-type validations).
       added: "2026-05-01"
+    - id: dec_13_domain_consolidation_criterion
+      keywords:
+        - domain consolidation
+        - merge skills into domain
+        - when to make a domain
+        - doer types merge
+        - reference pattern discipline fold in
+        - co-location is not a domain
+        - shared pattern not shared subject
+        - one doer plus references is a skill
+        - never nest domains
+        - retroactive merge direction
+      summary: "A domain-skill is justified only when 2+ skills share a SUBJECT and are doer types (technique / capability / audit, which merge as members). Reference / pattern / discipline skills fold in as references/guardrails, not members; domains never nest. Co-location in a plugin, topical adjacency, and a shared pattern are NOT a shared subject. One doer + N references is a skill, not a domain."
+      detail: |
+        The framework already covered two boundary-discipline directions:
+        building a NEW domain bottom-up (compositional_order) and SPLITTING
+        one skill that outgrew its type (auditing_procedure.mixed_type_check,
+        plus CRP-is-the-test for L2->L3). It was silent on the third,
+        retroactive direction: looking across the corpus at N existing
+        standalone skills and deciding whether they should MERGE into one
+        domain.
+
+        The merge criterion (apply verbatim):
+        - Justified only when BOTH hold: (1) 2+ skills share a subject --
+          not co-location, not topical adjacency, not a shared pattern;
+          (2) the skills are doer types.
+        - Mergeable-vs-foldable by type: technique / capability / audit
+          merge as MEMBERS (they are operations over the subject; multiple
+          operations on one subject IS the domain). reference / pattern /
+          discipline FOLD IN as supporting content (reference -> L3 doc;
+          pattern -> stays standalone, it applies across many subjects;
+          discipline -> the domain's guardrails) -- none needs its own
+          member sub-trigger. domain NEVER nests (fails top-level CRP).
+        - Consequences: one doer + N references is a skill with references,
+          not a domain; skills sharing a pattern but different subjects are
+          not a domain (they reference one pattern-skill); a plugin is a
+          packaging unit, a domain is a subject unit -- they can diverge or
+          a subject can span two plugins.
+        - CRP gate (same as L2->L3 splits): each member must fire on a
+          distinct sub-trigger so a typical invocation loads container + one
+          member. If every candidate co-loads, it is a CRP-fail merge --
+          keep them separate, exactly as a CRP-fail split gets reverted.
+
+        Audit hook codified for /skill-audit hierarchy: cluster skills by
+        subject, flag any subject owning 2+ doer-type skills as a
+        consolidation candidate; flag any domain whose members all co-load
+        as a CRP-fail to revert.
+
+        Codified in: framework.md new section "When to consolidate skills
+        into a domain (the merge direction)" under the L1/L2/L3 content
+        allocation block, parallel to "CRP is the test for L2 -> L3 splits".
+      origin: |
+        Surface: a repository domain-structure design session (2026-05-30)
+        that pulled back from "should these specific skills merge" to "what
+        should the whole repo's domain structure be." The corpus survey
+        showed one real domain (skill-authoring), one obvious missing one
+        (a cohesion-audit domain over claude-md-audit + skill-audit +
+        references-audit), and a content/authoring cluster the user had
+        eyed for merging that actually FAILS the bar (one doer +
+        references). The user supplied the two load-bearing constraints --
+        "a domain makes sense only when you can group multiple skills" and
+        "only certain skill types make sense to merge into domains."
+        Finding: the framework named the split and bottom-up-authoring
+        directions but not the retroactive merge heuristic, so the
+        consolidation decision was being re-derived per conversation.
+        Follow-up: framework.md section added; this Dec-13 insight records
+        the provenance; scope held to documentation (the /skill-audit
+        detector and the concrete repo redesign deferred).
+      added: "2026-05-30"
     - id: ssot_canonical_split
       keywords:
         - SSOT

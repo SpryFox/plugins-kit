@@ -107,7 +107,9 @@ class TestLink:
         r1 = shared_lib.link_shared_lib("mylib", sys.executable, shared_root)
         assert r1.status == "linked"
         pth = site / "mylib.pth"
-        assert pth.read_text(encoding="utf-8").strip() == os.path.join(shared_root, "mylib")
+        # Executable prepend .pth (wins over any stale installed shadow).
+        entry = os.path.join(shared_root, "mylib")
+        assert pth.read_text(encoding="utf-8").strip() == 'import sys; sys.path.insert(0, r"%s")' % entry
 
         r2 = shared_lib.link_shared_lib("mylib", sys.executable, shared_root)
         assert r2.status == "cached"
@@ -160,6 +162,50 @@ class TestRealVenv:
         assert "42" in proc.stdout
         assert shared_root.replace("/", os.sep) in proc.stdout or "mylib" in proc.stdout
 
+    def test_pth_wins_over_stale_installed_shadow(self, tmp_path):
+        """Regression: a plain-path .pth only appends, so a pip-installed copy of
+        the package in site-packages (e.g. left from a former git-dependency that
+        uv sync didn't prune) would shadow the shared copy. The executable prepend
+        .pth must win regardless."""
+        venv_dir = tmp_path / "venv"
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "venv", "--without-pip", str(venv_dir)],
+                capture_output=True, timeout=120, check=True,
+            )
+        except (subprocess.SubprocessError, OSError) as e:
+            pytest.skip(f"could not create venv: {e}")
+
+        from bootstrap_lib.venv_check import _find_python
+        venv_python = _find_python(str(venv_dir))
+        assert venv_python
+
+        # Plant a STALE shadow copy directly in the venv's site-packages.
+        site = subprocess.run(
+            [venv_python, "-c", "import sysconfig;print(sysconfig.get_path('purelib'))"],
+            capture_output=True, text=True, timeout=30,
+        ).stdout.strip()
+        shadow = os.path.join(site, "mylib")
+        os.makedirs(shadow, exist_ok=True)
+        with open(os.path.join(shadow, "__init__.py"), "w", encoding="utf-8") as f:
+            f.write("VALUE = 'STALE'\n")  # no SHARED marker; missing newer API
+
+        # Publish the real shared copy and link it.
+        plugin_root = tmp_path / "plugin"
+        _make_pkg(str(plugin_root / "lib"), "mylib", value=99)
+        shared_root = str(tmp_path / "_shared_libs")
+        shared_lib.sync_shared_lib("mylib", "lib", str(plugin_root), shared_root)
+        r = shared_lib.link_shared_lib("mylib", venv_python, shared_root)
+        assert r.status == "linked", r.message
+
+        # The SHARED copy (VALUE=99) must win over the stale shadow (VALUE='STALE').
+        proc = subprocess.run(
+            [venv_python, "-c", "import mylib; print(mylib.VALUE)"],
+            capture_output=True, text=True, timeout=30,
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert proc.stdout.strip() == "99", f"stale shadow won: {proc.stdout!r}"
+
 
 # --- engine wiring via _process_manifest ---------------------------------
 
@@ -174,9 +220,12 @@ class TestEngineWiring:
         shared_root = tmp_path / "data" / "_shared_libs"
         return data_dir, plugin_root, shared_root
 
-    def test_owner_publish_via_process_manifest(self, tmp_path):
+    def test_owner_publish_via_process_manifest(self, tmp_path, monkeypatch):
         data_dir, plugin_root, shared_root = self._dirs(tmp_path)
         _make_pkg(str(plugin_root / "lib"), "mylib")
+        # Don't touch the real standalone Python: the owner phase links to it via
+        # find_standalone_python(); stub it out so the test stays hermetic.
+        monkeypatch.setattr(shared_lib, "find_standalone_python", lambda: None)
 
         manifest = {"shared_libs": [{"name": "mylib", "src": "lib"}]}
         action_entries, ok_entries = [], []

@@ -2,7 +2,7 @@
 
 Full usage reference for the `roster` and `hierarchy` subcommands of `/skill-audit`, and their underlying script `scripts/report.py`. Loaded when the agent needs the precise argument set, location semantics, output-shape contract, or implied-frontmatter rules.
 
-For the single-file audit operation (the namesake `/skill-audit <path>` / `list` / `<numbers>` flows), see the audit_skill_md technique in SKILL.md and the placement framework at `content-allocation.md (in skills-kit:skill-authoring)`.
+For the single-file audit operation (the namesake `/skill-audit <path>` / `list` / `<numbers>` flows), see the audit_skill_md technique in SKILL.md and the placement framework at `cohesion-principles (in skills-kit)`.
 
 ## Invocation
 

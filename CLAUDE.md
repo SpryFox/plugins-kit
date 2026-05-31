@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**plugins-kit** is the **development repository** (source of truth) for the plugins-kit Claude Code marketplace. It contains the source code for all plugins in the marketplace. Currently ships: **bootstrap** (dependency management), **p4-kit** (Perforce multi-agent code review), **skills-kit** (skill-authoring framework), **test-plugin** (bootstrap exerciser), and **unreal-kit** (Unreal Engine Python API automation).
+**plugins-kit** is the **development repository** (source of truth) for the plugins-kit Claude Code marketplace. It contains the source code for all plugins in the marketplace. Currently ships (published): **awesome-kit** (cross-domain skills: shared comms framework, update-documentation, /plugin-ecosystem, /html-pdf), **bootstrap** (dependency management), **cache-kit** (cache-usage reporting from transcripts), **claude-ui-kit** (status line + /statusline), **git-kit** (Git/GitHub multi-agent code review + gh bootstrap), **openrouter-kit** (OpenRouter key management + shared model registry), **p4-kit** (Perforce multi-agent code review), **prototypes** (experimental skills awaiting graduation), **skills-kit** (skill-authoring framework), **test-plugin** (bootstrap exerciser), and **unreal-kit** (Unreal Engine Python API automation). Dev-only (not published, `published: false`): **agent-glue**, **workflow-kit**.
 
 This repo is a **Claude Code plugin marketplace** — it extends Claude Code with skills, commands, and hooks via the `.claude-plugin/marketplace.json` manifest. Plugins are loaded either via `--plugin-dir` (local development) or `enabledPlugins` in settings (production installs from the remote repo).
 
@@ -109,6 +109,10 @@ uv run --extra dev pytest tests/bootstrap/test_marketplace_lifecycle.py::TestChe
 
 Only run the full suite (`uv run --extra dev pytest -v`) when explicitly asked or before a release.
 
+**Known pre-existing failures (don't chase as regressions).** Two clusters fail independent of your changes:
+- 4 `tests/skills-kit/` schema tests (`test_schemas`, `test_anti_patterns`, `test_capability_skill_schema`, `test_step_tracker_or_checklist`) fail to *collect* — they `import schemas` / `_shared`, which moved into `skills_kit_lib` (now `schema_registry`) / were deleted at the library extraction. They need a rewrite against the current `skills_kit_lib` API, not an import tweak.
+- ~8 bootstrap `engine`/`venv` tests (`test_engine_background`, `test_engine_multiplugin`, `test_venv_check`) throw `CalledProcessError` under **uv's default Python 3.14 on Windows** but pass under the 3.12 `.venv` — likely a 3.14 incompatibility, not a regression. Pin the interpreter (`uv run -p 3.12 ...` or the `.venv` python) when running these.
+
 **Local development** — use `--plugin-dir` to test plugins from the working copy:
 
 ```bash
@@ -138,6 +142,26 @@ After publish:
 - Users with `autoUpdate: true` receive the update on next session start.
 - Users without auto-update run `/plugin marketplace update` then `/plugin update`.
 
+### The marketplace landing page (`index.html`) — regenerate at publish time
+
+The repo-root **`index.html`** is the marketplace's public landing page (the GitHub-Pages-style poster listing every plugin and its skills). It is **generated, not hand-edited** — by awesome-kit's plugin-ecosystem skill. Regenerate it with:
+
+```bash
+python plugins/awesome-kit/skills/plugin-ecosystem/scripts/generate.py \
+  --marketplace plugins-kit --title "plugins-kit marketplace" \
+  --output ./index.html --no-open
+```
+
+**It crawls the cache, not the dev tree.** `generate.py` reads `~/.claude/plugins/installed_plugins.json` and walks each plugin's **cached `installPath`** (`~/.claude/plugins/cache/<mkt>/<plugin>/<version>/`), filtered by `marketplace.json`. So it reflects the **installed/published** skill roster — **not** unpublished skills sitting on `dev`. Consequence: regenerating `index.html` from a normal session **before** publishing reproduces the *old* landing page (a new skill like `cohesion-audit` won't appear until its plugin version is published and the local cache refetches it).
+
+**Therefore `index.html` regeneration is a publish step, not a dev step.** A dev-branch skill change is not "done" for the landing page until it is published and the page is regenerated. The correct sequence:
+
+1. Publish (version bumps + push dev + merge master), so consumers' — and your own next-session — caches refetch the new versions.
+2. In a session where the local cache reflects the published versions (i.e. after a SessionStart bootstrap has updated the cache — clear the cooldown if needed), run the `generate.py` command above.
+3. Commit the refreshed `index.html` (to master, where the page is served).
+
+To **preview** the page against unpublished dev skills without publishing, run the generator under a dev-tree-pointed session (`claude-dev` / `pk-dev`, which rewrite `installed_plugins.json` `installPath`s at the dev tree) — but do not commit a dev-preview page as the published landing page.
+
 ### Dev-only plugins — do not publish to master
 
 Some plugins live on `dev` for in-development work and must not reach consumers until they are ready. Each such plugin sets `"published": false` in its `plugins/<name>/.claude-plugin/plugin.json`. The marketplace regenerator (`scripts/regen_marketplace.py`) filters those plugins out of `marketplace.json`, so they are excluded structurally — not by memory — even if their files land on master via a cherry-pick.
@@ -145,7 +169,7 @@ Some plugins live on `dev` for in-development work and must not reach consumers 
 **Current dev-only plugins** (the field, not this list, is load-bearing — this is just a human-readable inventory):
 
 - `agent-glue` — graph-orchestration kit, design + scaffolding phase. Heavy new Python deps (pydantic, jinja2, jsonschema), no `bootstrap.json` yet, no skills wired up. Tested locally via `--plugin-dir`.
-- `workflow-glue` — declarative front-end to the native Workflow tool. Authors `*.workflow.yaml`, compiles it to a native Workflow script the skill runs (compile-to-native; does not reimplement execution). Claude-only, tightly scoped. Deps: pyyaml only. Has `bootstrap.json` + a `workflow-glue` skill; tests in `tests/workflow-glue/`. Conceptually supersedes agent-glue's graph-system + claude-dispatch now that the Workflow tool exists.
+- `workflow-kit` — kit of incremental, native-preserving improvements on top of the native Workflow tool (renamed from `workflow-glue`; 0.2.0). Ships a declarative `*.workflow.yaml` -> native-script compiler (compile-to-native; does not reimplement execution). Adds a generically-named `workflow-kit-agent` executor (extensible) plus script + openrouter node strategies that fulfil a file-passing contract (`$OUT`/`$STATUS`, shell-redirected so payloads bypass the model context — cheap haiku shim, not a deterministic runtime). The openrouter node reuses openrouter-kit's `make_openai_client` runner (`scripts/openrouter_run.py`) + the `openai` SDK (installed into the standalone Python) — both hosted outside workflow-kit, so workflow-kit's only dep stays pyyaml. Domain-skill container (light index + reference docs). Has `bootstrap.json`; tests in `tests/workflow-kit/`. Conceptually supersedes agent-glue's graph-system + claude-dispatch now that the Workflow tool exists.
 
 When you see commits for a dev-only plugin in `git log origin/master..origin/dev`, that's still gotcha 1 territory — branch from master, cherry-pick only the publish-ready commits, and leave the dev-only commits on `dev`. The regenerator is a backstop for the marketplace listing, not a substitute for picking the right commits to merge.
 
@@ -193,11 +217,23 @@ git diff --staged
 
 Read every line. If anything is unrelated to the feature, `git restore --staged <file>` and use `git add -p` (or `git stash` the WIP first) to stage only the intended hunks. Same discipline for untracked files — don't `git add .` from a dirty tree.
 
+*Sharpening — the dev tree is a live workspace.* The index may already hold **another session's** (or your own earlier) staged work before you touch it. `git add <your specific files>` followed by `git commit` commits the **entire index**, not just the files you named — so a pre-staged rename or WIP rides along under your commit message. The `git diff --staged` check above is the only guard: run it every time and confirm the staged set is *exactly* your files, even when you used a targeted `git add`. (This is how a `workflow-glue → workflow-kit` rename once landed inside an unrelated test-coverage commit.)
+
 **Gotcha 3: a botched publish burns the version number.** Cache entries on consumer machines key off `(plugin, version)`. If a bad version is pushed to master, retracting it doesn't evict caches that already pulled it — same version = same code, forever, from the cache's view. The fix is a patch-bump *past* the burned number (e.g. 0.11.0 broken → don't ship 0.11.1, jump to 0.12.0) so every consumer's cache invalidates cleanly. The 0.11.1 / `patch-bump 4 plugins to force-refresh post-retraction caches` commits on master are an example of this recovery pattern.
 
 **Gotcha 4: unauthorized publish.** A publish go-signal authorizes the full three-step flow (version bumps, push to dev, merge to master). It does **not** authorize sweeping in adjacent unrelated work just because it happens to be staged or sitting on `dev`. If your feature commit is clean but `dev` has other commits, that's gotcha 1 territory — branch from master. The publish authorization is scoped to the work the user actually approved.
 
 **Recovery: how to retract.** A bad publish on master is fixed forward, never with `push --force` to master. Push a follow-up commit that either (a) reverts the bad commit and patch-bumps the affected plugins past the burned version, or (b) re-implements correctly under a new version. Consumers with `autoUpdate: true` then refresh on their next session start. Never rewrite master history — other machines have already fetched it.
+
+**Master drifts behind dev on non-plugin infra — reconcile periodically.** The publish flow cherry-picks *feature* commits (plugin code + version bumps) to master; it never carries the not-tied-to-a-feature changes — a CLAUDE.md gotcha you added while thinking about process, a new test file, a `.gitignore` tweak, dev tooling. So master silently falls behind dev on repo **infrastructure** — including, ironically, the safe-publish gotchas themselves and test coverage for *published* plugins. This is expected (the per-publish scoping in gotcha 4 is what causes it), not a bug — but reconcile it from time to time. Do it in the **master tree**, against `origin/dev`'s committed state (never the live dev working tree), keeping dev-only plugins back:
+
+```bash
+git diff --name-only origin/master origin/dev \
+  | grep -vE '^(plugins|tests)/(agent-glue|workflow-kit)/' \
+  | xargs git checkout origin/dev --
+```
+
+Then confirm no dev-only plugin content leaked (`git diff --cached --name-only`), run the brought tests, commit, push master. No version bumps, no `marketplace.json` change — pure infra sync, so consumers are unaffected. Skip the master→dev merge-back when the dev tree is being actively edited: the content already matches on both branches, so the history merge can wait for a calm moment.
 
 **Why both files**: Claude Code uses the `marketplace.json` version to decide whether to fetch a new cache entry. If you only bump `plugin.json` but not `marketplace.json`, consumers won't see the update. The regenerator + a pre-commit hook (`scripts/pre-commit-version-check.sh`) keep them in sync automatically.
 
@@ -252,6 +288,8 @@ Then bump update06's own version in both `plugin.json` and `marketplace.json`, c
 - **ADP (Acyclic Dependencies Principle)** — Skills don't circularly depend on each other. The dependency graph is a DAG.
 
 If no existing skill fits, create a stub skill with a description that explains why it exists. The document lives as a reference within the skill and is progressively disclosed (loaded only when the skill is invoked, not upfront).
+
+**Plugin boundaries are hard boundaries for cohesion work.** Never move content between plugins — or into a new plugin — to achieve skill cohesion. Plugins are independently versioned, installed, and bootstrapped units; relocating a skill/reference across a plugin boundary to satisfy CCP/CRP/ADP breaks that independence (cross-plugin caches, dependency edges, version coupling) and is never worth the cohesion gain. Cohesion refactors operate *within* a plugin only. When you spot a genuine cohesion opportunity that spans plugins — two doer-skills in different plugins sharing a subject (e.g. git-kit `git-code-review` + p4-kit `p4-code-review`), a reference duplicated across plugins, a shared substrate two plugins both consume — **surface it as an insight** (a `claude_md:` insight or a note in the relevant skill), do **not** act on it by relocation or by spawning a unifying plugin. Sharing across plugins is done through a library both depend on (e.g. `bootstrap_lib.code_review`), not by merging the skills.
 
 **Reference file design** (within a skill): Apply the same cohesion principles to reference files. Each reference should serve a single audience and change for a single reason. Validate with:
 
@@ -452,6 +490,26 @@ claude_md:
         through the engine without an installPath lookup.
       origin: Surfaced 2026-05-27 -- the claudx smoke test couldn't validate jq's new download recipe because the engine kept reading the cached bootstrap.json.
       added: "2026-05-27"
+    - id: code_review_cross_plugin_cohesion
+      keywords: [code-review domain, git-code-review, p4-code-review, cross-plugin cohesion, bootstrap_lib.code_review, dec_13, domain not built, inter-plugin opportunity, surface not merge]
+      summary: git-kit:git-code-review + p4-kit:p4-code-review are dec_13-justified doer-skills sharing one subject, but they are deliberately NOT merged into a domain -- the members live in different plugins, and plugin boundaries are hard boundaries for cohesion work. Recorded as an inter-plugin cohesion observation, not acted on.
+      detail: |
+        Both are technique-skills running the same pre-submit multi-agent review pipeline
+        (identical reviewer roster, profiles, validators, submit-gate format); they differ only
+        in VCS front-half (git ranges/auto-detect vs p4 changelist/shelving). The dec_13 merge
+        criterion (2+ doers sharing a subject) is satisfied, and the VCS-neutral back-half
+        (chunking + CLAUDE.md collection + submit-gate parsing) is ALREADY shared via
+        plugins/bootstrap/bootstrap_lib/code_review/ (chunking.py + claude_mds.py). So the old
+        "needs a shared abstraction first" blocker is gone. They are still NOT merged because:
+        (1) the members are in separate plugins (git-kit, p4-kit) and a domain router cannot
+        span plugins without relocating a member or spawning a new home plugin -- both barred by
+        "Plugin boundaries are hard boundaries for cohesion work" above; (2) routing value is low
+        -- git-vs-p4 is unambiguous from the workspace, so a natural-language front door adds
+        little over the two already-auto-triggering skills. Correct cross-plugin sharing is the
+        library both depend on (bootstrap_lib.code_review), which already exists. Do not
+        re-investigate a code-review domain; the answer is "surface, don't merge."
+      origin: Surfaced 2026-05-31 during the cohesion refactor -- after W2-proper, an Explore feasibility sweep found the shared lib already exists; user ruled cross-plugin relocation/new-plugin out of bounds for cohesion work.
+      added: "2026-05-31"
   conventions:
     - rule: When adding a new plugin Python dependency, update <plugin>/pyproject.toml AND <plugin>/bootstrap.json venv.check_imports together.
       keywords: [pyproject.toml, bootstrap.json, dependency, venv, check_imports]
