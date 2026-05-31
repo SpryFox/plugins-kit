@@ -1,4 +1,4 @@
-# insight-engineering
+# materialized-output
 
 Pattern-skill teaching the *materialized insights* model and the *insight engineering* discipline.
 
@@ -20,19 +20,19 @@ If a sibling skill emerges around tool/script design more broadly (e.g., "tool-d
 claude_md:
   _schema_version: "1"
   scope:
-    directory: plugins/skills-kit/skills/insight-engineering
+    directory: plugins/skills-kit/skills/materialized-output
     covers:
-      - meta about the insight-engineering skill itself
+      - meta about the materialized-output skill itself
       - skill type rationale (pattern-skill vs discipline-skill)
       - origin and provenance of the skill's content
       - future composition with sibling skills
     excludes:
       - the materialized-insights model itself (lives in SKILL.md and references)
-      - generic insight-engineering practices (taught by the skill, not by this CLAUDE.md)
+      - generic materialized-output practices (taught by the skill, not by this CLAUDE.md)
   insights:
     - id: pattern_skill_classification
       keywords: [pattern-skill, classification, recognition, discipline-skill, type rationale, graduation]
-      summary: insight-engineering is classified as a pattern-skill because its primary value is teaching recognition of when the materialized-insights pattern applies, not enforcing rules under pressure.
+      summary: materialized-output is classified as a pattern-skill because its primary value is teaching recognition of when the materialized-insights pattern applies, not enforcing rules under pressure.
       detail: |
         The skill's "practices" and "anti-patterns" sections reinforce the model
         rather than enforcing rules under pressure. If a future audit finds developers
@@ -56,7 +56,7 @@ claude_md:
       added: "2026-05-19"
     - id: future_tool_design_domain_skill
       keywords: [future composition, tool-design, domain-skill, sibling skill, bundling]
-      summary: If a tool/script-design sibling skill emerges, insight-engineering could become a member of a bundling domain-skill.
+      summary: If a tool/script-design sibling skill emerges, materialized-output could become a member of a bundling domain-skill.
       detail: |
         A future "tool-design" skill (covering CLI shape, exit-code discipline,
         scriptability) would be a natural sibling. At that point, a domain-skill

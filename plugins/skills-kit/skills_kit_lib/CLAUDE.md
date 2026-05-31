@@ -111,6 +111,37 @@ claude_md:
         because it identifies a CLAUDE.md not a SKILL.md.
       origin: Current session typed-unit composition design.
       added: "2026-05-19"
+    - id: domain_member_resolution_check
+      keywords: [member resolution, domain members, index.members, capability members, dangling ref, reorg guardrail, member ref resolve, corpus check]
+      summary: checks.check_domain_members_resolve asserts every domain-skill (index.members[]) and capability-skill (members[]) member ref/name resolves to a real skill on disk; checks._cli runs it alongside the owner-doc check (python -m skills_kit_lib.checks [repo_root]).
+      detail: |
+        Companion corpus check to check_schema_owner_docs_validate. Globs
+        plugins/*/skills/*/SKILL.md (the flat-skill layout), builds the resolvable
+        name pool from each skill's directory name + frontmatter name, then for
+        every skill whose body contract declares members -- domain_skill.index.members[]
+        OR capability_skill.members[] -- resolves each member's ref/name. The ref is
+        normalized by stripping a leading '/' and any 'plugin:' qualifier
+        (/claude-md-audit and skills-kit:references-audit both reduce to the bare
+        name). A member resolving via either its ref or its name passes; otherwise it
+        is reported unresolved.
+        - Scope: resolves against the union of ALL on-disk skill names across every
+          plugin, so same-plugin and (rare) cross-plugin refs both resolve. The guard
+          catches the common reorg failure -- a ref left pointing at a renamed/moved/
+          never-created skill.
+        - Roots differ per check: owner-doc paths are plugin-root-relative (plugins/
+          skills-kit); member resolution scans the repo root. checks._cli passes each
+          the root it expects (repo arg -> plug = repo/plugins/skills-kit).
+        - Degradation: parse_skill_md needs pyyaml to populate body_contract; without
+          it, member-declaring skills are silently skipped (consistent with the
+          audit's contract-staged state).
+        Codified in: checks.py (check_domain_members_resolve, render_member_results,
+        repo_root, _cli, __main__); tests/skills-kit/test_domain_members_resolve.py
+        (8 cases incl. a live-corpus integration assertion).
+      origin: |
+        skills-kit verb x artifact reorg, P3 make-testable step (2026-05-31). The
+        reorg re-wires md-authoring / md-audit members; a script guard makes a
+        mis-pointed member fail the audit instead of dangling silently.
+      added: "2026-05-31"
   conventions:
     - rule: When extending heuristics, modify markdown_heuristics.py first; audit.py and classify.py both import from there.
       keywords: [SSOT, markdown_heuristics, helper extraction, drift]

@@ -1,5 +1,5 @@
 {
-  "$comment": "prototypes' claude-explorer skill references the audit framework hosted in plugins-kit:skills-kit (cohesion-audit/references/audit-framework.{md,yaml}) and reuses skills-kit's venv (PyYAML) for the crawl. Auto-install skills-kit when missing.",
+  "$comment": "prototypes' claude-explorer skill references the audit framework hosted in plugins-kit:skills-kit (md-audit/references/audit-framework.{md,yaml}) and reuses skills-kit's venv (PyYAML) for the crawl. Auto-install skills-kit when missing.",
   "plugins": [
     {
       "ref": "plugins-kit:skills-kit",

@@ -80,7 +80,7 @@
     },
     {
       "name": "skills-kit",
-      "description": "Skill authoring + shared audit framework. Vocabulary, type contracts, single-skill audit (/skill-audit), cross-reference audit/remediation (/references-audit), and the canonical audit-framework (primitives, compositions, audit-kinds, viewer-kinds) that other plugins' audits and viewers ride on.",
+      "description": "Authoring and auditing skills + CLAUDE.md files, organized as a verb x artifact matrix: md-authoring (/md-authoring) and md-audit (/md-audit) union domains over the md artifact, the cohesion-principles placement spine, and the canonical audit-framework (primitives, compositions, audit-kinds, viewer-kinds) that other plugins' audits and viewers ride on.",
       "version": "0.15.0",
       "author": {
         "name": "Christina"
@@ -106,7 +106,7 @@
     },
     {
       "name": "awesome-kit",
-      "description": "Christina's cross-domain skills: a shared communication framework (hand-off + verbose-updates), the update-documentation meta-skill, /plugin-ecosystem (interactive 16:9 HTML poster of marketplaces and plugins), and /html-pdf (convert an HTML file to PDF via headless Chromium and open it). Depends on plugins-kit:skills-kit for the shared audit framework and knowledge-encoding. /claude-explorer moved to plugins-kit:prototypes in 0.5.0.",
+      "description": "Christina's cross-domain skills: a shared communication framework (hand-off + verbose-updates), /plugin-ecosystem (interactive 16:9 HTML poster of marketplaces and plugins), and /html-pdf (convert an HTML file to PDF via headless Chromium and open it). Depends on plugins-kit:skills-kit for the shared audit framework, knowledge-encoding, and update-documentation. /claude-explorer moved to plugins-kit:prototypes in 0.5.0; update-documentation moved to plugins-kit:skills-kit.",
       "version": "0.6.6",
       "author": {
         "name": "Christina"

@@ -73,6 +73,17 @@ sub_domains:
 
 The index is the source of truth for the greeting menu and for argument-dispatch matching. Tooling that audits the domain-skill consumes this index to verify each declared sub-domain has a reachable reference doc.
 
+### Two ways to back a sub-domain: reference sub-area vs member skill
+
+A sub-domain can be backed two ways. The routing behavior (greeting, argument-dispatch, overview detection) is identical; only what the sub-domain *points at* differs.
+
+- **Reference sub-area.** The sub-domain is a `references/*.md` doc inside this domain. Declared with the `sub_domains:` index above (`reference:` path). Use when the sub-area is knowledge owned by this domain, not a standalone skill -- dialog-domain's `first_pass` / `dialog_testing` are reference sub-areas.
+- **Member skill.** The sub-domain is a separate flat skill, pointed at by the domain_skill's `index.members[]` (each entry carries `name` / `type` / `ref` / `keywords`). Use when the sub-domain is a substantial standalone skill that already exists -- or is itself a domain-skill. The member `type` may be `domain-skill`: a **broader union domain** routes to sub-domain members this way without nesting (see framework.md "Broader union domains over sub-domains"). The parent stays a thin router; argument-dispatch loads exactly one member.
+
+Pick member-skill backing when the sub-domain has its own lifecycle, scripts, or reference graph (it earns a directory and a SKILL.md); pick reference-sub-area backing when it is a body of knowledge the parent owns. A broader union domain typically uses `index.members[]` because its sub-domains are pre-existing domains it is putting a roof over.
+
+**Audit note for member-skill sub-domains:** the `check_domain_members_resolve` corpus check (skills_kit_lib) asserts every `index.members[].ref` resolves to a real skill on disk, the same way the reference-sub-area path is audited for reachable reference docs.
+
 ## Sub-agent dispatch convention
 
 When a domain-skill ships alongside a paired sub-agent named `<skill-name>-a`, the agent is configured to invoke the skill on session start so the agent always has the domain's vocabulary and reference index available. This is the agent-bundled attribute on the skill.

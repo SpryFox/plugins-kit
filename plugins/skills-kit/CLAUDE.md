@@ -1,6 +1,6 @@
 # skills-kit plugin orientation
 
-Plugin-level orientation for `plugins-kit:skills-kit`. The plugin ships a single domain-skill (`skill-authoring`) plus a script suite (`audit.py` / `classify.py` / `tag.py` / `schemas.py`) that operationalizes the framework. A fresh agent landing here should read this file before any of the references; this file points at the right surface for the task at hand.
+Plugin-level orientation for `plugins-kit:skills-kit`. The plugin is organized around a **verb x artifact matrix** over the `md` artifact (and its specializations `skill` = SKILL.md, `claude-md` = CLAUDE.md): two broader **union domains** -- `md-authoring` (`/md-authoring`) and `md-audit` (`/md-audit`) -- each argument-dispatching into per-artifact sub-domains. `md-authoring` unions `skill-authoring` (a full domain-skill kept whole, with its `audit.py` / `classify.py` / `tag.py` / `schema_registry` tooling) and `claude-md-authoring`, and owns the `content-authoring` content-shape references. `md-audit` unions `skill-audit`, `claude-md-audit` (+ its `-noworkflow` variant), and `references-audit`, and owns the `audit-framework`. Standalone alongside the matrix: `cohesion-principles` (the cross-verb placement spine both domains defer to), `knowledge-encoding` (encode an insight into an artifact), `materialized-output` (the materialized-insight pattern), and `update-documentation` (end-of-session doc sweep). A fresh agent landing here should read this file before any of the references; this file points at the right surface for the task at hand.
 
 The framework the plugin advocates:
 
@@ -37,7 +37,7 @@ claude_md:
         - schema validator
       origin: Phase 4.6 P5 plugin-level orientation surface (2026-04-30).
       added: "2026-04-30"
-      summary: skills-kit ships one domain-skill (skill-authoring) plus four scripts (audit / classify / tag / schemas) that operationalize the skill-authoring framework.
+      summary: skills-kit ships the verb x artifact matrix -- md-authoring + md-audit union domains over the md artifact (skill / claude-md specializations) -- plus standalones (cohesion-principles, knowledge-encoding, materialized-output, update-documentation) and the skill-authoring tooling (audit / classify / tag / schema_registry). skill-authoring is the skill-authoring sub-domain, kept whole.
       detail: |
         Plugin layout:
         - skills/skill-authoring/SKILL.md -- the domain-skill itself; aggregates the

@@ -2,7 +2,7 @@
 name: cohesion-principles
 author: christina
 skill-type: reference-skill
-description: Use when deciding where a fact should live across CLAUDE.md / SKILL.md / references (placement). Do NOT use for content shape (use content-authoring).
+description: Use when deciding where a fact should live across CLAUDE.md / SKILL.md / references (placement). Do NOT use for content shape (use md-authoring).
 ---
 
 # Cohesion Principles (Content Allocation)
@@ -12,9 +12,9 @@ graph — CLAUDE.md (and which one), SKILL.md, or `references/*.md`. Every place
 CRP / CCP / ADP applied to the load graph; the L1/L2/L3 load levels are a derived consequence, not the
 primary frame.
 
-This is the shared spine: the audit skills (`/claude-md-audit`, `/skill-audit`, `/references-audit`, via the
-`cohesion-audit` domain) and `skill-authoring` all defer to it. `content-authoring` is the companion that
-answers the orthogonal question — *how* a fact should be shaped (YAML vs prose vs frontmatter) — not where it lives.
+This is the shared spine: the `md-audit` domain (the artifact audits, reached via `/md-audit skill|claude-md|references`)
+and the `md-authoring` domain all defer to it. `content-authoring` (a reference under `md-authoring`) is the companion
+that answers the orthogonal question — *how* a fact should be shaped (YAML vs prose vs frontmatter) — not where it lives.
 
 The `facts:` block below is a routable index; the `content_allocation:` block beneath it is the load-bearing
 framework the audits derive from.
@@ -33,9 +33,9 @@ reference_skill:
       - the size-is-a-signal CRP test for SKILL.md splits
       - the skill-maturation pipeline (inline -> project reference -> skill)
     excludes:
-      - content shape / form choice -- YAML vs prose vs frontmatter (use content-authoring)
+      - content shape / form choice -- YAML vs prose vs frontmatter (use md-authoring)
       - skill-type contracts and per-type schemas (use skill-authoring)
-      - running the audits that enforce these rules (use the cohesion-audit domain)
+      - running the audits that enforce these rules (use the md-audit domain)
   facts:
     - id: placement_algorithm
       summary: Place a fact by applying CCP (change cadence) -> CRP (reader set) -> ADP (load order) -> frequency tiebreak, in that order.
@@ -529,5 +529,5 @@ content_allocation:
 
 - **Vocabulary** -- `glossary.md` (in skills-kit:skill-authoring): CRP, CCP, ADP, SSOT, progressive disclosure, conditional details.
 - **CRP for SKILL.md size splits** -- `framework.md` (in skills-kit:skill-authoring) "CRP is the test for L2 -> L3 splits" section. The placement algorithm here generalizes the CRP test to all placement decisions.
-- **Content shape (the orthogonal question)** -- `/content-authoring` (in skills-kit): how a fact should be shaped once you know where it lives.
-- **The audits that enforce these rules** -- the `cohesion-audit` domain (`/claude-md-audit`, `/skill-audit`, `/references-audit`).
+- **Content shape (the orthogonal question)** -- the `content-authoring` reference under `/md-authoring`: how a fact should be shaped once you know where it lives.
+- **The audits that enforce these rules** -- the `md-audit` domain (`/md-audit skill`, `/md-audit claude-md`, `/md-audit references`).

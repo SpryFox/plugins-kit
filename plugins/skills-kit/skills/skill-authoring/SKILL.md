@@ -8,7 +8,7 @@ description: Use when authoring, auditing, or refining a Claude Code skill. Do N
 
 # Skill Authoring
 
-Skill authoring is the discipline of designing Claude Code skills that are auditable and robust. This domain owns the vocabulary, type contracts, and audit process for that work.
+Skill authoring is the discipline of designing Claude Code skills that are auditable and robust. This domain owns the vocabulary, type contracts, and audit process for that work. It is the **skill** specialization under the broader `md-authoring` domain (sibling: `claude-md-authoring`, the claude-md specialization), reached via `/md-authoring skill` -- and it remains a full domain-skill in its own right, with its own reference graph and audit/classify/tag scripts.
 
 The contract data below is the load-bearing surface; the markdown text above is orientation. To reach a specific record, match user-language phrasing against the `keywords:` clusters in the YAML.
 
@@ -17,8 +17,12 @@ domain_skill:
   _schema_version: "1"
   identity: Skill authoring is the discipline of designing Claude Code skills that are auditable and robust.
   companions:
-    siblings: []
-    note: No siblings within plugins-kit. Future related domains (an authoring-rules discipline-skill, a per-type pattern-skill) would slot under this container.
+    siblings:
+      - claude-md-authoring
+    note: |
+      Sub-domain member of the md-authoring union domain (the skill specialization). Sibling
+      claude-md-authoring is the claude-md specialization. md-authoring routes between them; this
+      skill keeps its own deep reference graph and audit/classify/tag scripts (union, not nest).
   scope:
     covers:
       - authoring a new skill of any of the five canonical types
