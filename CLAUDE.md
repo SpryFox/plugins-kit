@@ -269,6 +269,8 @@ Then bump update06's own version in both `plugin.json` and `marketplace.json`, c
 
 If no existing skill fits, create a stub skill with a description that explains why it exists. The document lives as a reference within the skill and is progressively disclosed (loaded only when the skill is invoked, not upfront).
 
+**Plugin boundaries are hard boundaries for cohesion work.** Never move content between plugins — or into a new plugin — to achieve skill cohesion. Plugins are independently versioned, installed, and bootstrapped units; relocating a skill/reference across a plugin boundary to satisfy CCP/CRP/ADP breaks that independence (cross-plugin caches, dependency edges, version coupling) and is never worth the cohesion gain. Cohesion refactors operate *within* a plugin only. When you spot a genuine cohesion opportunity that spans plugins — two doer-skills in different plugins sharing a subject (e.g. git-kit `git-code-review` + p4-kit `p4-code-review`), a reference duplicated across plugins, a shared substrate two plugins both consume — **surface it as an insight** (a `claude_md:` insight or a note in the relevant skill), do **not** act on it by relocation or by spawning a unifying plugin. Sharing across plugins is done through a library both depend on (e.g. `bootstrap_lib.code_review`), not by merging the skills.
+
 **Reference file design** (within a skill): Apply the same cohesion principles to reference files. Each reference should serve a single audience and change for a single reason. Validate with:
 
 - **CRP test**: "If I load this reference, do I plausibly need all of it?" If a reference mixes engine internals with manifest schema, split it.
@@ -468,6 +470,26 @@ claude_md:
         through the engine without an installPath lookup.
       origin: Surfaced 2026-05-27 -- the claudx smoke test couldn't validate jq's new download recipe because the engine kept reading the cached bootstrap.json.
       added: "2026-05-27"
+    - id: code_review_cross_plugin_cohesion
+      keywords: [code-review domain, git-code-review, p4-code-review, cross-plugin cohesion, bootstrap_lib.code_review, dec_13, domain not built, inter-plugin opportunity, surface not merge]
+      summary: git-kit:git-code-review + p4-kit:p4-code-review are dec_13-justified doer-skills sharing one subject, but they are deliberately NOT merged into a domain -- the members live in different plugins, and plugin boundaries are hard boundaries for cohesion work. Recorded as an inter-plugin cohesion observation, not acted on.
+      detail: |
+        Both are technique-skills running the same pre-submit multi-agent review pipeline
+        (identical reviewer roster, profiles, validators, submit-gate format); they differ only
+        in VCS front-half (git ranges/auto-detect vs p4 changelist/shelving). The dec_13 merge
+        criterion (2+ doers sharing a subject) is satisfied, and the VCS-neutral back-half
+        (chunking + CLAUDE.md collection + submit-gate parsing) is ALREADY shared via
+        plugins/bootstrap/bootstrap_lib/code_review/ (chunking.py + claude_mds.py). So the old
+        "needs a shared abstraction first" blocker is gone. They are still NOT merged because:
+        (1) the members are in separate plugins (git-kit, p4-kit) and a domain router cannot
+        span plugins without relocating a member or spawning a new home plugin -- both barred by
+        "Plugin boundaries are hard boundaries for cohesion work" above; (2) routing value is low
+        -- git-vs-p4 is unambiguous from the workspace, so a natural-language front door adds
+        little over the two already-auto-triggering skills. Correct cross-plugin sharing is the
+        library both depend on (bootstrap_lib.code_review), which already exists. Do not
+        re-investigate a code-review domain; the answer is "surface, don't merge."
+      origin: Surfaced 2026-05-31 during the cohesion refactor -- after W2-proper, an Explore feasibility sweep found the shared lib already exists; user ruled cross-plugin relocation/new-plugin out of bounds for cohesion work.
+      added: "2026-05-31"
   conventions:
     - rule: When adding a new plugin Python dependency, update <plugin>/pyproject.toml AND <plugin>/bootstrap.json venv.check_imports together.
       keywords: [pyproject.toml, bootstrap.json, dependency, venv, check_imports]
