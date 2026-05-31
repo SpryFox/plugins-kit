@@ -151,6 +151,17 @@ def test_no_preamble_when_no_node_steps():
     assert "const inputs = typeof args" in js
 
 
+def test_node_out_paths_are_shell_quoted(write_workflow):
+    # The inlined preamble must quote the path args it builds into the bash -c
+    # command, so a path with spaces (e.g. from runId) does not split. Guards the
+    # 1a fix in preamble.js (wkScript redirect target + wkOpenRouter path flags).
+    js = _compile_text(_SCRIPT_WF, write_workflow)
+    assert '} > "' in js                       # wkScript redirect target quoted
+    js2 = _compile_text(_OPENROUTER_WF, write_workflow)
+    assert "' --prompt-file \"' +" in js2      # wkOpenRouter --prompt-file quoted
+    assert "' --out \"' +" in js2              # wkOpenRouter --out quoted
+
+
 def test_shipped_node_strategies_example_compiles():
     # the declarative example must not silently rot
     js = _compile(EXAMPLES / "node-strategies.workflow.yaml")

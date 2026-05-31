@@ -42,10 +42,12 @@ function wkNode(cmd, out, opts) {
 }
 
 // script strategy: run any shell command, redirecting its stdout to `out`.
-// stderr is left to surface via the exit code. Example:
+// stderr is left to surface via the exit code. `command` is passed through as-is
+// (it may contain its own shell syntax -- pipes, redirects); only the `out` path
+// is quoted, so a path with spaces does not split the redirect. Example:
 //   await wkScript('uv run python -m mypkg.transform in.json', outPath, { label: 'transform' })
 function wkScript(command, out, opts) {
-  return wkNode('{ ' + command + ' ; } > ' + out, out, opts)
+  return wkNode('{ ' + command + ' ; } > "' + out + '"', out, opts)
 }
 
 // openrouter strategy: one non-Claude model call via openrouter-kit's openai
@@ -64,14 +66,16 @@ function wkScript(command, out, opts) {
 // config.yaml instead of hardcoding a slug here.
 function wkOpenRouter(runner, spec, opts) {
   opts = opts || {}
+  // model is a registry alias / slug (no spaces); path args are quoted so a
+  // path containing a space does not split into extra shell words.
   const model = spec.model ? ' --model ' + spec.model : ''
   const cheap = spec.cheap ? ' --cheap' : ''
   const sys = spec.system ? ' --system ' + JSON.stringify(spec.system) : ''
-  const st = spec.status ? ' --status ' + spec.status : ''
+  const st = spec.status ? ' --status "' + spec.status + '"' : ''
   const cmd =
     runner + model + cheap +
-    ' --prompt-file ' + spec.promptFile +
-    ' --out ' + spec.out + sys + st
+    ' --prompt-file "' + spec.promptFile + '"' +
+    ' --out "' + spec.out + '"' + sys + st
   const merged = { status: spec.status }
   if (opts.label) merged.label = opts.label
   if (opts.phase) merged.phase = opts.phase
