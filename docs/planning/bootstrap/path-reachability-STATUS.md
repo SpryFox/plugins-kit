@@ -1,9 +1,64 @@
 # PATH-reachability work — STATUS / resume doc
 
-**Date:** 2026-05-30
+**Date:** 2026-05-30 (updated 2026-05-31)
 **Branch:** dev
-**Decision on landing:** STOP HERE, leave uncommitted for review (user's call). Do NOT commit/push.
+**Status:** COMMITTED + PUSHED to origin/dev as part of a coordinated 3-agent batch
+(`0e266be`). NOT yet published to master. Smoke test PASSED.
 **Design doc (companion):** `docs/planning/bootstrap/path-reachability-check.md`
+
+---
+
+## PUBLISH-RESUME CHECKLIST (next session — start here)
+
+The batch (PATH-reachability + shared-libs + skills-kit cohesion) is committed to
+`origin/dev` @ `0e266be` and smoke-tested green via `claude-dev`. Master is still at
+`origin/master @ 14380f8` — nothing has reached consumers. Remaining work, in order:
+
+0. **Confirm dev-tree restored.** `python scripts/dev-tree.py status` must say
+   normal/cache. If it says DEV-TREE (a `claude-dev` exit trap was skipped), run
+   `python scripts/dev-tree.py normal`. (Everyday `claude` loads from cache only in
+   normal mode.)
+
+1. **Wait for the cohesion agent.** They wanted to do more skills-kit work before
+   publish (not started as of 2026-05-31). When done, get from them:
+   (a) whether they re-bumped skills-kit (0.15.0 -> ?), so re-run
+   `python scripts/regen_marketplace.py` if so; (b) confirmation their tree is
+   commit-ready + audits clean. Their new commits land on dev and get picked up by
+   the master-assembly step naturally.
+
+2. **Master merge = THE publish moment (needs explicit user go-signal).**
+   - DO NOT fast-forward dev -> master: `git log origin/master..origin/dev` shows
+     ~64 commits incl. agent-glue + other unrelated WIP (CLAUDE.md gotcha 1).
+   - Assemble on `origin/master @ 14380f8`. Take **dev's** `shared_lib.py`
+     (executable-prepend `.pth`, the shadow-bug fix) — NOT master's 14380f8 copy.
+   - Batch versions (all triads aligned, marketplace regenerated, drift-check green):
+     bootstrap 0.14.0 · git-kit 0.3.0 · p4-kit 0.12.0 · openrouter-kit 0.2.0 ·
+     skills-kit 0.15.0 (or cohesion agent's re-bump) · unreal-kit 0.9.16 ·
+     awesome-kit 0.6.6. workflow-kit/agent-glue stay dev-only (published:false).
+   - bootstrap 0.14.0 / unreal-kit 0.9.16 deliberately clear the shared-libs agent's
+     already-live origin/master numbers (0.13.0 / 0.9.15) to avoid cache collisions.
+
+3. **update06 close-the-loop (post-merge, same session).** bootstrap pyproject went
+   to 0.14.0 -> re-lock update06: `cd ~/Dev/update06/plugins/update &&
+   uv lock --upgrade-package bootstrap`, then bump update06's own plugin.json +
+   marketplace.json version, commit, push. (Prior 1.0.36 lock points at the stale
+   14380f8.) Per CLAUDE.md "always close the loop" — do not defer.
+
+4. **Optional cleanup (unrelated to publish).** `~/.bashrc` has 4 cruft PATH lines
+   from this work: `export PATH="/from/user:$PATH"`, `/from/project`, `/from/local`
+   (junk from a path-entry test run), and a duplicate draw.io line (both
+   `/c/Program Files/draw.io` and `C:/Program Files/draw.io` — keep one). Show the
+   user a diff before editing their `.bashrc`.
+
+### Smoke-test result (2026-05-31, claude-dev / dev-tree mode) — PASS
+- bootstrap 0.14.0 loaded + ran from disk; no fix-all, no SessionStart errors.
+- PATH-reachability: draw.io resolves (`passed=True, on_path=False`); the
+  `draw.io: FAILED` lines in bootstrap.log are STALE (2026-05-30, old 0.10.11
+  engine) — this session's 0.14.0 blocks have zero draw.io lines.
+- shared-libs: git-kit + p4-kit venvs `import bootstrap_lib` via `.pth` OK;
+  standalone `import openrouter_kit` via `.pth` OK.
+- Not tested (out of scope): workflow-kit->openrouter_kit->openai chain (workflow-kit
+  is dev-only, venv not provisioned); covered by static test_dependency_completeness.py.
 
 ---
 
