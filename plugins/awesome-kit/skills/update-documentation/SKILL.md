@@ -106,7 +106,7 @@ Wait for user approval before making changes. User may accept all, select specif
 
 ## Integration Points
 
-- **knowledge-encoding** - For deeper analysis of where insights should live in the project structure
+- **knowledge-encoding** (in plugins-kit:skills-kit) - For deeper analysis of where insights should live in the project structure
 - **skill-write** - If recommendations include creating new skills
 - **document-write** - If recommendations include creating new reference documents
 
