@@ -120,7 +120,7 @@
     {
       "name": "prototypes",
       "description": "Experimental skills that may graduate into their own plugins. Currently hosts /claude-explorer (Omarchy-style HTML browser of ~/.claude/ + the current project, Python crawl + local HTTP serve + embedded SPA). Depends on plugins-kit:skills-kit for the shared audit framework.",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "author": {
         "name": "Christina"
       },

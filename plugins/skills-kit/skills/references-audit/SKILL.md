@@ -19,7 +19,7 @@ The first line of your response MUST be the `Running ...` line printed above. Th
 
 ## Framework
 
-This skill operationalizes the **references-audit** audit-kind under the shared audit framework. The shared glossary -- `subject`, `primitive`, `composition`, `discovery`, `audit-kind`, `rule`, `finding`, `severity`, `taxonomy`, `bucket`, `corpus`, `scaffolding` -- is canonical at `plugins/skills-kit/skills/skill-audit/references/audit-framework.md`, with the data side (primitives + compositions + audit-kind registry) at `audit-framework.yaml` alongside. Definitions live there; this file describes only how the audit applies the framework.
+This skill operationalizes the **references-audit** audit-kind under the shared audit framework. The shared glossary -- `subject`, `primitive`, `composition`, `discovery`, `audit-kind`, `rule`, `finding`, `severity`, `taxonomy`, `bucket`, `corpus`, `scaffolding` -- is canonical at `skills-kit:cohesion-audit/references/audit-framework.md`, with the data side (primitives + compositions + audit-kind registry) at `audit-framework.yaml` alongside. Definitions live there; this file describes only how the audit applies the framework.
 
 In framework terms, `/references-audit` is:
 

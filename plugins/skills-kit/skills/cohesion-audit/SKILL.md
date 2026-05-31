@@ -13,9 +13,9 @@ want in natural language — "audit this CLAUDE.md", "check my SKILL.md", "find 
 **also** directly invocable by its own slash command (below); this domain is the natural-language front door,
 not a replacement for those commands.
 
-The audits share one framework (vocabulary + data model). It currently lives in `skill-audit`'s `references/`
-as the shared substrate; this domain references it there and routes among the members. The placement
-principles every audit judges against live in the `cohesion-principles` skill (the spine).
+The audits share one framework (vocabulary + data model). It lives in this domain's own `references/`
+as the shared substrate the members operate under; the domain owns it and routes among the members. The
+placement principles every audit judges against live in the `cohesion-principles` skill (the spine).
 
 ## Routing
 
@@ -53,8 +53,8 @@ domain_skill:
   orientation:
     summary: |
       Four member audits share one subject -- auditing LLM-facing artifacts against the cohesion
-      framework -- and one shared framework (the audit-framework glossary + data model, which lives in
-      skill-audit as the shared substrate). They differ by artifact: claude-md-audit (+ its noworkflow
+      framework -- and one shared framework (the audit-framework glossary + data model, which this
+      domain owns in its own references/). They differ by artifact: claude-md-audit (+ its noworkflow
       variant) for CLAUDE.md, skill-audit for SKILL.md, references-audit for cross-references. Route by
       the artifact under audit (see the Routing table). The members are independent skills with their own
       slash commands; this domain adds the natural-language entry and the map among them.
@@ -66,11 +66,11 @@ domain_skill:
   index:
     references:
       - id: audit_framework
-        path: skills-kit:skill-audit/references/audit-framework.md
+        path: references/audit-framework.md
         keywords: [audit framework, glossary, subject, primitive, composition, audit-kind, rule, finding, severity, taxonomy, bucket, corpus]
-        summary: Canonical glossary for the audit family -- the vocabulary (subject / primitive / composition / discovery / audit-kind / rule / finding / severity / taxonomy / bucket / corpus / scaffolding) every member audit declares its subject and rules in terms of. Shared substrate; currently housed in skill-audit.
+        summary: Canonical glossary for the audit family -- the vocabulary (subject / primitive / composition / discovery / audit-kind / rule / finding / severity / taxonomy / bucket / corpus / scaffolding) every member audit declares its subject and rules in terms of. Shared substrate owned by this domain.
       - id: audit_framework_data
-        path: skills-kit:skill-audit/references/audit-framework.yaml
+        path: references/audit-framework.yaml
         keywords: [audit framework data, primitives, compositions, audit-kind registry, rules per composition, machine-readable]
         summary: The machine-readable data side of the framework -- primitives, compositions, and the audit-kind registry (which rule ids bind to which compositions per audit-kind). Authoritative on divergence with the markdown tables.
     members:

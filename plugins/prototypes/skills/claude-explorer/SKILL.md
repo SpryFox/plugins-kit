@@ -24,7 +24,7 @@ The refresh button in the header triggers `GET /refresh`, which re-runs the craw
 
 ## Framework
 
-This skill operationalizes the **claude_explorer** viewer-kind under the shared audit framework. The shared glossary (`subject`, `primitive`, `composition`, `discovery`, `audit-kind`, `viewer-kind`, `scaffolding`, `summary projection`) is canonical at `plugins/skills-kit/skills/skill-audit/references/audit-framework.md`, with the data model at `audit-framework.yaml`.
+This skill operationalizes the **claude_explorer** viewer-kind under the shared audit framework. The shared glossary (`subject`, `primitive`, `composition`, `discovery`, `audit-kind`, `viewer-kind`, `scaffolding`, `summary projection`) is canonical at `plugins/skills-kit/skills/cohesion-audit/references/audit-framework.md`, with the data model at `audit-framework.yaml`.
 
 In framework terms:
 
@@ -91,8 +91,8 @@ technique_skill:
   trigger_model: user-only
   identity: "Render a self-contained HTML browser of the user's Claude filesystem (~/.claude/ + the current project) via a Python crawl that produces a JSON index plus a local HTTP server that serves the embedded SPA and a path-guarded file-fetch endpoint."
   references:
-    - "skills-kit:skill-audit/references/audit-framework.md (canonical glossary)"
-    - "skills-kit:skill-audit/references/audit-framework.yaml (audit-kind + viewer-kind registry)"
+    - "skills-kit:cohesion-audit/references/audit-framework.md (canonical glossary)"
+    - "skills-kit:cohesion-audit/references/audit-framework.yaml (audit-kind + viewer-kind registry)"
     - "references/projections.md (per-node summary + deep-render rules)"
     - "references/interactivity.md (aesthetic + planned action layer)"
   scope:
@@ -144,5 +144,5 @@ technique_skill:
 ## Cross-references
 
 - Sibling viewer: `awesome-kit:plugin-ecosystem` (marketplace-corpus poster; shallower drill, wider corpus).
-- Shared substrate: `skills-kit:skill-audit/references/audit-framework.md` and `audit-framework.yaml`.
+- Shared substrate: `skills-kit:cohesion-audit/references/audit-framework.md` and `audit-framework.yaml`.
 - Interactivity research (background-agent report): `tmp/content-explorer-interactive-research.md`.
