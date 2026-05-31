@@ -1,4 +1,5 @@
-"""Tests for per-project config: find, write, and load from .claude/unreal-kit.yaml."""
+"""Tests for per-project config: find, write, and load from
+.local-data/plugins-kit/unreal-kit/config.yaml (PROJECT_CONFIG_NAME)."""
 
 import json
 import sys
@@ -34,7 +35,7 @@ def _write_yaml(path: Path, data: dict):
 
 
 class TestFindProjectConfig:
-    """find_project_config should walk up from CWD looking for .claude/unreal-kit.yaml."""
+    """find_project_config should walk up from CWD looking for PROJECT_CONFIG_NAME."""
 
     def test_finds_config_in_cwd(self, tmp_path, monkeypatch):
         config_file = tmp_path / PROJECT_CONFIG_NAME
@@ -77,7 +78,7 @@ class TestFindProjectConfig:
 
 
 class TestWriteProjectConfig:
-    """write_project_config should create .claude/ dir and write YAML."""
+    """write_project_config should create the config dir and write YAML."""
 
     def test_creates_config(self, tmp_path):
         data = {"uproject": "C:\\Projects\\MyGame\\MyGame.uproject", "engine_dir": "C:\\UE5\\Engine"}
@@ -92,12 +93,12 @@ class TestWriteProjectConfig:
         # Backslashes should be converted to forward slashes
         assert "\\" not in content
 
-    def test_creates_claude_dir(self, tmp_path):
-        claude_dir = tmp_path / ".claude"
-        assert not claude_dir.exists()
+    def test_creates_config_dir(self, tmp_path):
+        config_dir = (tmp_path / PROJECT_CONFIG_NAME).parent
+        assert not config_dir.exists()
 
         write_project_config(tmp_path, {"uproject": "test.uproject"})
-        assert claude_dir.is_dir()
+        assert config_dir.is_dir()
 
     def test_overwrites_existing(self, tmp_path):
         write_project_config(tmp_path, {"uproject": "old.uproject"})

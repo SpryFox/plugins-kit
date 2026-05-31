@@ -22,7 +22,7 @@ Usage:
     python ue_env.py launch-editor --force   # spawn even if one is running
 
 The script reads the same per-project config as ue_runner.py
-(<project_root>/.local-data/unreal-kit/config.yaml) for engine_dir and
+(<project_root>/.local-data/plugins-kit/unreal-kit/config.yaml) for engine_dir and
 uproject, then derives the GUI editor binary from engine_dir.
 """
 

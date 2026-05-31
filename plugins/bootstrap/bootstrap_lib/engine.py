@@ -1109,6 +1109,20 @@ def _legacy_replace(src, dst):
         os.replace(src, dst)
 
 
+def _rmdir_if_empty(path):
+    """Best-effort: remove a directory only if it is now empty. Never raises.
+
+    Used after a legacy-file migration to leave nothing behind -- if the old
+    file was the sole occupant of its directory, drop the empty directory too.
+    A non-empty dir (siblings still present), a missing dir, or a permission
+    error all simply leave the directory in place.
+    """
+    try:
+        os.rmdir(path)
+    except OSError:
+        pass
+
+
 def _process_project_config(project_config_section, plugin_data_dir, plugin_root, action_entries, ok_entries=None, plugin_name="", failures=None):
     """Process the project_config section of a plugin manifest.
 
@@ -1154,23 +1168,31 @@ def _process_project_config(project_config_section, plugin_data_dir, plugin_root
         try:
             legacy_exists = os.path.isfile(legacy_path)
             new_exists = os.path.isfile(project_config_path)
+            migrated = False
             if legacy_exists and not new_exists:
                 os.makedirs(os.path.dirname(project_config_path), exist_ok=True)
                 _legacy_replace(legacy_path, project_config_path)
+                migrated = True
                 action_entries.append(
                     f"project config: migrated {legacy_path} -> {project_config_path}"
                 )
             elif legacy_exists and new_exists:
                 if os.path.getmtime(legacy_path) <= os.path.getmtime(project_config_path):
                     _legacy_remove(legacy_path)
+                    migrated = True
                     action_entries.append(
                         f"project config: removed stale legacy {legacy_path} (new path {project_config_path} is fresher)"
                     )
                 else:
                     _legacy_replace(legacy_path, project_config_path)
+                    migrated = True
                     action_entries.append(
                         f"project config: migrated {legacy_path} -> {project_config_path} (overwrote stale new path)"
                     )
+            # Clean up after the migration: if the legacy file was the only thing
+            # in its directory, drop the now-empty directory too.
+            if migrated:
+                _rmdir_if_empty(os.path.dirname(legacy_path))
         except OSError as e:
             # Most common cause on Windows: the legacy file is read-only because
             # source control (e.g. Perforce) hasn't checked it out for delete.

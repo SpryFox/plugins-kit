@@ -7,7 +7,7 @@ Setup happens automatically on every Claude Code session start via the bootstrap
 The bootstrap engine (`bootstrap.json`) handles:
 
 1. **Discovers `.uproject` and engine directory** — via `project_config` autodetect (walks up from CWD)
-2. **Writes per-project config** — to `<project_root>/.local-data/unreal-kit/config.yaml` (gitignored; legacy `<project_root>/.claude/unreal-kit.yaml` is auto-migrated to the new path on session start)
+2. **Writes per-project config** — to `<project_root>/.local-data/plugins-kit/unreal-kit/config.yaml` (gitignored; legacy `.local-data/unreal-kit/config.yaml` and `.claude/unreal-kit.yaml` are auto-migrated to the new path on session start)
 3. **Syncs config to data dir** — so `ue_runner.py` can resolve paths at runtime
 4. **Enables `bRemoteExecution`** — in `Config/UserEngine.ini` (per-user, not checked in). Allows running scripts from terminal via UDP
 5. **Enables `bIsDeveloperMode`** — in `Config/UserEngine.ini`. Enables UE to generate Python API stubs

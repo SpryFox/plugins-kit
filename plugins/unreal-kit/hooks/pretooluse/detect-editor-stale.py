@@ -2,13 +2,17 @@
 """Background detector for unreal-kit editor staleness.
 
 Reads the PreToolUse hook JSON from stdin (for cwd), reads
-${cwd}/.local-data/unreal-kit/config.yaml (or legacy ${cwd}/.claude/unreal-kit.yaml)
+${cwd}/.local-data/plugins-kit/unreal-kit/config.yaml (or the legacy
+${cwd}/.local-data/unreal-kit/config.yaml / ${cwd}/.claude/unreal-kit.yaml)
 for engine_dir, compares UnrealEditor-BuildSettings.dll mtime vs
 Engine/Build/Build.version mtime, and writes or removes the per-project marker
 plus the claude-ui-kit system message.
 
-Marker path:  <cwd>/.local-data/unreal-kit/editor-stale.flag
+Marker path:  <cwd>/.local-data/plugins-kit/unreal-kit/editor-stale.flag
 System msg:   <cwd>/.local-data/claude-ui-kit/systemmessage.unreal-kit.txt
+
+Cleans up after the path move: any stale marker at the old
+<cwd>/.local-data/unreal-kit/ location (and its empty directory) is removed.
 
 Latency is not foreground-critical: this runs detached after the PreToolUse
 hook has already returned. The marker it writes is consumed by subsequent
@@ -57,6 +61,14 @@ def _remove(path: str) -> None:
             pass
 
 
+def _rmdir_if_empty(path: str) -> None:
+    """Best-effort: drop a directory if it is now empty. Never raises."""
+    try:
+        os.rmdir(path)
+    except OSError:
+        pass
+
+
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
@@ -67,13 +79,24 @@ def main() -> int:
     if not cwd:
         return 0
 
-    marker = os.path.join(cwd, ".local-data", "unreal-kit", "editor-stale.flag")
+    marker = os.path.join(cwd, ".local-data", "plugins-kit", "unreal-kit", "editor-stale.flag")
+    old_marker = os.path.join(cwd, ".local-data", "unreal-kit", "editor-stale.flag")
     sysmsg = os.path.join(cwd, ".local-data", "claude-ui-kit", "systemmessage.unreal-kit.txt")
 
-    config_path = os.path.join(cwd, ".local-data", "unreal-kit", "config.yaml")
-    if not os.path.isfile(config_path):
-        config_path = os.path.join(cwd, ".claude", "unreal-kit.yaml")
+    config_path = os.path.join(cwd, ".local-data", "plugins-kit", "unreal-kit", "config.yaml")
+    for legacy in (
+        os.path.join(cwd, ".local-data", "unreal-kit", "config.yaml"),
+        os.path.join(cwd, ".claude", "unreal-kit.yaml"),
+    ):
+        if not os.path.isfile(config_path):
+            config_path = legacy
     engine_dir = read_engine_dir(config_path)
+
+    # Clean up after the path move: drop any stale marker at the old location
+    # (and its now-empty directory) regardless of the staleness outcome.
+    _remove(old_marker)
+    _rmdir_if_empty(os.path.dirname(old_marker))
+
     if not engine_dir:
         return 0
 

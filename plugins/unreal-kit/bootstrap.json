@@ -14,8 +14,8 @@
   },
   "shared_lib_imports": ["bootstrap_lib"],
   "project_config": {
-    "file": ".local-data/unreal-kit/config.yaml",
-    "legacy_file": ".claude/unreal-kit.yaml",
+    "file": ".local-data/plugins-kit/unreal-kit/config.yaml",
+    "legacy_file": ".local-data/unreal-kit/config.yaml",
     "required_fields": ["uproject", "engine_dir"],
     "autodetect": "custom_bootstrap.py autodetect"
   },
@@ -25,11 +25,11 @@
     "required_fields": {
       "uproject": {
         "user_msg": "Path to .uproject file",
-        "agent_msg": "Ask the user for their .uproject file path. Write it to {config_path} AND to <project_root>/.local-data/unreal-kit/config.yaml (the per-project config)."
+        "agent_msg": "Ask the user for their .uproject file path. Write it to {config_path} AND to <project_root>/.local-data/plugins-kit/unreal-kit/config.yaml (the per-project config)."
       },
       "engine_dir": {
         "user_msg": "Path to UE engine directory",
-        "agent_msg": "Ask the user for their UE engine directory. Write it to {config_path} AND to <project_root>/.local-data/unreal-kit/config.yaml (the per-project config)."
+        "agent_msg": "Ask the user for their UE engine directory. Write it to {config_path} AND to <project_root>/.local-data/plugins-kit/unreal-kit/config.yaml (the per-project config)."
       }
     }
   },
