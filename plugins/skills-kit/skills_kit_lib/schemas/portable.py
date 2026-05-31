@@ -41,7 +41,7 @@ FACTS_SCHEMA = {
 # level (single-area document) or per sub-area (multi-area document).
 AREA_CONFIG_SCHEMA = {
     "root": "area_config",
-    "owner_doc": "skills/content-authoring/references/area-config.md",
+    "owner_doc": "skills/md-authoring/references/area-config.md",
     "root_type": "dict",
     "keys": {
         "state_terms": {"type": "list", "required": False,
@@ -69,7 +69,7 @@ AREA_CONFIG_SCHEMA = {
 # reference is required when attachment Pattern 3c is in use.
 SUB_AREAS_SCHEMA = {
     "root": "sub_areas",
-    "owner_doc": "skills/content-authoring/references/area-ownership.md",
+    "owner_doc": "skills/md-authoring/references/area-ownership.md",
     "root_type": "list",
     "min_len": 1,
     "items": {"keys": {
@@ -90,7 +90,7 @@ SUB_AREAS_SCHEMA = {
 # action-record shape. Uses value_schema (dict-of-records with arbitrary keys).
 ACTIONS_SCHEMA = {
     "root": "actions",
-    "owner_doc": "skills/content-authoring/references/actions-pattern.md",
+    "owner_doc": "skills/md-authoring/references/actions-pattern.md",
     "root_type": "dict",
     "value_schema": {"keys": {
         "description": {"type": "string", "required": True,

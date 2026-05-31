@@ -279,7 +279,7 @@ A domain-skill is a container that routes among operations on one shared subject
 |---|---|
 | technique / capability / audit | **Merge as members** -- they are operations over the subject; multiple operations on one subject *is* the domain. |
 | reference / pattern / discipline | **Fold in, don't merge** -- knowledge, not operations. A reference becomes an L3 doc; a pattern stays standalone (it applies across many subjects); a discipline becomes the domain's guardrails. None needs its own member sub-trigger. |
-| domain | **Never nest** -- a domain inside a domain fails the top-level CRP test. |
+| domain | **May be a sub-domain member of a *broader union domain*** -- a thin parent that greets + argument-dispatches into one sub-domain at a time (the domain-layering pattern) loads the router plus one sub-domain, so the top-level CRP test passes. What fails CRP is a *nest*: a parent that force-co-loads its member domains' full content. Union = selective dispatch (allowed); nest = co-load (prohibited). See "Broader union domains over sub-domains" below. |
 
 Consequences:
 - A cluster that is *one doer + N references* is one skill with references, not a domain.
@@ -289,6 +289,39 @@ Consequences:
 The merge passes CRP for the same reason an L2 -> L3 split does: each member fires on a distinct sub-trigger, so a typical invocation loads the container plus one member, not all of them. If every candidate member would load on every invocation, it is a CRP-fail merge -- keep them as separate skills (or as one skill), exactly as you would revert a CRP-fail split.
 
 **Audit hook:** in a corpus inventory (`/skill-audit hierarchy`), cluster skills by subject and flag any subject owning 2+ doer-type skills as a domain-consolidation candidate; flag any domain-skill whose members all co-load as a CRP-fail to revert.
+
+### Shared references across sibling domains stay standalone
+
+The merge table above sends a *reference* skill to "fold in -> becomes an L3 doc" of the domain it supports. That disposition assumes a single consuming domain. When the same reference is cited by **2+ sibling domains**, it cannot fold into any one of them without the others losing it -- folding it into domain A severs domain B's edge to it.
+
+Such a reference stays **standalone**, exactly as a pattern-skill does, and every consuming domain cites it. This is the cross-verb base case: a reference that is the shared substrate of two domains (for example, a placement framework cited by both an authoring domain and an audit domain) is structurally a pattern in the merge table's sense -- it "applies across many subjects" -- even though it is typed reference-skill.
+
+**Test:** if folding a reference into one domain would force a sibling domain to reach across a domain boundary to read it, keep it standalone.
+
+**Worked example:** `cohesion-principles` (placement: CCP/CRP/ADP) is cited by both `md-authoring` (placement while authoring) and `md-audit` (placement criteria while auditing). Folding it into either would orphan the other. It stays a standalone reference-skill; both domains' indexes point at it.
+
+### Specialization by artifact (a second merge axis)
+
+The merge direction above groups doers that **share a subject** (N operations on one subject = a domain). There is a second, orthogonal grouping axis: one subject **specialized along an artifact dimension**. Where merge-by-subject asks "do these skills operate on the same thing?", specialization-by-artifact asks "is this skill the general case, and that one a narrower case of the same artifact?"
+
+The shape: a general artifact (e.g. `md` -- any LLM-facing markdown document) has specializations that are still that artifact *plus a contract* -- `skill` is-a `md` + the SKILL.md contract; `claude_md` is-a `md` + the CLAUDE.md contract. A domain organized along this axis routes by artifact specialization rather than by operation: `md-authoring` indexes `skill-authoring` (authoring the skill specialization) and `claude-md-authoring` (authoring the claude-md specialization); the general-`md` content shared by both lives as the domain's own reference, inherited by every member.
+
+This composes with merge-by-subject rather than competing with it. A domain may group members along **either** axis -- by operation (technique/audit doers over one subject) or by artifact specialization (the same verb applied to narrower artifacts). The CRP gate is identical: each member must fire on a distinct sub-trigger (here, "which artifact") so a typical invocation loads the domain plus one member, not all of them.
+
+### Broader union domains over sub-domains (union vs nest)
+
+The earlier rule "a domain never nests" is a CRP rule, not a topology ban. A domain *member* may itself be a domain when the parent is a **broader union domain** -- a thin router that greets and argument-dispatches into one sub-domain at a time (the domain-layering pattern). The discriminator is what the parent does on invocation:
+
+- **Union (allowed).** The parent is a thin greeting + argument-dispatch surface. Invoking it loads the router plus the *one* sub-domain the argument selects. CRP holds for the same reason every member merge does: each sub-domain fires on a distinct sub-trigger. The sub-domain may itself be a full domain-skill -- you still only load one at a time.
+- **Nest (prohibited).** The parent force-co-loads its member domains' full content on every invocation. You wanted one sub-area and got all of them, two domain-indexes deep. This is the CRP-fail the "never nest" rule targets.
+
+So the test is selective-dispatch vs co-load, not "is the member a domain". A broader union domain that routes to sub-domain members via greeting/argument-dispatch is the legitimate way to put a roof over several established domains without dissolving them.
+
+**Two ways to back a sub-domain** (see `domain-layering.md`):
+- **Reference sub-area** -- the sub-domain is a `references/*.md` doc inside the parent (the `sub_domains:` index with `reference:` paths). Use when the sub-area is not a standalone skill.
+- **Member skill** -- the sub-domain is a flat skill pointed at by `index.members[]` (member `type` may be `domain-skill`). Use when the sub-domain is a substantial standalone skill that already exists, or is itself a domain. The parent's routing behavior (greeting, argument-dispatch) is identical either way.
+
+**Worked example:** `md-authoring` is a broader union domain over `skill-authoring` (a domain-skill, kept whole) and `claude-md-authoring`, declared as `index.members[]`. Invoking `/md-authoring` greets with a two-item menu; `/md-authoring skill` dispatches into `skill-authoring` and loads only it. Union, not nest: `skill-authoring` stays a domain, and the parent never co-loads both sub-domains. The parallel `md-audit` unions the audit sub-domains the same way.
 
 ### Visibility criterion for examples and anti-patterns
 
@@ -325,7 +358,7 @@ Today's portable unit registry:
 
 **Cross-block validation.** The audit walker collects every recognized typed unit across every fenced yaml block in a document and validates each. The walker does not partition validation by block; every unit in every block is in scope.
 
-See `/skills-kit:content-authoring`'s `typed_unit_composition` fact for the design rationale and worked encoding examples.
+See the `content-authoring` reference's `typed_unit_composition` fact for the design rationale and worked encoding examples.
 
 ## Type contracts
 

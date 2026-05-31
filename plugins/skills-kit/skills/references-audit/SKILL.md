@@ -3,9 +3,9 @@ _schema_version: 1
 name: references-audit
 author: christina
 skill-type: audit-skill
-description: Use when the user invokes /references-audit to scan markdown for broken skill cross-references. Do NOT use for single-skill validation (use /skill-audit).
+description: Use when md-audit dispatches a scan for broken skill cross-references. Do NOT use for single-skill validation (use skill-audit).
 disable-model-invocation: true
-user-invocable: true
+user-invocable: false
 argument-hint: "[--scope skills|references|md|all] [--path FILE] [--ignore-dir GLOB] [--ignore-file GLOB] [--verbose] [--json]"
 ---
 
@@ -19,7 +19,7 @@ The first line of your response MUST be the `Running ...` line printed above. Th
 
 ## Framework
 
-This skill operationalizes the **references-audit** audit-kind under the shared audit framework. The shared glossary -- `subject`, `primitive`, `composition`, `discovery`, `audit-kind`, `rule`, `finding`, `severity`, `taxonomy`, `bucket`, `corpus`, `scaffolding` -- is canonical at `skills-kit:cohesion-audit/references/audit-framework.md`, with the data side (primitives + compositions + audit-kind registry) at `audit-framework.yaml` alongside. Definitions live there; this file describes only how the audit applies the framework.
+This skill operationalizes the **references-audit** audit-kind under the shared audit framework. The shared glossary -- `subject`, `primitive`, `composition`, `discovery`, `audit-kind`, `rule`, `finding`, `severity`, `taxonomy`, `bucket`, `corpus`, `scaffolding` -- is canonical at `skills-kit:md-audit/references/audit-framework.md`, with the data side (primitives + compositions + audit-kind registry) at `audit-framework.yaml` alongside. Definitions live there; this file describes only how the audit applies the framework.
 
 In framework terms, `/references-audit` is:
 

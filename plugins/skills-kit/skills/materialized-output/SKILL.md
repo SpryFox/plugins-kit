@@ -1,12 +1,12 @@
 ---
 _schema_version: 1
-name: insight-engineering
+name: materialized-output
 author: christina
 skill-type: pattern-skill
 description: Use when designing a tool that produces a materialized insight from deep scans or inference over project data. Do NOT use for one-shot print-and-exit scripts.
 ---
 
-# Insight Engineering
+# Materialized Output
 
 A pattern-skill for tool design. Teaches recognition of when a tool should produce a structured artifact (a *materialized insight*) instead of an ad-hoc answer, and the discipline (*insight engineering*) of building tools that way by default.
 

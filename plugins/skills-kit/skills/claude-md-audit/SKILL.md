@@ -3,9 +3,9 @@ _schema_version: 1
 name: claude-md-audit
 author: christina
 skill-type: audit-skill
-description: Use when invoking /claude-md-audit to audit a CLAUDE.md against the cohesion framework; fans multi-file runs via the Workflow tool. Do NOT use for SKILL.md.
+description: Use when md-audit dispatches a CLAUDE.md audit against the cohesion framework; fans multi-file runs via the Workflow tool. Do NOT use for SKILL.md.
 disable-model-invocation: true
-user-invocable: true
+user-invocable: false
 argument-hint: "[file path, number(s) from list, or 'list'; add 'fast' for non-interactive]"
 ---
 

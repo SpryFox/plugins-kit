@@ -3,9 +3,9 @@ _schema_version: 1
 name: skill-audit
 author: christina
 skill-type: audit-skill
-description: Use when the user invokes /skill-audit to audit, inventory, or report on Claude Code skills. Do NOT use for CLAUDE.md (use /claude-md-audit).
+description: Use when md-audit dispatches a SKILL.md audit -- contract, cohesion, or roster/hierarchy inventory. Do NOT use for CLAUDE.md (use claude-md-audit).
 disable-model-invocation: true
-user-invocable: true
+user-invocable: false
 argument-hint: "[ (none) | list | <path> | <numbers> | roster [path|-] | hierarchy [path|-] ]"
 ---
 
@@ -25,7 +25,7 @@ The first line of your response MUST be the `Running ...` line printed above. Th
 
 ## Framework
 
-The per-skill audit operationalizes the **skill-md-audit** audit-kind under the shared audit framework. The canonical glossary -- `subject`, `primitive`, `composition`, `discovery`, `audit-kind`, `rule`, `finding`, `severity`, `taxonomy`, `bucket`, `corpus`, `scaffolding` -- lives at `skills-kit:cohesion-audit/references/audit-framework.md`, with the data model at `skills-kit:cohesion-audit/references/audit-framework.yaml`. The sibling skill `/references-audit` operationalizes the other audit-kind defined in the same framework. Definitions live in the framework; this file describes only how the audit applies them.
+The per-skill audit operationalizes the **skill-md-audit** audit-kind under the shared audit framework. The canonical glossary -- `subject`, `primitive`, `composition`, `discovery`, `audit-kind`, `rule`, `finding`, `severity`, `taxonomy`, `bucket`, `corpus`, `scaffolding` -- lives at `skills-kit:md-audit/references/audit-framework.md`, with the data model at `skills-kit:md-audit/references/audit-framework.yaml`. The sibling skill `/references-audit` operationalizes the other audit-kind defined in the same framework. Definitions live in the framework; this file describes only how the audit applies them.
 
 In framework terms, the per-skill audit procedure is:
 
@@ -377,7 +377,7 @@ Typical workflows:
 
 ## Cross-references
 
-- Canonical audit framework (shared with `/references-audit`): `skills-kit:cohesion-audit/references/audit-framework.md` and `skills-kit:cohesion-audit/references/audit-framework.yaml`.
+- Canonical audit framework (shared with `/references-audit`): `skills-kit:md-audit/references/audit-framework.md` and `skills-kit:md-audit/references/audit-framework.yaml`.
 - Canonical placement framework: `cohesion-principles (in skills-kit)`.
 - Canonical type contracts: `framework.md (in skills-kit:skill-authoring)` and `plugins/skills-kit/skills/skill-authoring/scripts/schemas.py`.
 - Mechanical validator: `plugins/skills-kit/skills/skill-authoring/scripts/audit.py`.

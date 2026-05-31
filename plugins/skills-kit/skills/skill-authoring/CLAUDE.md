@@ -705,6 +705,147 @@ claude_md:
         the provenance; scope held to documentation (the /skill-audit
         detector and the concrete repo redesign deferred).
       added: "2026-05-30"
+    - id: dec_14_shared_reference_across_sibling_domains
+      keywords:
+        - shared reference standalone
+        - cross-verb base
+        - sibling domains cite one reference
+        - fold-in assumes single domain
+        - cohesion-principles standalone
+        - reference acts like pattern
+        - domain boundary orphan
+      summary: "A reference cited by 2+ sibling domains stays STANDALONE (every domain cites it), not folded into one. The merge table's 'reference -> fold in as L3 doc' disposition assumes a single consuming domain; folding a shared reference into domain A severs domain B's edge to it. Such a reference behaves like a pattern-skill ('applies across many subjects') even though typed reference-skill."
+      detail: |
+        The dec_13 merge table classifies a reference-skill as "fold in, don't
+        merge -> becomes an L3 doc" of the domain it supports. That disposition
+        is correct only for a reference with ONE consuming domain. The gap: a
+        reference that is the shared substrate of two sibling domains cannot fold
+        into either without orphaning the other.
+
+        The rule (apply verbatim): a reference cited by 2+ sibling domains stays
+        standalone, exactly as a pattern-skill does, and every consuming domain
+        cites it. Test: if folding the reference into one domain would force a
+        sibling domain to reach across a domain boundary to read it, keep it
+        standalone. This is the cross-verb base case -- structurally a pattern in
+        the merge table's sense.
+
+        Live example: cohesion-principles (placement CCP/CRP/ADP) is cited by both
+        md-authoring (placement while authoring) and md-audit (placement criteria
+        while auditing). Folding it into either orphans the other; it stays
+        standalone.
+
+        Codified in: framework.md new section "Shared references across sibling
+        domains stay standalone" under the merge-direction block.
+      origin: |
+        Surface: the skills-kit verb x artifact reorg design session (2026-05-31).
+        Finding: P1 re-read of the framework merge table (lines ~269-291) confirmed
+        it covers pattern-stays-standalone and reference-folds-in, but NOT a
+        reference shared by two sibling domains -- the exact shape of
+        cohesion-principles in the target md-authoring / md-audit tree.
+        Follow-up: framework.md section added; this Dec-14 insight records the
+        provenance.
+      added: "2026-05-31"
+    - id: dec_15_specialization_by_artifact_merge_axis
+      keywords:
+        - specialization by artifact
+        - second merge axis
+        - md skill claude-md is-a
+        - artifact dimension
+        - general case narrower case
+        - composes with merge-by-subject
+        - md-authoring md-audit members
+      summary: "A domain may group members along a SECOND axis besides shared-subject: artifact specialization. A general artifact (md) has specializations that are still that artifact + a contract (skill is-a md + SKILL.md contract; claude_md is-a md + CLAUDE.md contract). A domain can route by artifact specialization (md-authoring -> skill-authoring + claude-md-authoring) instead of by operation. Composes with merge-by-subject; the CRP gate (distinct sub-trigger per member) is identical."
+      detail: |
+        The dec_13 merge direction groups DOERS that share a subject (N operations
+        on one subject = a domain). It is silent on a second, orthogonal axis: one
+        subject specialized along an artifact dimension. Merge-by-subject asks "do
+        these operate on the same thing?"; specialization-by-artifact asks "is this
+        the general case and that a narrower case of the same artifact?"
+
+        The shape: a general artifact (md = any LLM-facing markdown document) has
+        specializations that are still that artifact plus a contract -- skill is-a
+        md + the SKILL.md contract; claude_md is-a md + the CLAUDE.md contract. A
+        domain organized along this axis routes by artifact specialization rather
+        than by operation: md-authoring indexes skill-authoring (the skill
+        specialization) and claude-md-authoring (the claude-md specialization); the
+        shared general-md content lives as the domain's own reference, inherited by
+        every member.
+
+        This COMPOSES with merge-by-subject, it does not compete. A domain may group
+        members along either axis -- by operation (technique/audit doers over one
+        subject) or by artifact specialization (the same verb applied to narrower
+        artifacts). The CRP gate is identical: each member fires on a distinct
+        sub-trigger (here "which artifact") so a typical invocation loads the domain
+        plus one member.
+
+        Codified in: framework.md new section "Specialization by artifact (a second
+        merge axis)" under the merge-direction block.
+      origin: |
+        Surface: the skills-kit verb x artifact reorg design session (2026-05-31).
+        Finding: the whole target tree (md-authoring/md-audit over skill + claude-md
+        specializations) is a specialization hierarchy the merge table did not name;
+        it only covered merge-by-shared-subject.
+        Follow-up: framework.md section added; this Dec-15 insight records the
+        provenance.
+      added: "2026-05-31"
+    - id: dec_16_broader_union_domain_vs_nest
+      keywords:
+        - union domain
+        - broader domain
+        - domains never nest refined
+        - sub-domain member
+        - selective dispatch vs co-load
+        - member type domain-skill
+        - domain-layering member skill
+        - roof over domains
+      summary: "'A domain never nests' is a CRP rule, not a topology ban. A domain MEMBER may itself be a domain when the parent is a BROADER UNION DOMAIN -- a thin greeting + argument-dispatch router that loads the parent plus exactly one sub-domain. The discriminator is selective-dispatch (union, allowed) vs force-co-load (nest, prohibited), NOT whether the member is a domain. Sub-domains may be backed by reference sub-areas (sub_domains: + reference:) OR by member skills (index.members[], type may be domain-skill)."
+      detail: |
+        Surface: the verb x artifact reorg hit an apparent block -- skill-authoring
+        is a domain-skill, and the target tree makes it a member of a new
+        md-authoring domain, which dec_13's "domain | Never nest" row appeared to
+        forbid. The user corrected the framing: "domains do not nest, but we can
+        have a broader domain so it's a union not a nest," and pointed at
+        spiritcrossing's dialog-domain as a live sub-domain example.
+
+        The refinement (apply verbatim):
+        - The "never nest" rule is the top-level CRP test, not a ban on a domain
+          appearing under a domain. A BROADER UNION DOMAIN is a thin router that
+          greets + argument-dispatches into ONE sub-domain at a time (the
+          domain-layering pattern). Invoking it loads the router plus the single
+          selected sub-domain, so CRP holds -- exactly the gate every member merge
+          already passes (each member fires on a distinct sub-trigger).
+        - UNION (allowed) = selective dispatch. NEST (prohibited) = the parent
+          force-co-loads its member domains' full content on every invocation
+          (wanted one sub-area, got all of them, two domain-indexes deep).
+        - The test is selective-dispatch vs co-load, NOT "is the member a domain."
+          A union domain's sub-domain member MAY itself be a full domain-skill;
+          member `type: domain-skill` is legitimate in that case.
+        - Two backings for a sub-domain (domain-layering.md): a reference sub-area
+          (sub_domains: index with reference: path, e.g. dialog-domain's first_pass)
+          OR a member skill (index.members[], for a substantial standalone skill or
+          a pre-existing domain). Same routing behavior; different backing.
+
+        This is what licenses md-authoring (broader union domain) over skill-authoring
+        (kept whole as a domain-skill) + claude-md-authoring via index.members[], and
+        the parallel md-audit. skill-authoring is NOT retyped; it stays a domain and
+        becomes a sub-domain member.
+
+        Codified in: framework.md merge-table `domain` row (rewritten union-vs-nest)
+        + new section "Broader union domains over sub-domains (union vs nest)";
+        domain-layering.md new subsection "Two ways to back a sub-domain: reference
+        sub-area vs member skill". Refines (does not delete) dec_13's "domain never
+        nests" cell.
+      origin: |
+        User correction during the reorg (2026-05-31): "domains do not nest, but we
+        can have a broader domain so it's a union not a nest" + "domains can have
+        sub-domains as well see .../dialog-domain/SKILL.md" + "you may need to update
+        the docs so they enable navigating this type of situation better in the future."
+        Finding: dec_13's absolute "Never nest" cell did not encode the
+        union-vs-nest distinction the domain-layering pattern already embodies, so an
+        agent hit a false block.
+        Follow-up: framework.md + domain-layering.md updated; this Dec-16 insight
+        records the provenance.
+      added: "2026-05-31"
     - id: ssot_canonical_split
       keywords:
         - SSOT

@@ -1,17 +1,15 @@
----
-name: content-authoring
-author: christina
-skill-type: reference-skill
-description: Use when authoring an LLM-facing document and deciding its content shape. Do NOT use for skill-specific contracts (use skill-authoring).
----
-
 # Content Authoring
+
+> Content-shape reference owned by the **md-authoring** domain (folded in from the former
+> standalone `content-authoring` skill). Loaded on demand from `md-authoring`'s index. Answers
+> the orthogonal question to placement: *how* a fact should be shaped. The placement question
+> (*where* it lives) belongs to `cohesion-principles`.
 
 The discipline of authoring LLM-facing documents: deciding how a document's content should be shaped so Claude reads it the way you intended.
 
 A document Claude reads is composed of three surfaces: a **YAML header** (frontmatter) at the top, **markdown text** in the body, and **embedded YAML** (fenced yaml blocks inside that body). Traditionally documents are written entirely as markdown text. For LLM-facing content, both YAML surfaces are often more efficient: they express meaning through structure and tag-names that prose has to spell out at length. A well-authored document mixes all three.
 
-The YAML body below is the load-bearing surface; the prose above is orientation. Deeper material loads on demand from `references/`. This skill itself uses three embedded YAML blocks -- the `reference_skill:` contract, the `facts:` content, and the `references:` pointers -- as a worked example of the typed-unit composition discipline it teaches. Each block gets its own section heading and a one-line prose context (the per-block priming discipline named in `wrap_yaml_in_markdown`).
+The YAML body below is the load-bearing surface; the prose above is orientation. Deeper material loads on demand from the co-located docs this reference points at. This document uses three embedded YAML blocks -- the `reference_skill:` contract, the `facts:` content, and the `references:` pointers -- as a worked example of the typed-unit composition discipline it teaches. Each block gets its own section heading and a one-line prose context (the per-block priming discipline named in `wrap_yaml_in_markdown`).
 
 ## Contract
 
@@ -102,7 +100,7 @@ facts:
 
       The deep treatment -- the three attachment patterns for area_config, the registry
       schema, the greeting menu derivation, single-area vs multi-area, audit hooks, worked
-      examples -- lives in `references/area-ownership.md`.
+      examples -- lives in `area-ownership.md`.
     example:
       input: A document is being authored to own "the authentication system." The author needs to express ownership in the document.
       output: |
@@ -273,27 +271,27 @@ Pointers to deeper material loaded on demand by keyword match.
 ```yaml
 references:
   - id: area_ownership
-    path: references/area-ownership.md
+    path: area-ownership.md
     keywords: [area definition, ownership expression, identity, scope, covers excludes, sub-area registry, single-area, multi-area, audit hooks, ownership composition]
     summary: Defines what an area is, what document ownership of an area means, and how ownership is expressed structurally through identity + scope (single-area) and an optional sub-area registry (multi-area). Worked example with the authentication-system document; audit hooks for ownership declarations.
 
   - id: three_surfaces
-    path: references/three-surfaces.md
+    path: three-surfaces.md
     keywords: [parser model, surface comparison, structure asserts deep, wrapper rule deep, common authoring mistakes, per-surface analysis]
     summary: Deep treatment of each of the three surfaces -- parser, audience, fits-when / does-not-fit-when -- plus the structure-asserts deep dive, the wrapper rule with worked examples, and common authoring mistakes.
 
   - id: actions_pattern
-    path: references/actions-pattern.md
+    path: actions-pattern.md
     keywords: [actions pattern, ordered operations, multi-step recipe, steps schema, capture, tell_user, facade script, narration discipline, audit hooks]
     summary: The ordered-list-of-operations shape -- a YAML `actions:` schema carrying steps with tool / capture / tell_user fields, the facade-script convention for 3+ co-occurring tool calls, the narration discipline for single tool calls, and worked examples.
 
   - id: area_config
-    path: references/area-config.md
+    path: area-config.md
     keywords: [area config, runtime contract, state_terms, operations, scope_axes, canonical_phrasing, llm_dependent_content, dependency_order, area vocabulary contract, single-area attachment, per-sub-area attachment]
     summary: The schema for an area's runtime contract -- the six fields (state_terms, operations, scope_axes, canonical_phrasing, llm_dependent_content, dependency_order) that govern how the agent and user interact with entities in the area. Same shape whether attached at the area level (single-area document) or per sub-area (multi-area document). Worked examples for both attachment cases.
 
   - id: query_tool_pattern
-    path: references/query-tool-pattern.md
+    path: query-tool-pattern.md
     keywords: [query tool facade, catalog lookup, YAML output discipline, did-you-mean, spelling discovery, gazetteer, inventory, CLI mode pattern]
     summary: The facade pattern for wrapping a catalog with a single CLI offering multiple lookup modes; the YAML-output discipline; did-you-mean records on misses; the spelling-discovery agent behavior the pattern enables.
 ```

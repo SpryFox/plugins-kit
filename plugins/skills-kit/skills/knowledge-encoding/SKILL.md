@@ -1,331 +1,136 @@
 ---
 _schema_version: 1
-required_skills: ['md-read', 'skill-write']
 name: knowledge-encoding
 author: christina
+skill-type: technique-skill
 description: Use when encoding a discovered insight into a persistent location (CLAUDE.md, skill, reference doc). Do NOT use for end-of-session doc review.
 ---
 
-## Skill Purpose
+# Knowledge Encoding
 
-Translate discovered knowledge into appropriate implementations within the project system. This is the inverse of search-and-discovery: where search finds information that exists, encoding makes the environment have information you discovered.
+The technique of translating a discovered insight into a persistent project
+artifact, so the next agent inherits it instead of re-discovering it. Encoding is
+the inverse of search: search finds knowledge that exists; encoding makes the
+project *have* knowledge you found this session.
 
-**Encoding is not an algorithm.** It requires design thinking to translate knowledge into the right form—a skill update, an anti-pattern, a reference doc section, a rule. The design framework (DISCLOSURE-ARCHITECTURE, DESIGN-LANGUAGE) provides the vocabulary and structure that makes this translation thoughtful rather than mechanical.
+This skill owns the encoding **process** -- the ordered procedure for turning an
+insight into a durable record. It does NOT own the two decisions the procedure
+defers to:
 
-This skill addresses Axiom 5 (Intelligence Scales With Capability): conversations are ephemeral, but the workspace persists.
+- **Where the fact lives** (which CLAUDE.md / SKILL.md / reference) is decided by
+  `/skills-kit:cohesion-principles` (the canonical placement framework: CCP / CRP /
+  ADP over the load graph). Do not re-derive placement from memory.
+- **What shape the fact takes** (YAML record vs prose vs frontmatter) is decided by
+  the md-authoring content-shape reference (`content-authoring.md`) (the three content-form surfaces).
 
-## When to Use
+A SKILL.md is a gateway: a trigger plus an index into reference docs. Encoding an
+insight into a skill therefore means extending that index (a new reference, or a
+new record in an existing one) or, more often, adding an insight record to the
+co-located CLAUDE.md -- whichever cohesion-principles selects.
 
-- Scenario: You discovered an insight or pattern that future agents should know
-- Scenario: You're asking "where should this information live?"
-- Scenario: A conversation revealed a gap in documentation or anti-patterns
-- Scenario: You want to prevent future agents from repeating the same discovery process
-- Scenario: User feedback corrected a misunderstanding that others might have
+The YAML block below is the load-bearing contract; the prose above is orientation.
 
----
+## Contract
 
 ```yaml
-activation_contexts:
-  - "where should this live"
-  - "encode this insight"
-  - "persist this learning"
-  - "future agents should know"
-  - "document this pattern"
-  - "add this to"
-  - "prevent repeating this conversation"
-  - "knowledge encoding"
-
-core_expertise:
-  relationship_to_search:
-    search_and_discovery: "Find information that exists in the project"
-    knowledge_encoding: "Make the environment have information you discovered"
-    symmetry: |
-      These are inverses. Search navigates existing structure to find knowledge.
-      Encoding translates new knowledge into that same structure.
-
-      Both require understanding the project's design framework—search to know
-      where to look, encoding to know where things belong.
-
-  three_modes_of_engagement:
-    work_with_design: |
-      DEFAULT MODE: Use the system as designed.
-      All operational skills support this mode.
-
-    improve_design: |
-      META MODE: Evolve the system by encoding insights.
-      This skill (knowledge-encoding) is the entry point.
-      Determines WHAT to encode and WHERE it belongs.
-
-    implement_design: |
-      BUILD MODE: Create capabilities within the system.
-      Domain-specific *-development skills support this mode:
-      - hooks-write
-      - rules-development
-      - skill-write
-      - command-write
-      - script-write
-      - agent-write
-      - mcp-server-write
-
-    workflow: |
-      improve-design (this skill) often leads to implement-design:
-
-      1. Insight discovered → invoke knowledge-encoding
-      2. Determine encoding target (skill? rule? hook? doc section?)
-      3. If new capability needed → invoke appropriate *-development skill
-      4. Development skill provides patterns for that capability type
-
-      Example: "Agents keep making this mistake"
-      → knowledge-encoding: "This should be a blocking hook"
-      → hooks-write: "Here's how to create one"
-
-  fundamental_principle: |
-    **Conversations are ephemeral. The workspace persists.**
-
-    Every session ends. What lives on are:
-    - Documentation (docs/, skills/, CLAUDE.md)
-    - Code and configuration (hooks/, scripts/, commands/)
-    - Data structures (KNOWN-PROBLEMS.yaml, issues/)
-
-    The goal is not to complete tasks in a session—it's to leave artifacts
-    that make future sessions smarter.
-
-  encoding_as_proposition: |
-    Encoding always starts with a proposition: "We could encode this."
-
-    Not every insight belongs in the project. The goal isn't guaranteeing
-    encoding—it's asking the question: "How should this be encoded?" and
-    then making the judgment call on whether the system is better with
-    that encoding or not.
-
-    Sometimes the answer is "it shouldn't be." Sometimes translation reveals
-    that the insight points to other improvements needed. The process of
-    asking the question has value even when the answer is no.
-
-  encoding_as_product_improvement: |
-    Don't just "jam it in somewhere." Treat encoding as an opportunity to
-    improve the product.
-
-    The process:
-    1. Break the knowledge down into discrete insights
-    2. For each insight, determine how it would be disclosed within the project
-    3. Evaluate whether that encoding improves the system
-
-    Each encoded insight is a product increment that embodies a design principle.
-    The encoding should make the system better, not just more documented.
-
-    Usually the user is involved in this judgment. Over time, you may develop
-    enough understanding of the project's design framework to perform this
-    independently—but that judgment is earned through demonstrated alignment,
-    not assumed.
-
-  design_process_as_quality_gate: |
-    The design process applies rigor that improves encoding quality.
-
-    Working within the design framework (DISCLOSURE-ARCHITECTURE, DESIGN-LANGUAGE,
-    existing patterns) creates natural review points. You're forced to consider:
-    - Does this fit the existing structure, or fight it?
-    - Is this solution elegant, or just complex?
-    - Does the encoding serve discovery, or create noise?
-
-    This rigor surfaces problems before they're encoded. A proposed encoding
-    that doesn't fit cleanly often indicates the insight needs refinement,
-    or points to structural improvements needed elsewhere.
-
-    Design-first encoding means the framework reviews your work as you do it.
-
-  encoding_as_translation: |
-    When encoding is warranted, it's translation, not transcription.
-    The same insight might become:
-    - An anti-pattern in a criteria document
-    - A new section in a skill's core expertise
-    - A rule in system-prompt-rules.yaml
-    - A checkpoint in a workflow
-    - An advisory hook that fires on detection
-
-    The design framework provides the target vocabulary. Your job is to
-    recognize which form best serves discovery and application—or to
-    recognize that no encoding improves the system.
-
-  encoding_process:
-    step_1_identify_insight:
-      description: "What did we learn that should persist?"
-      questions:
-        - "What insight emerged from this conversation?"
-        - "What mistake was corrected?"
-        - "What pattern was discovered?"
-        - "What would have saved time if known earlier?"
-      examples:
-        - "High co-invocation between layered skills is expected, not redundancy"
-        - "Data informs but doesn't prescribe—metrics need context verification"
-        - "Check for X before doing Y"
-
-    step_2_identify_trigger:
-      description: "What work context would trigger needing this?"
-      questions:
-        - "When would an agent need this insight?"
-        - "What task or question would they be working on?"
-        - "What keywords would they search for?"
-      examples:
-        - "Agent considering skill consolidation"
-        - "Agent interpreting metrics data"
-        - "Agent completing a task and deciding what to deliver"
-
-    step_3_find_discovery_path:
-      description: "What document would they naturally read in that context?"
-      questions:
-        - "If doing that work, what would they search for?"
-        - "What document is in the natural path of that work?"
-        - "What skill would they invoke?"
-      method: |
-        Search for documents related to the trigger context:
-        - Grep for keywords in docs/, skills/
-        - Check if there's an existing skill for that domain
-        - Look at CLAUDE.md Quick Reference for entry points
-
-    step_4_encode_appropriately:
-      description: "Add the insight to that document"
-      placement_by_type:
-        anti_pattern: "Add to existing anti-patterns section or create one"
-        best_practice: "Add to best practices or guidelines section"
-        decision_criteria: "Add to decision framework or criteria section"
-        definition: "Add to terminology or concepts section"
-        process: "Add to workflow or process section"
-      format: |
-        Match the document's existing format. If adding an anti-pattern:
-        - Use the same structure as existing anti-patterns
-        - Include: what NOT to do, why, what to do instead
-        - Add detection criteria if applicable
-
-  entry_points:
-    description: "Where information becomes available without prior navigation"
-    types:
-      claude_md:
-        when: "Universal guidance every agent needs at session start"
-        depth: 0
-        examples: ["Operational rules", "Key frameworks", "Quick reference"]
-
-      skills:
-        when: "Domain-specific expertise invoked contextually"
-        depth: 0 (from skill's perspective)
-        examples: ["design-domain", "architectural-decision-making"]
-
-      reference_docs:
-        when: "Detailed guidance for specific work contexts"
-        depth: 1-2 from CLAUDE.md
-        examples: ["SKILL-CONSOLIDATION-CRITERIA.md", "DISCLOSURE-ARCHITECTURE.md"]
-
-      searchable_orphans:
-        when: "Specialist content discoverable by keyword search"
-        depth: N/A (search-driven)
-        examples: ["Historical analysis", "Implementation details"]
-
-  placement_decision_tree: |
-    Is this insight needed by EVERY agent at session start?
-    ├─ YES → Consider CLAUDE.md (but keep it lean)
-    └─ NO → Continue...
-
-    Is there an existing skill for this domain?
-    ├─ YES → Add to that skill or its references
-    └─ NO → Continue...
-
-    Is there a reference doc for this specific work context?
-    ├─ YES → Add to that document
-    └─ NO → Continue...
-
-    Would an agent find this by searching keywords?
-    ├─ YES → Create searchable orphan with clear keywords
-    └─ NO → Consider creating new skill or reference doc
-
-  worked_example:
-    title: "Encoding the Skill Layering Anti-Pattern"
-    insight: |
-      "High co-invocation (94.7%) between git-vllm-read and pr-workflow
-      doesn't indicate redundancy—they're intentionally layered (general
-      framework + specific extension)."
-
-    step_1_identify: |
-      Insight: Layered skills co-invoke by design, not by accident.
-      This is a false positive for the >80% consolidation rule.
-
-    step_2_trigger: |
-      When would an agent need this?
-      → When analyzing skill co-invocation data
-      → When considering consolidating skills
-      → When interpreting the "80% rule" from CONTEXT-EFFICIENCY-THEORY
-
-    step_3_discovery_path: |
-      What would they read?
-      → Search: "skill consolidation" "merge skills" "co-invocation"
-      → Found: SKILL-CONSOLIDATION-CRITERIA.md
-      → This document already has anti-patterns section
-
-    step_4_encode: |
-      Added Anti-Pattern 6: "Intentional Skill Layering"
-      - What NOT to do: Merge skills with >80% co-invocation without checking
-      - Why: One may intentionally extend the other
-      - Detection: One skill explicitly references the other
-      - Updated False Positive Indicators table
-
-  common_mistakes:
-    asking_instead_of_searching: |
-      ❌ "Where should this insight live?"
-      ✅ Search for documents related to the work context, then propose placement
-
-    creating_new_when_exists: |
-      ❌ Creating new document when insight fits existing structure
-      ✅ Add to existing anti-patterns/best-practices/criteria sections
-
-    encoding_too_broadly: |
-      ❌ Adding to CLAUDE.md when only specialists need it
-      ✅ Add to domain-specific skill or reference doc
-
-    encoding_too_narrowly: |
-      ❌ Creating searchable orphan when insight is essential
-      ✅ Ensure insight is in the natural discovery path
-
-best_practices:
-  - "Search before creating—existing documents usually have the right home"
-  - "Match the format of surrounding content"
-  - "Include detection criteria when encoding anti-patterns"
-  - "Add worked examples when encoding processes"
-  - "Update cross-references if adding to multiple places"
-
-cross_skill_references:
-  design_domain: "For design vs implementation alignment decisions"
-  architectural_decision_making: "For where capabilities should live"
-  document_optimization: "For documentation structure decisions"
+technique_skill:
+  _schema_version: "1"
+  identity: The ordered procedure for encoding a discovered insight into a durable project artifact, deferring placement to cohesion-principles and content-shape to content-authoring.
+  scope:
+    covers:
+      - turning a session-discovered insight into a persistent record (CLAUDE.md insight, skill reference, anti-pattern, convention)
+      - deciding whether an insight is worth encoding at all (encoding-as-proposition)
+      - routing the placement decision to cohesion-principles and the shape decision to content-authoring
+      - verifying the encoded insight is discoverable and that schema/framework changes re-audit clean
+    excludes:
+      - where a fact should live across CLAUDE.md / SKILL.md / references (use cohesion-principles)
+      - what content form a fact should take -- YAML vs prose vs frontmatter (use content-authoring)
+      - authoring or auditing a skill's type contract (use skill-authoring)
+      - end-of-session documentation review / sweep (use update-documentation)
+  techniques:
+    - id: encode_insight
+      name: Encode a discovered insight into a persistent artifact
+      keywords: [encode insight, persist learning, where should this live, future agents, capture finding, prevent re-discovery]
+      goal: Translate one discovered insight into a durable, discoverable project record, or consciously decide not to.
+      preconditions:
+        - "An insight, correction, pattern, or gotcha surfaced this session that a future agent would benefit from."
+      steps:
+        - n: 1
+          action: "Articulate the insight in one sentence -- what was learned, what mistake was corrected, what pattern was found, what would have saved time if known earlier."
+          expected: "A single crisp statement of the insight."
+        - n: 2
+          action: "Decide whether it should be encoded at all (encoding is a proposition, not an obligation). Ask: does the project get better if a future agent carries this? Sometimes the honest answer is no -- the insight is one-off, or it points at a structural fix rather than a doc record. Asking the question has value even when the answer is no."
+          expected: "A go / no-go on encoding. On no-go, stop here and say why."
+        - n: 3
+          action: "Identify the trigger -- the future work context that would need this insight, and the keywords an agent in that context would have in mind. The trigger and keywords are what make the record findable later."
+          expected: "A named trigger context plus a keyword cluster (>=3 terms)."
+        - n: 4
+          action: "Decide WHERE it lives by applying cohesion-principles (CCP change-cadence -> CRP reader-set -> ADP load-order -> frequency tiebreak). Invoke /skills-kit:cohesion-principles rather than re-deriving placement. The output is one target surface (a specific CLAUDE.md, SKILL.md, or reference doc)."
+          tool: "Skill (skills-kit:cohesion-principles)"
+          expected: "Exactly one target surface, justified by the placement algorithm."
+        - n: 5
+          action: "Decide the CONTENT SHAPE for the target via content-authoring -- a structured YAML record (insight / anti-pattern / convention), a prose section, or a frontmatter field. Default to structured for LLM-facing content; structure asserts completeness a bullet list cannot."
+          tool: "Read (md-authoring/references/content-authoring.md)"
+          expected: "A chosen surface (yaml record / prose / frontmatter) and the record shape if structured."
+        - n: 6
+          action: "Search the chosen target for existing coverage. If a record or section already owns this area, EXTEND it (SSOT); do not create a parallel doc that will drift. Creating a new home is the last resort, only when nothing existing fits."
+          tool: "Grep"
+          expected: "Either an existing record/section to extend, or a confirmed gap justifying a new one."
+        - n: 7
+          action: "Write the encoding in the target's existing format. For a CLAUDE.md insight record, carry id / keywords / summary / detail / origin / added. For an anti-pattern, carry the why-it-seems-right / why-it-is-wrong / alternative shape. Always include the WHY and the provenance, not just the what."
+          expected: "The insight is written into the target in its native shape."
+        - n: 8
+          action: "Verify discoverability and integrity. Confirm the record is reachable via its trigger keywords. If the encoding touched a schema, framework.md, or glossary, run the merge-gate re-audit (all SKILL.md + CLAUDE.md to 0 FAILs) before considering it done."
+          tool: "Bash (skills_kit_lib.audit, when schemas/framework/glossary changed)"
+          expected: "Record is keyword-reachable; any contract change re-audits clean."
+      gotchas:
+        - "Re-deriving placement from memory instead of invoking cohesion-principles -- the canonical placement framework already answers 'where does this live', and ad-hoc reasoning drifts from it."
+        - "Creating a new doc when an existing record/section already owns the area -- duplication breaks SSOT and the two copies drift independently (CCP violation)."
+        - "Encoding a COMMON agent error behind a skill's trigger -- a frequently-hit error must live ambient in a CLAUDE.md, not gated behind a skill invocation that may not fire (ADP)."
+        - "Importing vocabulary or references from another project -- only name docs, skills, and concepts that actually exist in THIS repo. (This skill itself was an imported wholesale copy whose alien refs went unnoticed for months; do not recreate that.)"
+      checklist:
+        - "Insight stated in one sentence"
+        - "Go / no-go decided (encoding is a proposition)"
+        - "Trigger + keyword cluster identified"
+        - "Placement chosen via cohesion-principles"
+        - "Shape chosen via content-authoring"
+        - "Existing coverage searched; extend-over-create honored"
+        - "Encoding written with why + provenance"
+        - "Discoverability verified; merge-gate re-audit run if a contract changed"
+  anti_patterns:
+    - id: asking_instead_of_placing
+      name: Asking the user where it should live
+      keywords: [ask where, defer to user, placement question, cohesion-principles bypass]
+      why_it_seems_right: "Placement feels like a judgment call the user should make, so asking 'where should this go?' seems collaborative."
+      why_it_is_wrong: "Placement is a solved, framework-driven decision (cohesion-principles). Punting it to the user adds a round-trip and signals the agent has not consulted the framework it should be using."
+      alternative: "Run the cohesion-principles placement algorithm (step 4). Surface the chosen target and the reasoning; ask the user only to confirm a genuinely ambiguous CRP tie, not to make the call from scratch."
+    - id: jam_it_in_anywhere
+      name: Transcribing instead of translating
+      keywords: [jam it in, transcribe, dump text, wrong shape, no translation]
+      why_it_seems_right: "The insight is true and writing it down somewhere feels like progress."
+      why_it_is_wrong: "Encoding is translation, not transcription. Dropped into the wrong surface or the wrong shape, the insight is either unreachable (no trigger) or unasserted (prose where a record was needed)."
+      alternative: "Choose the surface via cohesion-principles and the shape via content-authoring before writing (steps 4-5). Match the target's existing format (step 7)."
+    - id: duplicate_instead_of_extend
+      name: New doc when one already owns the area
+      keywords: [duplicate doc, parallel reference, ssot violation, should have extended, new file reflex]
+      why_it_seems_right: "A fresh doc is easy to write and feels clean; the existing doc looks crowded."
+      why_it_is_wrong: "Two docs covering one area drift apart; a future agent reads one and misses the other. SSOT is broken and the CCP boundary is wrong."
+      alternative: "Search the target first (step 6). Extend the record or section that already owns the area; create a new home only when nothing existing fits."
 ```
-
-## Quick Reference: Encoding Checklist
-
-**Before encoding:**
-- [ ] Clearly articulate the insight in one sentence
-- [ ] Identify what work context triggers needing it
-- [ ] Search for existing documents in that context
-- [ ] Verify no existing coverage of this insight
-
-**During encoding:**
-- [ ] Match the document's existing format
-- [ ] Include "why" not just "what"
-- [ ] Add detection criteria for anti-patterns
-- [ ] Include worked example if process-oriented
-
-**After encoding:**
-- [ ] Verify the insight is discoverable via likely search terms
-- [ ] Update cross-references if needed
-- [ ] Consider if other documents need pointers
 
 ## The Meta-Insight
 
-This skill itself is an example of knowledge encoding:
+This skill is itself an instance of knowledge encoding: the recurring "where
+should this live, and in what shape?" conversation was encoded once -- as a
+procedure that routes the two sub-decisions to the skills that own them
+(cohesion-principles, content-authoring) -- so the conversation does not repeat.
 
-1. **Insight**: We repeatedly have conversations about "where should X live?" without a framework
-2. **Trigger**: Agent discovers something that should persist, asks where to put it
-3. **Discovery path**: Agent would search "encode" "persist" "where should" "future agents"
-4. **Encoding**: Created this skill with the process documented
+## Cross-references
 
-The conversation that created this skill won't repeat—the knowledge now persists.
+- **Where a fact lives** -- `/skills-kit:cohesion-principles` (placement: CCP / CRP / ADP over the load graph).
+- **What shape a fact takes** -- the md-authoring content-shape reference (`content-authoring.md`) (the three content-form surfaces).
+- **Authoring/auditing a skill's type contract** -- `/skills-kit:skill-authoring`.
+- **End-of-session documentation sweep** -- `/skills-kit:update-documentation` (feeds individual insights to this skill).
 
 ## CLAUDE.md instance example
 

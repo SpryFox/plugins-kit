@@ -3,9 +3,9 @@ _schema_version: 1
 name: claude-md-audit-noworkflow
 author: christina
 skill-type: audit-skill
-description: Use when invoking /claude-md-audit-noworkflow -- the preserved single-loop CLAUDE.md audit (no Workflow fan-out). Do NOT use for SKILL.md (use /skill-audit).
+description: Use when md-audit dispatches the single-loop CLAUDE.md audit (no Workflow fan-out). Do NOT use for SKILL.md (use skill-audit).
 disable-model-invocation: true
-user-invocable: true
+user-invocable: false
 argument-hint: "[file path, number(s) from list, or 'list']"
 ---
 
