@@ -77,6 +77,16 @@ _COOLDOWN_FILE="$_COOLDOWN_DIR/last_run_epoch.$_PROJECT_KEY"
 _COOLDOWN_SECS=3600  # 60-minute per-project cooldown; reset via bootstrap-reset-cooldown
 mkdir -p "$PLUGIN_DATA" "$_COOLDOWN_DIR"
 
+# Registry files Claude Code rewrites whenever a plugin is installed/updated/
+# rescoped (installed_plugins.json) or a marketplace is added/refreshed
+# (known_marketplaces.json). PLUGIN_DATA is
+# ~/.claude/plugins/data/<marketplace>/bootstrap, so the plugins root is three
+# dirs up. Used by the cooldown gate below to detect "a plugin changed since we
+# last ran" and bypass the throttle so the new version is provisioned promptly.
+_PLUGINS_ROOT="$(cd "$PLUGIN_DATA/../../.." 2>/dev/null && pwd)"
+_INSTALLED_PLUGINS="$_PLUGINS_ROOT/installed_plugins.json"
+_KNOWN_MARKETPLACES="$_PLUGINS_ROOT/known_marketplaces.json"
+
 # --- Re-prime pending display from persistent alert (runs every session) ---
 # The bootstrap engine writes bootstrap_alert.json when there's an unresolved
 # user-actionable failure (e.g. a python stub on the system PATH). The alert
@@ -104,7 +114,20 @@ fi
 # the engine to re-check on every session in that case so it can confirm the
 # fix and clear the alert promptly. Steady-state success still gets the
 # per-project throttle.
-if [ -f "$_COOLDOWN_FILE" ] && [ ! -f "$_ALERT_FILE" ]; then
+#
+# Also bypass when a plugin registry file is newer than the cooldown stamp: that
+# means Claude Code installed/updated/rescoped a plugin (installed_plugins.json)
+# or added/refreshed a marketplace (known_marketplaces.json) since bootstrap last
+# ran, so the new version's deps/shared-libs need provisioning NOW rather than
+# after the throttle expires. A cooldown SKIP never refreshes $_COOLDOWN_FILE
+# (the stamp is written only when a pass actually runs, below), so this bypass
+# stays armed across every restart until a real pass resyncs — fixing the
+# "version bumped but bootstrap throttle-skipped the resync" stale-shared-lib
+# bug. `-nt` is false when the registry file is missing, so the cooldown is
+# honored by default. See CLAUDE.md's "Per-project cooldown" / cooldown insights.
+if [ -f "$_COOLDOWN_FILE" ] && [ ! -f "$_ALERT_FILE" ] \
+   && [ ! "$_INSTALLED_PLUGINS" -nt "$_COOLDOWN_FILE" ] \
+   && [ ! "$_KNOWN_MARKETPLACES" -nt "$_COOLDOWN_FILE" ]; then
     _LAST_RUN=$(cat "$_COOLDOWN_FILE" 2>/dev/null || echo "0")
     _NOW=$(date +%s 2>/dev/null || echo "0")
     _AGE=$((_NOW - _LAST_RUN))
