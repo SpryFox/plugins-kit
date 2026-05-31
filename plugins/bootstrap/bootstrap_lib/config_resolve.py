@@ -1,0 +1,132 @@
+"""Runtime layered config resolution for bootstrap-managed plugins.
+
+This is the read-time counterpart to config_check.py (which provisions/seeds
+config at session start). Where config_check copies a default file once and
+write-mirrors declared scalar fields, this module RESOLVES a plugin's effective
+config every time it is read, by deep-merging an ordered stack of layers:
+
+    shipped defaults  (lowest precedence)
+      -> user config   (~/.claude/plugins/data/<marketplace>/<plugin>/<file>)
+        -> project override (<project_root>/.local-data/<plugin>/<file>)  (highest)
+
+Later layers win. Nested mappings are deep-merged (so a project file can add a
+single key under `models:` without dropping the user's other models); scalars
+from a higher layer replace lower ones. The merge reuses the same
+``_deep_merge_dicts`` the manifest layering uses, so semantics stay consistent.
+
+Design rules:
+- Never silently swallow a broken layer. A malformed YAML file, an unreadable
+  file, or a non-mapping top level raises ConfigError -- a silent ``{}`` would
+  hide a typo'd override and is exactly the failure mode this module replaces.
+- An ABSENT layer is not an error -- it is simply skipped (that is how the
+  precedence stack degrades when a user or project has not written an override).
+- PyYAML is required. The flat ``key: value`` fallback in config_check cannot
+  represent a nested registry, so rather than mis-parse one we fail loudly with
+  an actionable message. PyYAML is a declared bootstrap dependency.
+"""
+
+from pathlib import Path
+from typing import Iterable, List, Optional, Union
+
+from .manifest_merge import _deep_merge_dicts
+
+PathLike = Union[str, Path]
+
+
+class ConfigError(Exception):
+    """A config layer could not be read or parsed. Raised, never swallowed."""
+
+
+def _require_yaml():
+    try:
+        import yaml
+    except ImportError as exc:  # pragma: no cover - exercised via monkeypatch in tests
+        raise ConfigError(
+            "PyYAML is required to read layered config files but is not importable. "
+            "It is a declared bootstrap dependency; install it into the bootstrap venv."
+        ) from exc
+    return yaml
+
+
+def load_config_layer(path: PathLike) -> Optional[dict]:
+    """Read one YAML config layer.
+
+    Returns:
+        - ``None`` if the file does not exist (an absent layer is skipped, not an error).
+        - ``{}`` if the file exists but is empty.
+        - the parsed mapping otherwise.
+
+    Raises:
+        ConfigError: the file is unreadable, contains malformed YAML, or its top
+            level is not a mapping.
+    """
+    p = Path(path)
+    if not p.exists():
+        return None
+
+    yaml = _require_yaml()
+    try:
+        text = p.read_text(encoding="utf-8")
+        data = yaml.safe_load(text)
+    except OSError as exc:
+        raise ConfigError(f"cannot read config layer {p}: {exc}") from exc
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"malformed YAML in config layer {p}: {exc}") from exc
+
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise ConfigError(
+            f"config layer {p} must be a mapping at the top level, got {type(data).__name__}"
+        )
+    return data
+
+
+def resolve_config(layers: Iterable[PathLike]) -> dict:
+    """Deep-merge config layers in INCREASING precedence order (later wins).
+
+    Absent layers are skipped; malformed layers raise ConfigError. Returns an
+    empty dict if no layer is present.
+    """
+    result: dict = {}
+    for layer in layers:
+        data = load_config_layer(layer)
+        if data:
+            result = _deep_merge_dicts(result, data)
+    return result
+
+
+def default_data_root() -> Path:
+    """The canonical bootstrap plugin-data root (``~/.claude/plugins/data``)."""
+    return Path.home() / ".claude" / "plugins" / "data"
+
+
+def standard_config_layers(
+    filename: str,
+    *,
+    plugin: str,
+    marketplace: str = "plugins-kit",
+    shipped_default: Optional[PathLike] = None,
+    project_root: Optional[PathLike] = None,
+    data_root: Optional[PathLike] = None,
+) -> List[Path]:
+    """Build the standard precedence-ordered layer paths for a plugin's config.
+
+    Order (lowest -> highest precedence):
+        1. ``shipped_default`` (if given) -- the plugin's checked-in defaults file.
+        2. user config -- ``<data_root>/<marketplace>/<plugin>/<filename>``.
+        3. project override -- ``<project_root>/.local-data/<plugin>/<filename>``
+           (only if ``project_root`` is given).
+
+    The user and project conventions match config_check / engine provisioning so
+    a file seeded there is the same file resolved here. Pass the result straight
+    to ``resolve_config``.
+    """
+    layers: List[Path] = []
+    if shipped_default is not None:
+        layers.append(Path(shipped_default))
+    root = Path(data_root) if data_root is not None else default_data_root()
+    layers.append(root / marketplace / plugin / filename)
+    if project_root is not None:
+        layers.append(Path(project_root) / ".local-data" / plugin / filename)
+    return layers
