@@ -15,6 +15,12 @@ from .api_key import get_api_key, KeyLookupResult
 from .account import check_account, AccountStatus, AccountCheckError
 from .client import make_openai_client
 from .env_file import read_env_file, write_env_file
+from .models import (
+    DEFAULT_MODEL_CONFIG,
+    ModelResolveError,
+    load_model_config,
+    resolve_model,
+)
 
 __all__ = [
     "API_KEY_ENV",
@@ -29,4 +35,8 @@ __all__ = [
     "make_openai_client",
     "read_env_file",
     "write_env_file",
+    "DEFAULT_MODEL_CONFIG",
+    "ModelResolveError",
+    "load_model_config",
+    "resolve_model",
 ]

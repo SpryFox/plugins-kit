@@ -57,14 +57,19 @@ function wkScript(command, out, opts) {
 // where <workflow-kit-venv-python> is
 //   ~/.claude/plugins/data/plugins-kit/workflow-kit/.venv/Scripts/python.exe  (Windows)
 //   ~/.claude/plugins/data/plugins-kit/workflow-kit/.venv/bin/python          (macOS/Linux)
-// `spec` = { model, promptFile, system?, out, status? }.
+// `spec` = { model?, cheap?, promptFile, system?, out, status? }. `model` may be
+// a registry alias (e.g. 'qwen') or a raw slug (e.g. 'qwen/qwen3-32b'). When
+// `model` is omitted the runner uses openrouter-kit's configured 'default'
+// (or 'defaultCheap' when `cheap` is true) -- configure those in openrouter-kit's
+// config.yaml instead of hardcoding a slug here.
 function wkOpenRouter(runner, spec, opts) {
   opts = opts || {}
+  const model = spec.model ? ' --model ' + spec.model : ''
+  const cheap = spec.cheap ? ' --cheap' : ''
   const sys = spec.system ? ' --system ' + JSON.stringify(spec.system) : ''
   const st = spec.status ? ' --status ' + spec.status : ''
   const cmd =
-    runner +
-    ' --model ' + spec.model +
+    runner + model + cheap +
     ' --prompt-file ' + spec.promptFile +
     ' --out ' + spec.out + sys + st
   const merged = { status: spec.status }

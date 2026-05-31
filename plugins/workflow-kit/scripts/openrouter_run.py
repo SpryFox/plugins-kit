@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -49,7 +50,18 @@ def main(argv=None):
     ap = argparse.ArgumentParser(
         description="workflow-kit: one OpenRouter call via openrouter-kit's openai runner."
     )
-    ap.add_argument("--model", required=True, help="OpenRouter model slug, e.g. openai/gpt-4o-mini")
+    ap.add_argument(
+        "--model",
+        default=None,
+        help="Model: a registry alias (e.g. qwen) or a raw OpenRouter slug "
+        "(e.g. qwen/qwen3-32b). If omitted, openrouter-kit's configured 'default' "
+        "(or 'defaultCheap' with --cheap) is used.",
+    )
+    ap.add_argument(
+        "--cheap",
+        action="store_true",
+        help="When no --model is given, select the configured 'defaultCheap' model.",
+    )
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--prompt", help="user prompt text")
     g.add_argument("--prompt-file", help="path to a file holding the user prompt")
@@ -59,6 +71,24 @@ def main(argv=None):
     ap.add_argument("--out", required=True, help="write the reply text here ($OUT)")
     ap.add_argument("--status", help="optional path for a small JSON status object ($STATUS)")
     args = ap.parse_args(argv)
+
+    # Resolve the model via openrouter-kit's registry (alias / slug / default /
+    # defaultCheap). openrouter-kit owns the model config; workflow-kit does not
+    # reimplement it.
+    try:
+        from openrouter_kit import resolve_model, ModelResolveError
+    except ImportError:
+        print(
+            "openrouter_kit not importable. Enable the openrouter-kit plugin and run this "
+            "with a Python that has openrouter_kit on its path (the shared-libs .pth).",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        args.model = resolve_model(args.model, cheap=args.cheap, project_root=os.getcwd())
+    except ModelResolveError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
 
     # openrouter_kit is linked onto workflow-kit's venv by the bootstrap shared-libs
     # .pth (workflow-kit declares shared_lib_imports). No path discovery -- just import.
