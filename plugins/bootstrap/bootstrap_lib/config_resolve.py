@@ -7,7 +7,12 @@ config every time it is read, by deep-merging an ordered stack of layers:
 
     shipped defaults  (lowest precedence)
       -> user config   (~/.claude/plugins/data/<marketplace>/<plugin>/<file>)
-        -> project override (<project_root>/.local-data/<plugin>/<file>)  (highest)
+        -> project override (<project_root>/.local-data/<marketplace>/<plugin>/<file>)  (highest)
+
+The standard config filename is ``config.yaml`` (matching the existing config /
+project_config manifest sections); a plugin's OpenRouter or other settings are
+just keys in that one file. User and project dirs use the same
+``<marketplace>/<plugin>`` layout so a file seeded at one is found at the other.
 
 Later layers win. Nested mappings are deep-merged (so a project file can add a
 single key under `models:` without dropping the user's other models); scalars
@@ -102,7 +107,7 @@ def default_data_root() -> Path:
 
 
 def standard_config_layers(
-    filename: str,
+    filename: str = "config.yaml",
     *,
     plugin: str,
     marketplace: str = "plugins-kit",
@@ -112,15 +117,18 @@ def standard_config_layers(
 ) -> List[Path]:
     """Build the standard precedence-ordered layer paths for a plugin's config.
 
+    ``filename`` defaults to ``config.yaml`` -- the established per-plugin config
+    name (plugins put their settings as keys in that one file).
+
     Order (lowest -> highest precedence):
         1. ``shipped_default`` (if given) -- the plugin's checked-in defaults file.
         2. user config -- ``<data_root>/<marketplace>/<plugin>/<filename>``.
-        3. project override -- ``<project_root>/.local-data/<plugin>/<filename>``
+        3. project override -- ``<project_root>/.local-data/<marketplace>/<plugin>/<filename>``
            (only if ``project_root`` is given).
 
-    The user and project conventions match config_check / engine provisioning so
-    a file seeded there is the same file resolved here. Pass the result straight
-    to ``resolve_config``.
+    User and project use the same ``<marketplace>/<plugin>`` layout so a file
+    seeded at one location is the same file resolved at the other. Pass the
+    result straight to ``resolve_config``.
     """
     layers: List[Path] = []
     if shipped_default is not None:
@@ -128,5 +136,5 @@ def standard_config_layers(
     root = Path(data_root) if data_root is not None else default_data_root()
     layers.append(root / marketplace / plugin / filename)
     if project_root is not None:
-        layers.append(Path(project_root) / ".local-data" / plugin / filename)
+        layers.append(Path(project_root) / ".local-data" / marketplace / plugin / filename)
     return layers

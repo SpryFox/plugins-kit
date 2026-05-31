@@ -155,7 +155,7 @@ class TestStandardConfigLayers:
         assert layers == [
             tmp_path / "defaults" / "openrouter-models.yaml",
             tmp_path / "data" / "plugins-kit" / "openrouter-kit" / "openrouter-models.yaml",
-            tmp_path / "proj" / ".local-data" / "openrouter-kit" / "openrouter-models.yaml",
+            tmp_path / "proj" / ".local-data" / "plugins-kit" / "openrouter-kit" / "openrouter-models.yaml",
         ]
 
     def test_user_only_when_no_shipped_or_project(self, tmp_path):
@@ -163,6 +163,15 @@ class TestStandardConfigLayers:
             "c.yaml", plugin="p", data_root=tmp_path / "data"
         )
         assert layers == [tmp_path / "data" / "plugins-kit" / "p" / "c.yaml"]
+
+    def test_filename_defaults_to_config_yaml(self, tmp_path):
+        layers = standard_config_layers(
+            plugin="p", project_root=tmp_path / "proj", data_root=tmp_path / "data"
+        )
+        assert layers == [
+            tmp_path / "data" / "plugins-kit" / "p" / "config.yaml",
+            tmp_path / "proj" / ".local-data" / "plugins-kit" / "p" / "config.yaml",
+        ]
 
     def test_default_data_root_used_when_omitted(self, tmp_path, monkeypatch):
         monkeypatch.setenv("HOME", str(tmp_path))
@@ -175,7 +184,7 @@ class TestStandardConfigLayers:
         data_root = tmp_path / "data"
         proj = tmp_path / "proj"
         user_file = data_root / "plugins-kit" / "openrouter-kit" / "openrouter-models.yaml"
-        proj_file = proj / ".local-data" / "openrouter-kit" / "openrouter-models.yaml"
+        proj_file = proj / ".local-data" / "plugins-kit" / "openrouter-kit" / "openrouter-models.yaml"
         _write(user_file, "models: {cheap: {slug: qwen/qwen3-32b}}\ndefault: cheap\n")
         _write(proj_file, "default: mini\nmodels: {mini: {slug: openai/gpt-4o-mini}}\n")
         layers = standard_config_layers(
