@@ -13,12 +13,24 @@ BOOTSTRAP_ROOT = os.path.normpath(
 ENGINE_SCRIPT = os.path.join(BOOTSTRAP_ROOT, "engine", "bootstrap_engine.py")
 
 
-def run_engine(data_dir, plugin_root=BOOTSTRAP_ROOT, extra_args=None):
+def run_engine(data_dir, plugin_root=BOOTSTRAP_ROOT, extra_args=None, env=None):
     """Run the bootstrap engine as a subprocess."""
     cmd = [sys.executable, ENGINE_SCRIPT, "--plugin-root", plugin_root, "--data-dir", data_dir]
     if extra_args:
         cmd.extend(extra_args)
-    return subprocess.run(cmd, capture_output=True, text=True)
+    return subprocess.run(cmd, capture_output=True, text=True, env=env)
+
+
+def _isolated_env(tmp_path):
+    """Return an env dict with HOME set to an empty temp dir.
+
+    Without this the engine reads the developer's real installed-plugin registry
+    and bootstraps their actual plugins, polluting stdout / the display file that
+    the silence-expecting tests assert on.
+    """
+    home = str(tmp_path / "_home")
+    os.makedirs(home, exist_ok=True)
+    return {**os.environ, "HOME": home}
 
 
 def _make_minimal_root(tmp_path, config_overrides=None, with_version=False):
@@ -75,7 +87,8 @@ class TestEngineBackground:
     def test_background_success_format(self, data_dir, tmp_path):
         """Display file has UserPromptSubmit-compliant JSON with additionalContext for Claude."""
         fake_root = _make_minimal_root(tmp_path, with_version=True)
-        run_engine(data_dir, plugin_root=fake_root, extra_args=["--background"])
+        run_engine(data_dir, plugin_root=fake_root, extra_args=["--background"],
+                   env=_isolated_env(tmp_path))
         display_file = os.path.join(data_dir, "bootstrap_display.pending")
         with open(display_file) as f:
             response = json.load(f)
@@ -134,7 +147,8 @@ class TestEngineBackground:
     def test_background_silent_no_file(self, data_dir, tmp_path):
         """When everything is ok and log_success is false, no display file is created."""
         fake_root = _make_minimal_root(tmp_path)
-        result = run_engine(data_dir, plugin_root=fake_root, extra_args=["--background"])
+        result = run_engine(data_dir, plugin_root=fake_root, extra_args=["--background"],
+                            env=_isolated_env(tmp_path))
         assert result.returncode == 0
         display_file = os.path.join(data_dir, "bootstrap_display.pending")
         assert not os.path.isfile(display_file)
@@ -147,13 +161,14 @@ class TestEngineBackground:
         bypassing the log_success filter and showing them via shell_content.
         """
         fake_root = _make_minimal_root(tmp_path)
+        env = _isolated_env(tmp_path)
         # First run: silent (no display file)
-        run_engine(data_dir, plugin_root=fake_root, extra_args=["--background"])
+        run_engine(data_dir, plugin_root=fake_root, extra_args=["--background"], env=env)
         display_file = os.path.join(data_dir, "bootstrap_display.pending")
         assert not os.path.isfile(display_file), "first run should be silent"
 
         # Second run: ok entries from run 1 must not leak into run 2's display
-        run_engine(data_dir, plugin_root=fake_root, extra_args=["--background"])
+        run_engine(data_dir, plugin_root=fake_root, extra_args=["--background"], env=env)
         assert not os.path.isfile(display_file), "second run must also be silent (no ok-entry leak)"
 
     def test_console_mode_unaffected(self, data_dir, tmp_path):

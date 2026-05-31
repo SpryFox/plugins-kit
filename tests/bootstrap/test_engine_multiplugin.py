@@ -2,10 +2,27 @@
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 
 import pytest
+
+
+def _sourced_value(env_file, var):
+    """Value of `export <var>=...` from an env file, parsed POSIX-shell style.
+
+    Avoids spawning `bash -c 'source ...'`: the `bash` on PATH may be WSL, which
+    can't source a Windows-path file or see a Windows venv. shlex.split tests the
+    same property (a quoted path round-trips as one token, space preserved).
+    """
+    prefix = f"export {var}="
+    for line in env_file.read_text().splitlines():
+        line = line.strip()
+        if line.startswith(prefix):
+            parts = shlex.split(line[len(prefix):])
+            return parts[0] if parts else ""
+    return None
 
 BOOTSTRAP_ROOT = os.path.normpath(
     os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, "plugins", "bootstrap")
@@ -79,7 +96,9 @@ class TestMultiPluginEngine:
         data_dir = str(tmp_path / "data")
         os.makedirs(data_dir)
 
-        result = run_engine(data_dir, plugin_root=fake_root)
+        # Isolate HOME so the engine doesn't read the developer's real installed
+        # plugin registry and bootstrap their actual plugins into stdout.
+        result = run_engine(data_dir, plugin_root=fake_root, env=_isolated_env(tmp_path))
 
         assert result.returncode == 0
         # Empty manifest = no checks = no log entries = silent exit
@@ -369,12 +388,10 @@ class TestMultiPluginEngine:
         contents = env_file.read_text()
         assert "export MY_VENV_PLUGIN_VENV=" in contents
 
-        # Round-trip: the exported path should resolve to a real python binary
-        rt = subprocess.run(
-            ["bash", "-c", f"source {env_file}; echo \"$MY_VENV_PLUGIN_VENV\""],
-            capture_output=True, text=True, check=True,
-        )
-        python_path = rt.stdout.strip()
+        # The exported path should resolve to a real python binary (parsed the
+        # way a POSIX shell would; see _sourced_value).
+        python_path = _sourced_value(env_file, "MY_VENV_PLUGIN_VENV")
+        assert python_path is not None
         assert os.path.isfile(python_path)
         assert str(plugin_data_dir / ".venv") in python_path
 

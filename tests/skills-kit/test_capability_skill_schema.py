@@ -12,13 +12,14 @@ test_schemas.py: mutate one field at a time, confirm the schema catches each
 class of drift.
 """
 
-from schemas import (
-    CAPABILITY_SKILL_SCHEMA,
+# schemas was extracted into skills_kit_lib (on sys.path via pyproject.toml pythonpath).
+from skills_kit_lib.schemas.skill_types import CAPABILITY_SKILL_SCHEMA
+from skills_kit_lib.schema_registry import (
     SCHEMAS_BY_ROOT,
     detect_mixed_type_yaml,
     resolve_schema,
-    validate,
 )
+from skills_kit_lib.schema_engine import validate
 
 
 def _has_fail_at(fails, path_substring: str) -> bool:
