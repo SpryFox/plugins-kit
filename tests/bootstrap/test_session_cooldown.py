@@ -79,6 +79,26 @@ class TestCooldownContract:
         assert "_RESET_SRC=" in text, "session-bootstrap should install the reset helper"
         assert "bootstrap-reset-cooldown" in text
 
+    def test_cooldown_bypassed_on_registry_change(self) -> None:
+        """A plugin install/update rewrites installed_plugins.json; a marketplace
+        add/refresh rewrites known_marketplaces.json. The cooldown gate must
+        bypass the throttle when either is newer than the cooldown stamp, so the
+        new version's deps/shared-libs get provisioned promptly instead of after
+        the throttle expires. Pins the stale-shared-lib regression."""
+        text = SESSION_BOOTSTRAP.read_text()
+        assert "_INSTALLED_PLUGINS=" in text, "registry path var missing"
+        assert "_KNOWN_MARKETPLACES=" in text, "marketplace registry path var missing"
+        # The gate must use mtime comparison (-nt) against the cooldown file so a
+        # registry rewrite re-arms a real bootstrap pass.
+        assert '! "$_INSTALLED_PLUGINS" -nt "$_COOLDOWN_FILE"' in text, (
+            "cooldown gate must bypass when installed_plugins.json is newer "
+            "than the cooldown stamp (version bump must not be throttled)"
+        )
+        assert '! "$_KNOWN_MARKETPLACES" -nt "$_COOLDOWN_FILE"' in text, (
+            "cooldown gate must bypass when known_marketplaces.json is newer "
+            "than the cooldown stamp"
+        )
+
 
 @needs_bash
 class TestResetScript:
@@ -192,3 +212,61 @@ class TestResetScript:
         result = self._run("--bogus")
         assert result.returncode == 2
         assert "unknown argument" in result.stderr
+
+
+@needs_bash
+class TestCooldownGateBehavior:
+    """Behavioral check of session-bootstrap.sh's cooldown gate.
+
+    Only the SKIP path is exercised here: it exits at the gate, BEFORE any
+    python-install / PATH-registry / engine-fork work, so it's side-effect-free
+    and safe to run hermetically (HOME pointed at a tmp dir). The RUN/bypass path
+    can't be exercised in a test -- past the gate the script downloads standalone
+    Python and writes the real Windows User PATH registry -- so the registry-change
+    bypass is pinned by TestCooldownContract.test_cooldown_bypassed_on_registry_change
+    (static) plus bash's well-defined `-nt` mtime semantics.
+    """
+
+    def _seed_fresh_cooldown(self, fake_home: Path, bash_pwd: str) -> Path:
+        out = subprocess.run(
+            [BASH, "-c", f'printf "%s" "{bash_pwd}" | sha1sum | awk \'{{print $1}}\''],
+            capture_output=True, text=True,
+        )
+        key = out.stdout.strip()
+        assert key, f"sha1 hashing failed: {out.stderr}"
+        # The hook derives MARKETPLACE_NAME from the repo dir basename (PLUGIN_ROOT/../..),
+        # so seed under REPO_ROOT.name -- not a hardcoded "plugins-kit" -- to stay correct
+        # when run from a differently-named checkout (e.g. the publish mirror plugins-master).
+        cd = fake_home / ".claude" / "plugins" / "data" / REPO_ROOT.name / "bootstrap" / "cooldowns"
+        cd.mkdir(parents=True, exist_ok=True)
+        f = cd / f"last_run_epoch.{key}"
+        f.write_text(str(int(time.time())))
+        return f
+
+    def _bash_pwd(self, proj: Path) -> str:
+        resolved = subprocess.run(
+            [BASH, "-c", f'cd "{proj}" && printf %s "$PWD"'],
+            capture_output=True, text=True,
+        )
+        assert resolved.stdout, f"failed to resolve bash PWD: {resolved.stderr}"
+        return resolved.stdout
+
+    def test_skips_when_fresh_and_no_registry_change(self, tmp_path: Path) -> None:
+        """Fresh cooldown + no newer registry file => silent throttle. The skip
+        path prints nothing to stdout (the run-path JSON is emitted only after
+        the gate), so empty stdout == throttled."""
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        self._seed_fresh_cooldown(fake_home, self._bash_pwd(proj))
+        # No installed_plugins.json / known_marketplaces.json under fake HOME ->
+        # `-nt` is false for both -> cooldown is honored.
+        result = subprocess.run(
+            [BASH, "-c", f'cd "{proj}" && HOME="{fake_home}" "{BASH}" "{SESSION_BOOTSTRAP}"'],
+            input="", capture_output=True, text=True, timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "", (
+            f"expected a silent cooldown skip, got stdout: {result.stdout!r}"
+        )

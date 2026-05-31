@@ -142,6 +142,18 @@ def main():
     # Step 3b: Activate bootstrap venv site-packages so PyYAML is available
     _activate_bootstrap_venv(data_dir)
 
+    # Snapshot installed plugin refs BEFORE any layered-manifest / per-plugin /
+    # script install runs this pass. Claude Code loaded plugins at session start,
+    # before this hook -- so any plugin that ENTERS the registry during this pass
+    # is not active in the running session yet (needs /reload-plugins or a
+    # restart). The after-snapshot diff (post Step 4b) drives the Step 4d reload
+    # nag. We diff the registry directly rather than reusing Step 4b's new_plugins
+    # because a layered `plugins:` install lands in the registry BEFORE Step 4's
+    # scan and is absorbed by Step 4 (never appearing in new_plugins) -- the gap
+    # the cache-kit end-to-end test surfaced.
+    _registry_for_diff = os.path.join(plugins_dir, "installed_plugins.json")
+    installed_refs_before = set(_read_installed_plugins(_registry_for_diff))
+
     # Step 3c: Process layered bootstrap manifests (user + project level)
     # Deprecation: warn if legacy user-bootstrap.json exists
     legacy_path = os.path.join(data_dir, "user-bootstrap.json")
@@ -252,6 +264,52 @@ def main():
             log_success, display_sections, deferred_plugin_logs, args,
         )
 
+    # Step 4c: Shared-lib convergence sweep. Every owner has now published (Steps
+    # 4 + 4b), so re-link all consumers in one go -- a consumer processed before
+    # its owner no longer waits for the next session. Silent in steady state
+    # (already-linked consumers report "cached" -> verbose-only); only a genuinely
+    # converged or failed link surfaces. See _shared_lib_convergence_sweep.
+    sweep_actions, sweep_oks, sweep_failures = _shared_lib_convergence_sweep(
+        enabled_plugins + new_plugins, data_dir,
+    )
+    if sweep_failures:
+        all_failures.extend(sweep_failures)
+    if sweep_actions or sweep_oks:
+        sweep_label = f"{bootstrap_label} shared-libs"
+        display_sections.append((sweep_label, sweep_actions, sweep_oks))
+        sweep_log = sweep_actions + (sweep_oks if log_success else [])
+        if sweep_log and not args.console:
+            write_log_block(data_dir, sweep_label, sweep_log, start_time=start_time)
+
+    # Step 4d: Reload/restart advisory. Any plugin that ENTERED the registry during
+    # this pass -- a layered `plugins:` install (Step 3c), a per-plugin install, or
+    # a script install (Step 4b) -- is not yet loaded by Claude Code (it loaded
+    # plugins at session start, before this hook installed them). We detect them by
+    # diffing the registry (before Step 3c vs now), NOT Step 4b's new_plugins, which
+    # misses layered installs absorbed by Step 4. A plugin merely updated at session
+    # start was already loaded by the restart that updated it, so it is not nagged.
+    # Toggle off via config "notify_reload_needed".
+    action_required = []
+    if config.get("notify_reload_needed", True):
+        newly_installed = _resolve_newly_installed(
+            installed_refs_before, _read_installed_plugins(_registry_for_diff),
+        )
+        action_required = [a for a in (
+            _reload_advice(newly_installed),
+            # Bootstrap self-staleness: a newer bootstrap is cached but this session
+            # loaded the old one. /reload-plugins won't re-fire its SessionStart pass.
+            _bootstrap_stale_advice(version, boot_plugin_name, marketplace_name, prod_registry),
+        ) if a]
+        # action_required is ALSO passed to emit_success_response so the Claude-facing
+        # additionalContext leads with a relay directive (systemMessage isn't reliably
+        # shown, so we instruct the session's Claude to tell the user). Still added to
+        # the display + log here so console mode and bootstrap.log get it too.
+        for advice in action_required:
+            advice_label = f"{bootstrap_label} action required"
+            display_sections.append((advice_label, [advice], []))
+            if not args.console:
+                write_log_block(data_dir, advice_label, [advice], start_time=start_time)
+
     # Step 5: Read shell log entries BEFORE writing any engine entries to the log.
     # Plugin log writes are deferred to step 6 to avoid the bootstrap plugin's
     # ok_entries leaking back through shell_content (its data_dir == engine data_dir).
@@ -327,8 +385,11 @@ def main():
         # restarts their IDE, edits config) are picked up on the next session
         # rather than waiting out the throttle window.
         _clear_project_cooldown(data_dir, args.project_dir)
-    elif display_content:
-        emit_success_response(display_content, label=bootstrap_label, output_file=output_file)
+    elif display_content or action_required:
+        emit_success_response(
+            display_content, label=bootstrap_label, output_file=output_file,
+            action_required=action_required,
+        )
     # else: nothing to show — silent exit (no file written in background mode)
 
     # Clean up stale persistent alert file when no persistent failures remain.
@@ -431,6 +492,208 @@ def _bootstrap_single_plugin(
     # Add plugin section to display
     plugin_display_header = f"{plugin_info.marketplace}:{plugin_info.name}@{plugin_info.version}" if plugin_info.marketplace else plugin_label
     display_sections.append((plugin_display_header, list(plugin_action_entries), list(plugin_ok_entries)))
+
+
+def _shared_lib_convergence_sweep(plugins, data_dir):
+    """Re-link every consumer's ``shared_lib_imports`` after all owners published.
+
+    Consumer links (writing ``<lib>.pth`` into a plugin's own venv) happen inline
+    during that plugin's manifest processing. If a consumer is processed BEFORE
+    the owner publishes the lib (plugins run in sort order, so this is purely an
+    ordering accident), the inline link soft-skips with "not yet published; will
+    retry next session" -- a gratuitous extra session/restart.
+
+    By the time the full plugin loop (Step 4 + the 4b re-scan) has finished, every
+    owner has published, so one idempotent re-link sweep converges the pass: a
+    consumer-before-owner link that skipped inline now succeeds in the SAME
+    session. ``link_shared_lib`` returns "cached" when the .pth is already correct,
+    so consumers that linked fine inline are cheap no-ops here (no duplicate
+    action entries -- "cached"/"skipped" go to ok_entries, which are verbose-only).
+
+    Returns ``(actions, oks, failures)`` for the caller to log + display.
+    """
+    from .shared_lib import link_shared_lib
+    from .venv_check import _find_python
+
+    shared_root = os.path.join(os.path.dirname(data_dir), "_shared_libs")
+    actions, oks, failures = [], [], []
+    seen = set()
+    for plugin_info in plugins:
+        manifest_path = os.path.join(plugin_info.install_path, "bootstrap.json")
+        if not os.path.isfile(manifest_path):
+            continue
+        try:
+            with open(manifest_path, "r") as f:
+                imports = json.load(f).get("shared_lib_imports", [])
+        except (OSError, ValueError):
+            continue
+        if not imports:
+            continue
+        plugin_data_dir = os.path.join(os.path.dirname(data_dir), plugin_info.name)
+        venv_python = _find_python(os.path.join(plugin_data_dir, ".venv"))
+        for lib_name in imports:
+            key = (plugin_info.name, lib_name)
+            if key in seen:
+                continue
+            seen.add(key)
+            result = link_shared_lib(lib_name, venv_python, shared_root)
+            entry = f"{plugin_info.name}: shared-lib {result.name}: {result.message}"
+            if result.status == "linked":
+                actions.append(entry)
+            elif result.status == "failed":
+                actions.append(f"{plugin_info.name}: shared-lib {result.name}: FAILED - {result.message}")
+                failures.append({
+                    "type": "shared_lib",
+                    "name": result.name,
+                    "message": result.message,
+                    "plugin": plugin_info.name,
+                })
+            else:  # cached / skipped -> verbose-only
+                oks.append(entry)
+    return actions, oks, failures
+
+
+def _plugin_ships_sessionstart_hook(install_path):
+    """True if the plugin registers a ``SessionStart`` hook (in ``hooks/hooks.json``
+    or via a ``hooks`` key in ``.claude-plugin/plugin.json``).
+
+    SessionStart is the one hook kind ``/reload-plugins`` cannot make live in the
+    running session: it reloads the registration but does not re-FIRE SessionStart
+    (that only runs on a fresh session). Other hook kinds (UserPromptSubmit,
+    PreToolUse, ...) go live after ``/reload-plugins`` on their next event, and a
+    hook's script content is read fresh from disk every run -- so only a
+    SessionStart hook forces a restart. See references/plugin-reload-lifecycle.md.
+    """
+    candidates = (
+        os.path.join(install_path, "hooks", "hooks.json"),
+        os.path.join(install_path, ".claude-plugin", "plugin.json"),
+    )
+    for path in candidates:
+        try:
+            with open(path) as f:
+                hooks = json.load(f).get("hooks") or {}
+        except (OSError, ValueError):
+            continue
+        if isinstance(hooks, dict) and hooks.get("SessionStart"):
+            return True
+    return False
+
+
+def _read_installed_plugins(registry_path):
+    """``{ref: installPath}`` for every installed plugin in the registry file
+    (keys like ``cache-kit@plugins-kit``). Empty dict on any read/parse error (a
+    missing registry just yields no nag rather than crashing the pass).
+
+    Reads ``installPath`` straight from the registry -- NOT from the processed
+    plugin lists -- so a plugin with no ``bootstrap.json`` (e.g. cache-kit, which
+    ``list_enabled_plugins`` never returns) is still resolvable for the reload nag.
+    Registry entries may be a dict or a list of per-scope dicts; take the first
+    ``installPath`` found.
+    """
+    out = {}
+    try:
+        with open(registry_path) as f:
+            plugins = json.load(f).get("plugins", {})
+    except (OSError, ValueError):
+        return out
+    for ref, entry in plugins.items():
+        ip = None
+        if isinstance(entry, dict):
+            ip = entry.get("installPath")
+        elif isinstance(entry, list):
+            for e in entry:
+                if isinstance(e, dict) and e.get("installPath"):
+                    ip = e["installPath"]
+                    break
+        out[ref] = ip
+    return out
+
+
+def _resolve_newly_installed(before_refs, after_map):
+    """Plugins that ENTERED the registry this pass (keys in ``after_map`` not in
+    ``before_refs``) -> a name-sorted list of lightweight ``PluginInfo`` built from
+    the registry (name / marketplace / installPath), for the Step 4d reload nag.
+
+    install_path comes from the registry so even no-``bootstrap.json`` plugins
+    resolve; it is what ``_plugin_ships_sessionstart_hook`` inspects.
+    """
+    from .plugin_resolve import PluginInfo
+    result = []
+    for ref in sorted(set(after_map) - set(before_refs)):
+        ip = after_map.get(ref)
+        if not ip:
+            continue
+        name, _, marketplace = ref.partition("@")
+        result.append(PluginInfo(name=name, install_path=ip, version="", marketplace=marketplace))
+    return result
+
+
+def _reload_advice(newly_installed):
+    """User-facing reload/restart nag for plugins that ENTERED the registry during
+    this pass, or None when there is nothing to advise.
+
+    Claude Code loads plugins at session start -- before this SessionStart hook ran
+    and installed these -- so they are not active yet. This is the one case
+    bootstrap can PROVE the running session is missing plugin code. A plugin merely
+    *updated* at session start was already loaded by the restart that updated it
+    (and Parts 1+2 provision its deps in that same pass), so it is deliberately NOT
+    nagged here -- that would be noise on every publish.
+
+    Restart vs reload is the MEASURED rule (references/plugin-reload-lifecycle.md),
+    not the "hooks always need a restart" folklore: ``/reload-plugins`` reloads
+    registrations and skills/commands in-session, so it suffices unless the new
+    plugin registers a ``SessionStart`` hook -- only a fresh session re-fires that.
+    """
+    if not newly_installed:
+        return None
+    names = ", ".join(sorted(pi.name for pi in newly_installed))
+    needs_restart = any(_plugin_ships_sessionstart_hook(pi.install_path) for pi in newly_installed)
+    if needs_restart:
+        return (
+            f"bootstrap installed new plugin(s): {names}. "
+            f"Restart Claude (or your IDE) to start using them."
+        )
+    return (
+        f"bootstrap installed new plugin(s): {names}. "
+        f"Run /reload-plugins to start using them."
+    )
+
+
+def _bootstrap_stale_advice(running_version, plugin_name, marketplace_name, registry_path):
+    """Restart nag when the registry records a NEWER bootstrap than the one running
+    this session, else None.
+
+    autoUpdate caches the new bootstrap and rewrites ``installed_plugins.json`` at
+    session start, but the session already loaded the OLD hook -- and
+    ``/reload-plugins`` won't re-fire bootstrap's ``SessionStart`` pass, so only a
+    fresh session actually runs the new bootstrap. Claude Code's generic update
+    notice says "/reload-plugins", which is insufficient here; this nag tells the
+    user the truth. The comparison direction (registry > running) self-guards the
+    common dev case (a dev tree running AHEAD of the cache never nags). See
+    references/plugin-reload-lifecycle.md.
+    """
+    if not running_version or not plugin_name or not marketplace_name:
+        return None
+    cli_ref = f"{plugin_name}@{marketplace_name}"
+    try:
+        with open(registry_path) as f:
+            installs = json.load(f).get("plugins", {}).get(cli_ref, [])
+    except (OSError, ValueError):
+        return None
+    registry_version = ""
+    if isinstance(installs, list) and installs and isinstance(installs[0], dict):
+        registry_version = installs[0].get("version", "")
+    elif isinstance(installs, dict):
+        registry_version = installs.get("version", "")
+    if not registry_version:
+        return None
+    from .marketplace_lifecycle import _version_greater
+    if not _version_greater(registry_version, running_version):
+        return None
+    return (
+        f"bootstrap was updated to {registry_version}. "
+        f"Restart Claude (or your IDE) to load it."
+    )
 
 
 def _load_enabled_refs(project_dir=None):
@@ -2238,18 +2501,35 @@ def _write_atomic(path, content):
     os.replace(tmp, path)
 
 
-def emit_success_response(log_content, label="bootstrap", output_file=None):
-    """Emit hook JSON showing bootstrap log to user and agent."""
+def emit_success_response(log_content, label="bootstrap", output_file=None, action_required=None):
+    """Emit hook JSON showing bootstrap log to user and agent.
+
+    ``action_required`` is a list of user-facing instructions (reload/restart
+    nags). They're already in ``log_content``, but the user does NOT reliably see
+    systemMessage, so we ALSO lead the Claude-facing additionalContext with an
+    explicit directive telling the session's Claude to relay them to the user --
+    the one channel confirmed to always reach Claude. See plugin-reload-lifecycle.md.
+    """
+    action_required = action_required or []
     if output_file:
         # Background mode: consumed by UserPromptSubmit hook.
         # `systemMessage` is user-facing, `additionalContext` is Claude-facing.
+        body = f"{label} -> bootstrap complete:\n{log_content}"
+        add_ctx = body
+        if action_required:
+            bullets = "\n".join(f"- {a}" for a in action_required)
+            add_ctx = (
+                "ACTION REQUIRED — bootstrap needs the user to do something, and they "
+                "will NOT see it unless you tell them. Surface this to the user now, in "
+                f"your reply:\n{bullets}\n\n{body}"
+            )
         response = {
             "continue": True,
             "suppressOutput": False,
-            "systemMessage": f"{label} -> bootstrap complete:\n{log_content}",
+            "systemMessage": body,
             "hookSpecificOutput": {
                 "hookEventName": "UserPromptSubmit",
-                "additionalContext": f"{label} -> bootstrap complete:\n{log_content}",
+                "additionalContext": add_ctx,
             },
         }
         _write_atomic(output_file, json.dumps(response))

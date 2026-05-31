@@ -51,6 +51,41 @@ For each discovered plugin, the engine resolves the plugin's install path via `p
 
 Either phase is optional — a plugin can provide just a manifest, just a script, or both.
 
+### Step 4c: Shared-lib convergence sweep
+
+Shared-library *consumer* links (writing `<lib>.pth` into a plugin's own venv, declared via `shared_lib_imports`) happen inline while that plugin's manifest is processed. If a consumer is processed **before** the owner publishes the lib (plugins run in sort order, so this is purely an ordering accident), the inline `link_shared_lib` soft-skips with *"not yet published; will retry next session"* — an avoidable extra session/restart.
+
+After the full plugin loop (Step 4 + the 4b re-scan), **every owner has published**, so the engine runs one idempotent re-link sweep (`_shared_lib_convergence_sweep`) over all processed plugins: a consumer-before-owner link that skipped inline now succeeds in the **same** session. `link_shared_lib` returns `cached` when the `.pth` is already correct, so consumers that linked fine inline are cheap no-ops (their `cached`/`skipped` results go to `ok_entries`, which are verbose-only). In steady state the sweep is fully silent; it only surfaces a section when it genuinely converged or failed a link.
+
+This is the engine-side half of "provision everything in one pass." The shell-side half is the cooldown registry-change bypass (see [Throttling](#throttling)): together they remove the common reasons a user had to reload Claude more than once after a plugin update.
+
+### Step 4d: Reload/restart advisory
+
+The two fixes above let bootstrap provision a plugin's deps/libs/venv in a single pass. The one thing bootstrap **cannot** do in-session is make Claude Code load plugin *code & hooks* — Claude Code loads plugins at session start, before this SessionStart hook runs. So when a pass can **prove** the running session is missing a plugin's code, it nags the user.
+
+The provable case: a plugin that **entered the registry during this pass** — a layered `plugins:` install (Step 3c), a per-plugin install, or a bootstrap script's `install_plugin` (Step 4b). Claude Code loaded plugins *before* this hook installed those, so they aren't active yet. The engine detects them by **diffing the installed-plugins registry** (snapshot before Step 3c vs after Step 4b: `_read_installed_refs` + `_resolve_newly_installed`) — **not** Step 4b's `new_plugins`, which silently misses a layered `plugins:` install (that lands in the registry *before* Step 4's scan, so Step 4 absorbs it and it never appears in `new_plugins` — the gap the cache-kit end-to-end test surfaced). `_reload_advice(newly_installed)` then builds a one-line, user-facing advisory, branching on whether the new plugin registers a **`SessionStart`** hook (`_plugin_ships_sessionstart_hook`):
+
+- **Registers a `SessionStart` hook** → *restart Claude (or restart your IDE if Claude runs inside one)* — only a fresh session re-fires `SessionStart`; `/reload-plugins` reloads its registration but won't re-run it.
+- **otherwise** (skills/commands/event-hooks only) → *run `/reload-plugins`* to load it in-session.
+
+The `SessionStart`-specific branch is deliberate and **measured** (not the old "any hook → restart" folklore): `/reload-plugins` *does* reload hook **registrations** in-session, and a hook's **script content** is read live from disk every run. The only thing a reload can't do is re-*fire* `SessionStart`. Full rule + the probe method: [plugin-reload-lifecycle.md](plugin-reload-lifecycle.md).
+
+Crucially, a plugin merely **updated** at session start is **not** nagged: the restart that applied the update already loaded its new code, and Parts 1+2 provisioned its deps in that same pass — nagging there would be noise on every publish. The advisory is gated behind config `notify_reload_needed` (default `true`); set it `false` to silence it.
+
+#### Declarative reload policy (proposed — not yet implemented)
+
+Today `_reload_advice` *infers* restart-vs-reload from whether the plugin registers a `SessionStart` hook (`_plugin_ships_sessionstart_hook`). A more accurate, author-controlled version is for each plugin to **declare** its reload class in `plugin.json` (the universal manifest the engine already reads):
+
+```json
+"reloadPolicy": "restart" | "reload" | "none"
+```
+
+- `restart` — the plugin has hooks, a statusline, or another surface Claude Code loads at session start; changes need a full restart (and an IDE restart when Claude runs in one).
+- `reload` — only skills/commands; `/reload-plugins` suffices.
+- `none` — pure library/data (e.g. a `shared_libs` owner) consumed by freshly-spawned subprocesses; nothing Claude Code holds needs reloading.
+
+`_reload_advice` would prefer this field and **fall back to hook-inference when absent** (so the convention is opt-in and backward compatible). It would also unlock safely nagging on *updates* (not just installs): a plugin that declares `restart` can warrant a nag when its hooks may be stale, while `none`/`reload` plugins stay quiet. The "shape of changes → required action" taxonomy authors use to choose a policy is in the repo `CLAUDE.md`. Until this lands, the hook-inference default is in effect.
+
 ## First Run Lifecycle
 
 On a clean install (wiping `~/.claude/plugins/`), Claude Code goes through distinct phases across restarts:
@@ -127,6 +162,12 @@ Checks can be throttled to avoid redundant work.
 - **Time-based throttling** records a timestamp and skips checks within a cooldown window — useful for network operations (e.g., `git ls-remote`) where the cost is latency rather than correctness.
 
 Both can be combined: time-throttle the remote check, content-hash the local setup.
+
+### Per-project session cooldown (shell hook)
+
+Above the engine, `session-bootstrap.sh` applies a coarser **per-project cooldown**: after a pass runs it stamps `data/<marketplace>/bootstrap/cooldowns/last_run_epoch.<sha1-of-cwd>`, and subsequent SessionStart hooks within the 3600s window skip the entire engine invocation. A skip is silent and **does not refresh the stamp** — the stamp records when bootstrap last *actually ran*.
+
+**Registry-change bypass.** The cooldown is bypassed (a real pass runs) when either `installed_plugins.json` or `known_marketplaces.json` is **newer** (mtime) than the cooldown stamp. Claude Code rewrites those files whenever it installs/updates/rescopes a plugin or adds/refreshes a marketplace, so a version bump always re-arms a bootstrap pass on the next session instead of being throttled out. Because skips don't refresh the stamp, the bypass stays armed across *every* restart until a pass actually re-provisions — this is what stops a freshly-published shared-lib owner from leaving consumers importing a stale `_shared_libs` copy (the version looked current while the lib stayed old). The bypass uses `-nt`, which is false when the registry file is absent, so the cooldown is honored by default. Force a pass out-of-band with `bootstrap-reset-cooldown`.
 
 ## Design Principles
 

@@ -119,4 +119,8 @@ reference_skill:
       path: references/dependency-philosophy.md
       keywords: [philosophy, principles, local-first, ~/.local, repair_path, find-or-download, absolute path, target architecture, full execution chain, installed_but_path_stale, why not PATH, design intent]
       summary: Bootstrap's dependency-management philosophy and target architecture.
+    - id: plugin_reload_lifecycle
+      path: references/plugin-reload-lifecycle.md
+      keywords: [reload-plugins, restart, restart IDE, hook reload, registration, SessionStart re-fire, plugin update, when to reload, when to restart, script content live, cache version dir, reload advisory, _reload_advice]
+      summary: Measured rule for when a plugin change is live vs needs /reload-plugins vs needs a restart (the three layers code/registration/firing); informs the Step 4d reload nag.
 ```

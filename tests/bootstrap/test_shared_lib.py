@@ -4,6 +4,7 @@ Covers the owner source-publish (sync), the consumer/standalone .pth link, conte
 caching, stale-module pruning, soft-skips, and an end-to-end real-venv import.
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -255,3 +256,110 @@ class TestEngineWiring:
         # No venv at <data_dir>/.venv -> soft skip, no failure.
         assert failures == []
         assert any("shared-lib mylib" in e and "skip" in e.lower() for e in ok_entries)
+
+
+# --- single-pass convergence sweep ---------------------------------------
+
+class TestConvergenceSweep:
+    """_shared_lib_convergence_sweep re-links consumers after every owner has
+    published, so a consumer processed before its owner converges in the SAME
+    pass instead of deferring to 'next session' (an avoidable restart)."""
+
+    def _consumer_plugin(self, tmp_path, name, imports):
+        """A plugin install dir whose bootstrap.json declares shared_lib_imports,
+        plus a real (pip-less) venv at <data>/<name>/.venv so links can land."""
+        install = tmp_path / "plugins" / name
+        install.mkdir(parents=True)
+        (install / "bootstrap.json").write_text(
+            json.dumps({"shared_lib_imports": imports}), encoding="utf-8"
+        )
+        return install
+
+    def test_converges_consumer_linked_in_same_pass(self, tmp_path):
+        from bootstrap_lib.engine import _shared_lib_convergence_sweep
+        from bootstrap_lib.plugin_resolve import PluginInfo
+
+        # data_dir parent is the marketplace data root; _shared_libs lives beside it.
+        data_root = tmp_path / "data"
+        bootstrap_data = data_root / "bootstrap"
+        bootstrap_data.mkdir(parents=True)
+        shared_root = data_root / "_shared_libs"
+
+        # Owner already published the lib (the sweep runs AFTER the owner loop).
+        pkg = shared_root / "mylib" / "mylib"
+        pkg.mkdir(parents=True)
+        (pkg / "__init__.py").write_text("VALUE = 7\n", encoding="utf-8")
+
+        # Consumer plugin + a real venv at <data_root>/consumer/.venv.
+        install = self._consumer_plugin(tmp_path, "consumer", ["mylib"])
+        venv_dir = data_root / "consumer" / ".venv"
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "venv", "--without-pip", str(venv_dir)],
+                capture_output=True, timeout=120, check=True,
+            )
+        except (subprocess.SubprocessError, OSError) as e:
+            pytest.skip(f"could not create venv: {e}")
+
+        plugins = [PluginInfo(name="consumer", install_path=str(install), version="1.0", marketplace="mkt")]
+        actions, oks, failures = _shared_lib_convergence_sweep(plugins, str(bootstrap_data))
+
+        assert failures == []
+        assert any("shared-lib mylib" in a and "linked" in a.lower() for a in actions), (
+            f"sweep should have linked the consumer; actions={actions} oks={oks}"
+        )
+
+        # The link is real: the consumer venv can now import the shared package.
+        from bootstrap_lib.venv_check import _find_python
+        venv_python = _find_python(str(venv_dir))
+        proc = subprocess.run(
+            [venv_python, "-c", "import mylib; print(mylib.VALUE)"],
+            capture_output=True, text=True, timeout=30,
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert proc.stdout.strip() == "7"
+
+    def test_idempotent_second_sweep_is_cached(self, tmp_path):
+        from bootstrap_lib.engine import _shared_lib_convergence_sweep
+        from bootstrap_lib.plugin_resolve import PluginInfo
+
+        data_root = tmp_path / "data"
+        bootstrap_data = data_root / "bootstrap"
+        bootstrap_data.mkdir(parents=True)
+        shared_root = data_root / "_shared_libs"
+        pkg = shared_root / "mylib" / "mylib"
+        pkg.mkdir(parents=True)
+        (pkg / "__init__.py").write_text("VALUE = 1\n", encoding="utf-8")
+
+        install = self._consumer_plugin(tmp_path, "consumer", ["mylib"])
+        venv_dir = data_root / "consumer" / ".venv"
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "venv", "--without-pip", str(venv_dir)],
+                capture_output=True, timeout=120, check=True,
+            )
+        except (subprocess.SubprocessError, OSError) as e:
+            pytest.skip(f"could not create venv: {e}")
+
+        plugins = [PluginInfo(name="consumer", install_path=str(install), version="1.0", marketplace="mkt")]
+        _shared_lib_convergence_sweep(plugins, str(bootstrap_data))
+        # Second sweep: already linked -> "cached" (verbose-only), no new actions.
+        actions, oks, failures = _shared_lib_convergence_sweep(plugins, str(bootstrap_data))
+        assert failures == []
+        assert actions == [], f"second sweep should be a silent no-op, got {actions}"
+        assert any("cached" in o.lower() for o in oks)
+
+    def test_no_imports_is_noop(self, tmp_path):
+        from bootstrap_lib.engine import _shared_lib_convergence_sweep
+        from bootstrap_lib.plugin_resolve import PluginInfo
+
+        data_root = tmp_path / "data"
+        (data_root / "bootstrap").mkdir(parents=True)
+        # Plugin with a bootstrap.json but no shared_lib_imports.
+        install = tmp_path / "plugins" / "plain"
+        install.mkdir(parents=True)
+        (install / "bootstrap.json").write_text(json.dumps({"tools": []}), encoding="utf-8")
+
+        plugins = [PluginInfo(name="plain", install_path=str(install), version="1.0", marketplace="mkt")]
+        actions, oks, failures = _shared_lib_convergence_sweep(plugins, str(data_root / "bootstrap"))
+        assert (actions, oks, failures) == ([], [], [])

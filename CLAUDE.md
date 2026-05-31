@@ -80,6 +80,8 @@ The **bootstrap** plugin is the dependency-management layer every other plugin i
 
 **Per-project cooldown.** After bootstrap finishes for a project, it writes a per-project timestamp at `~/.claude/plugins/data/plugins-kit/bootstrap/cooldowns/last_run_epoch.<sha1-of-cwd>`. Subsequent SessionStart hooks within the cooldown window are skipped entirely -- bootstrap does NOT re-check anything, no logs are written, no remediation runs. After a `bootstrap.json` change, after publishing a plugin update you want pulled in immediately, or any time bootstrap appears to be ignoring you, clear the cooldown:
 
+> **Auto-bypass on plugin/marketplace change.** The cooldown is automatically bypassed when `~/.claude/plugins/installed_plugins.json` or `known_marketplaces.json` is newer (mtime) than the cooldown stamp. Claude Code rewrites those whenever it installs/updates/rescopes a plugin or adds/refreshes a marketplace, so a published version bump now re-arms a real bootstrap pass on the **next** session without a manual reset -- and stays armed across restarts until a pass actually re-provisions (a cooldown skip never refreshes the stamp). This is what keeps a shared-lib-owner publish from leaving consumers' `_shared_libs` stale. You still need a manual reset (below) only when nothing in the plugin registry changed -- e.g. you edited a *layered* `bootstrap.json` (`~/.claude/bootstrap.json` or `<project>/.claude/bootstrap.json`), which doesn't touch either registry file.
+
 ```bash
 bash plugins/bootstrap/scripts/bootstrap-reset-cooldown.sh             # current project (CWD)
 bash plugins/bootstrap/scripts/bootstrap-reset-cooldown.sh --all       # every project
@@ -119,7 +121,9 @@ The two formerly-documented "pre-existing failure" clusters (the `tests/skills-k
 claude --plugin-dir ~/Dev/plugins-kit/plugins/my-plugin
 ```
 
-`--plugin-dir` loads the plugin directly from disk (no cache copy) and makes no persistent changes — it doesn't modify `installed_plugins.json`, the cache, or `known_marketplaces.json`. Ending the session reverts to the marketplace-installed version. Use `/reload-plugins` to pick up file changes within a session (hooks require a full restart).
+`--plugin-dir` loads the plugin directly from disk (no cache copy) and makes no persistent changes — it doesn't modify `installed_plugins.json`, the cache, or `known_marketplaces.json`. Ending the session reverts to the marketplace-installed version.
+
+**Reload vs restart (measured — see [plugin-reload-lifecycle.md](plugins/bootstrap/skills/bootstrap/references/plugin-reload-lifecycle.md)).** Three layers, not one rule: (1) a hook/engine/skill's **script content** is read fresh from disk on every invocation, so editing it is live with no reload/restart; (2) **registration** (`hooks.json` command map, which skills/commands exist) is reloaded **in-session by `/reload-plugins`** — including a changed hook command (the old "hooks require a full restart" claim is wrong as a blanket rule); (3) a **`SessionStart`** hook's registration reloads but it only **re-fires on a new session**, so re-running bootstrap's pass needs a restart. For a **real version update** (cache version dir moves), restart Claude / your IDE — it re-resolves install paths and re-fires SessionStart reliably.
 
 **Publishing changes** — the plugin cache syncs from the remote repository's default branch, not the local working copy. Develop on the `dev` branch; merge to `master` only when releasing a version bump. This prevents silent divergence (fresh installs between releases getting HEAD code cached under the old version string).
 
@@ -135,7 +139,7 @@ claude --plugin-dir ~/Dev/plugins-kit/plugins/my-plugin
 
 A version bump without a master merge is **not** a publish — users still see the old version. A push to `dev` without a master merge is **not** a publish — `master` is the cache source. A master merge without a version bump is **not** a publish — the cache key doesn't change, so consumers don't refetch. All three steps are required; an unambiguous publish go-signal authorizes all three.
 
-Publishing is reversible-but-visible: nothing is destroyed, but it goes out to other machines. The bar is "user has expressed publish intent for this work," not "user has reconfirmed each git command." Treat unambiguous go-signals — `go`, `ship it`, `publish`, `do it`, `close the loop`, `push` — as authorizing the **entire** three-step publish flow above (plus downstream dependents like update06). Don't re-prompt for sub-steps once intent is clear; that's procedural friction, not safety. Confirm only when intent is genuinely ambiguous (partial work, no version bump in sight, unrelated WIP staged, or the user is mid-thought).
+Publishing is reversible-but-visible: nothing is destroyed, but it goes out to other machines. The bar is "user has expressed publish intent for this work," not "user has reconfirmed each git command." Treat unambiguous go-signals — `go`, `ship it`, `publish`, `do it`, `close the loop`, `push` — as authorizing the **entire** three-step publish flow above. Don't re-prompt for sub-steps once intent is clear; that's procedural friction, not safety. Confirm only when intent is genuinely ambiguous (partial work, no version bump in sight, unrelated WIP staged, or the user is mid-thought).
 
 After publish:
 
@@ -242,36 +246,6 @@ Then confirm no dev-only plugin content leaked (`git diff --cached --name-only`)
 **Manifest edits count as code edits.** Adding a tool to `bootstrap.json`, changing a `download:` recipe, bumping a `venv.check_imports` list — all need a version bump too. The engine reads each plugin's `bootstrap.json` from its cached `installPath`, so a manifest edit without a version bump is structurally invisible to consumers (see the `manifest_changes_need_version_bump` insight below).
 
 **Don't omit the version field** hoping for rolling updates. Claude Code substitutes a truncated git SHA, which becomes a static cache key at install time — identical behavior to a version string, with worse readability.
-
-**Downstream consumers with git dependencies** (e.g., update06): If another project depends on `bootstrap` as a Python git dependency (`bootstrap @ git+https://...`), also bump `bootstrap`'s Python package version in `plugins/bootstrap/pyproject.toml`. Without a package version bump, `uv sync` may consider the installed copy satisfied and skip reinstallation even after the lockfile changes.
-
-### update06 — the bootstrap bootstrapper
-
-**Repository**: `kitaekatt/update06` (local: `~/Dev/update06`)
-
-**Purpose**: update06 is a separate marketplace that exists to fix chicken-and-egg problems in plugins-kit. If bootstrap is broken in a way that prevents it from updating itself, update06 provides an independent code path that can repair the situation.
-
-**How it works**: update06 contains a single plugin ("update") whose job is to ensure plugins-kit marketplace is registered and the bootstrap plugin is installed. Its `update_engine.py` is a thin facade that imports `_process_manifest` from `bootstrap_lib` and delegates all real work to it.
-
-**Library dependency**: update06 declares `bootstrap` as a Python git dependency in its `pyproject.toml`:
-```
-bootstrap @ git+https://github.com/kitaekatt/plugins-kit.git#subdirectory=plugins/bootstrap
-```
-This installs `bootstrap_lib` into update06's own venv. The venv lives at `~/.claude/plugins/data/update06/update/.venv` and is separate from the bootstrap plugin's cache.
-
-**Three version numbers matter when publishing fixes**:
-1. `plugins/bootstrap/.claude-plugin/plugin.json` — plugin version (triggers cache refresh)
-2. `.claude-plugin/marketplace.json` — marketplace listing (must match plugin.json)
-3. `plugins/bootstrap/pyproject.toml` — Python package version (triggers `uv sync` reinstall in update06's venv)
-
-All three must be bumped for a fix to reach both plugins-kit consumers and update06. After bumping, regenerate update06's lockfile:
-```bash
-cd ~/Dev/update06/plugins/update
-uv lock --upgrade-package bootstrap
-```
-Then bump update06's own version in both `plugin.json` and `marketplace.json`, commit, and push.
-
-**Always close the loop.** A bootstrap publish is not done until update06 is also bumped, locked against the new bootstrap commit, committed, and pushed. Do not defer the update06 step to "next time" — silent divergence between plugins-kit and update06 defeats the chicken-and-egg fix that update06 exists to provide. If you publish a bootstrap fix in plugins-kit, finish the update06 work in the same session.
 
 **Keep architecture docs current** — when modifying bootstrap behavior, update the bootstrap skill references (`plugins/bootstrap/skills/bootstrap/references/`) to reflect the changes. These are the source of truth for how the system works.
 
@@ -439,6 +413,45 @@ claude_md:
         section above for full context.
       origin: User directive 2026-05-05 -- documentation gap surfaced when a unreal-kit publish appeared not to apply.
       added: "2026-05-05"
+    - id: cooldown_registry_invalidation
+      keywords: [cooldown bypass, installed_plugins.json, known_marketplaces.json, stale shared_libs, version bump not applied, mtime, -nt, registry change, single-pass convergence, fewer reloads, reload-plugins vs restart, when to reload, when to restart, hooks need restart myth, SessionStart re-fire, script content live, registration reload]
+      summary: The per-project cooldown auto-bypasses when installed_plugins.json/known_marketplaces.json is newer than the cooldown stamp, so a plugin update re-arms a real bootstrap pass on the next session without a manual reset. Layered-bootstrap.json edits still need a manual reset.
+      detail: |
+        Gotcha this fixes: Claude Code's plugin-update path bumps installed_plugins.json to the
+        new version, but the per-project cooldown (last_run_epoch.<sha1-cwd>) independently
+        throttled the SessionStart bootstrap pass that resyncs ~/.claude/plugins/data/plugins-kit/_shared_libs/.
+        Result: version looked current while the shared lib stayed stale, and multiple restarts
+        didn't fix it (every restart landed inside the cooldown window). Fix (session-bootstrap.sh
+        cooldown gate): honor the cooldown only when NEITHER installed_plugins.json NOR
+        known_marketplaces.json is newer (mtime, `-nt`) than the cooldown stamp. Claude Code
+        rewrites those on any plugin install/update/rescope or marketplace add/refresh, so a
+        version bump re-arms a real pass on the next session. A cooldown SKIP never refreshes the
+        stamp, so the bypass stays armed across every restart until a pass actually re-provisions.
+        Paired engine change: _shared_lib_convergence_sweep (Step 4c) re-links all shared_lib_imports
+        consumers after every owner has published, so a consumer processed before its owner converges
+        in the SAME pass instead of deferring to next session. Net effect: after a publish you
+        generally need ONE reload, not several. Still need a manual bootstrap-reset-cooldown when
+        nothing in the plugin registry changed -- e.g. editing a LAYERED bootstrap.json
+        (~/.claude/bootstrap.json or <project>/.claude/bootstrap.json), which touches neither
+        registry file. Companion to bootstrap_cooldown_reset.
+
+        The one restart bootstrap genuinely can't eliminate is Claude Code re-firing a SessionStart
+        hook (it only runs on a fresh session). For the provable case -- a plugin that ENTERED the
+        registry during the pass (layered `plugins:` install, per-plugin, or script install; detected
+        by a registry before/after diff, NOT Step 4b's new_plugins, which misses layered installs --
+        the cache-kit end-to-end test caught that), not yet loaded -- the engine emits a reload/restart
+        nag (_reload_advice, Step 4d): restart Claude / the IDE if the new plugin registers a SessionStart
+        hook (only a fresh session re-fires it), else /reload-plugins. A plugin merely UPDATED at
+        session start is NOT nagged, so this stays quiet on normal publishes. MEASURED reload/restart
+        rule (don't trust "hooks always need a restart" -- it's wrong): a hook/engine/skill's SCRIPT
+        CONTENT is read fresh from disk each run (live, no reload); REGISTRATION (hooks.json command
+        map, skills/commands) is reloaded in-session by /reload-plugins, including a changed hook
+        command; only SessionStart re-firing needs a new session. For a real version update (cache
+        version dir moves), restart Claude/IDE to re-resolve install paths reliably. Full mechanics +
+        the probe method: plugins/bootstrap/skills/bootstrap/references/plugin-reload-lifecycle.md.
+        Toggle the nag with config notify_reload_needed (default true).
+      origin: "Feedback report 2026-05-31 -- openrouter-kit 0.1.5 -> 0.2.0 publish left a consumer's _shared_libs stale because the cooldown blocked the resync across restarts. Implemented Part 1 (registry-change bypass) + Part 2 (convergence sweep)."
+      added: "2026-05-31"
     - id: host_python_via_plugin_venv
       keywords: [host-side python, plugin venv, uv run python, ModuleNotFoundError, foreign cwd, project root, pyyaml, skill examples]
       summary: SKILL.md examples that invoke host-side Python must use the explicit plugin-venv path, not `uv run python`, when the documented cwd is the user's project root.
