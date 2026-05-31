@@ -36,13 +36,15 @@ log(`wordcount exit=${stats.exit_code} bytes=${stats.bytes}`)
 
 phase('Classify')
 // openrouter strategy: a non-Claude model call (model diversity). Reply -> $OUT.
+// model omitted + cheap:true -> openrouter-kit's configured 'defaultCheap' model
+// (set it in openrouter-kit's config.yaml; or pass model: 'qwen' / a raw slug).
 const gpt = await wkOpenRouter(runner, {
-  model: 'openai/gpt-4o-mini',
+  cheap: true,
   promptFile: args.source,
   system: 'In one word, classify the document type.',
   out: `${dir}/gpt.txt`,
   status: `${dir}/gpt.status.json`,
-}, { label: 'gpt-classify', phase: 'Classify' })
+}, { label: 'classify', phase: 'Classify' })
 
 phase('Reason')
 // the ONLY node that reads the payloads -- token cost paid once, here.

@@ -62,13 +62,34 @@ const runner = `"${venvPy}" "${args.pluginRoot}/scripts/openrouter_run.py"`
 const req = `./.workflow-kit/${args.runId}/req.txt`  // prompt written first (a script node or upstream)
 const out = `./.workflow-kit/${args.runId}/gpt.txt`
 const r = await wkOpenRouter(runner, {
-  model: 'openai/gpt-4o-mini',
+  // model omitted + cheap:true -> openrouter-kit's configured 'defaultCheap'.
+  // (Or pass model: 'qwen' for a registry alias, or a raw slug like
+  // 'qwen/qwen3-32b'. Omit cheap to use the configured 'default'.)
+  cheap: true,
   promptFile: req,
   system: 'You are a terse classifier.',
   out,
   status: `./.workflow-kit/${args.runId}/gpt.status.json`,
-}, { label: 'gpt-classify', phase: 'Classify' })
+}, { label: 'classify', phase: 'Classify' })
 ```
+
+### Choosing the model
+
+Don't hardcode slugs. openrouter-kit owns a model **registry** in its
+`config.yaml` -- named models plus a `default` and a `defaultCheap` selector --
+resolved through bootstrap's layered config (shipped baseline, then the user
+file, then a per-project override; project wins). `wkOpenRouter`'s `spec`:
+
+- `model: 'qwen'` -- a registry alias, resolved to its slug.
+- `model: 'qwen/qwen3-32b'` -- a raw OpenRouter slug, used as-is.
+- omit `model` -- use the configured `default` (or `defaultCheap` with
+  `cheap: true`). This is the usual choice: pick the *role*, not the slug.
+
+Change the models or the default/defaultCheap once, in openrouter-kit's config,
+and every openrouter node across every plugin follows:
+
+- user (all projects): `~/.claude/plugins/data/plugins-kit/openrouter-kit/config.yaml`
+- per-project override: `<project_root>/.local-data/plugins-kit/openrouter-kit/config.yaml`
 
 Use it for model diversity (a non-Claude judge in a panel) or a cheaper/faster
 model for bulk work. Cost shape: you pay haiku tokens for the executor shim PLUS
