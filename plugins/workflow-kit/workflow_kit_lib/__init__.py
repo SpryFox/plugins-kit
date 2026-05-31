@@ -1,4 +1,4 @@
-"""workflow-glue: a declarative front-end to the native Claude Code Workflow tool.
+"""workflow-kit: a declarative front-end to the native Claude Code Workflow tool.
 
 A human authors a workflow as YAML; this library validates it and compiles it to a
 native Workflow tool script (the JS that uses agent()/parallel()/pipeline()). The

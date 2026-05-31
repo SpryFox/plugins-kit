@@ -19,7 +19,7 @@ from pathlib import Path
 # Allow running as a bare script (skill invokes it by path): make the package importable.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from workflow_glue_lib import WorkflowError, compile_doc, load_workflow  # noqa: E402
+from workflow_kit_lib import WorkflowError, compile_doc, load_workflow  # noqa: E402
 
 
 def main(argv=None) -> int:

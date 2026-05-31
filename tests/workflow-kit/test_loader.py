@@ -4,8 +4,8 @@ import pytest
 
 from conftest import EXAMPLES, FIXTURES
 
-from workflow_glue_lib import load_workflow
-from workflow_glue_lib.errors import WorkflowError
+from workflow_kit_lib import load_workflow
+from workflow_kit_lib.errors import WorkflowError
 
 
 def test_example_loads():

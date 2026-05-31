@@ -2,8 +2,8 @@
 
 import pytest
 
-from workflow_glue_lib.errors import WorkflowError
-from workflow_glue_lib.expr import Scope, compile_expr, compile_single, compile_template
+from workflow_kit_lib.errors import WorkflowError
+from workflow_kit_lib.expr import Scope, compile_expr, compile_single, compile_template
 
 
 def test_inputs_reference():

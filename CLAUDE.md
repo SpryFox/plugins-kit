@@ -109,6 +109,10 @@ uv run --extra dev pytest tests/bootstrap/test_marketplace_lifecycle.py::TestChe
 
 Only run the full suite (`uv run --extra dev pytest -v`) when explicitly asked or before a release.
 
+**Known pre-existing failures (don't chase as regressions).** Two clusters fail independent of your changes:
+- 4 `tests/skills-kit/` schema tests (`test_schemas`, `test_anti_patterns`, `test_capability_skill_schema`, `test_step_tracker_or_checklist`) fail to *collect* — they `import schemas` / `_shared`, which moved into `skills_kit_lib` (now `schema_registry`) / were deleted at the library extraction. They need a rewrite against the current `skills_kit_lib` API, not an import tweak.
+- ~8 bootstrap `engine`/`venv` tests (`test_engine_background`, `test_engine_multiplugin`, `test_venv_check`) throw `CalledProcessError` under **uv's default Python 3.14 on Windows** but pass under the 3.12 `.venv` — likely a 3.14 incompatibility, not a regression. Pin the interpreter (`uv run -p 3.12 ...` or the `.venv` python) when running these.
+
 **Local development** — use `--plugin-dir` to test plugins from the working copy:
 
 ```bash
@@ -145,7 +149,7 @@ Some plugins live on `dev` for in-development work and must not reach consumers 
 **Current dev-only plugins** (the field, not this list, is load-bearing — this is just a human-readable inventory):
 
 - `agent-glue` — graph-orchestration kit, design + scaffolding phase. Heavy new Python deps (pydantic, jinja2, jsonschema), no `bootstrap.json` yet, no skills wired up. Tested locally via `--plugin-dir`.
-- `workflow-glue` — declarative front-end to the native Workflow tool. Authors `*.workflow.yaml`, compiles it to a native Workflow script the skill runs (compile-to-native; does not reimplement execution). Claude-only, tightly scoped. Deps: pyyaml only. Has `bootstrap.json` + a `workflow-glue` skill; tests in `tests/workflow-glue/`. Conceptually supersedes agent-glue's graph-system + claude-dispatch now that the Workflow tool exists.
+- `workflow-kit` — kit of incremental, native-preserving improvements on top of the native Workflow tool (renamed from `workflow-glue`; 0.2.0). Ships a declarative `*.workflow.yaml` -> native-script compiler (compile-to-native; does not reimplement execution). Adds a generically-named `workflow-kit-agent` executor (extensible) plus script + openrouter node strategies that fulfil a file-passing contract (`$OUT`/`$STATUS`, shell-redirected so payloads bypass the model context — cheap haiku shim, not a deterministic runtime). The openrouter node reuses openrouter-kit's `make_openai_client` runner (`scripts/openrouter_run.py`) + the `openai` SDK (installed into the standalone Python) — both hosted outside workflow-kit, so workflow-kit's only dep stays pyyaml. Domain-skill container (light index + reference docs). Has `bootstrap.json`; tests in `tests/workflow-kit/`. Conceptually supersedes agent-glue's graph-system + claude-dispatch now that the Workflow tool exists.
 
 When you see commits for a dev-only plugin in `git log origin/master..origin/dev`, that's still gotcha 1 territory — branch from master, cherry-pick only the publish-ready commits, and leave the dev-only commits on `dev`. The regenerator is a backstop for the marketplace listing, not a substitute for picking the right commits to merge.
 
@@ -193,11 +197,23 @@ git diff --staged
 
 Read every line. If anything is unrelated to the feature, `git restore --staged <file>` and use `git add -p` (or `git stash` the WIP first) to stage only the intended hunks. Same discipline for untracked files — don't `git add .` from a dirty tree.
 
+*Sharpening — the dev tree is a live workspace.* The index may already hold **another session's** (or your own earlier) staged work before you touch it. `git add <your specific files>` followed by `git commit` commits the **entire index**, not just the files you named — so a pre-staged rename or WIP rides along under your commit message. The `git diff --staged` check above is the only guard: run it every time and confirm the staged set is *exactly* your files, even when you used a targeted `git add`. (This is how a `workflow-glue → workflow-kit` rename once landed inside an unrelated test-coverage commit.)
+
 **Gotcha 3: a botched publish burns the version number.** Cache entries on consumer machines key off `(plugin, version)`. If a bad version is pushed to master, retracting it doesn't evict caches that already pulled it — same version = same code, forever, from the cache's view. The fix is a patch-bump *past* the burned number (e.g. 0.11.0 broken → don't ship 0.11.1, jump to 0.12.0) so every consumer's cache invalidates cleanly. The 0.11.1 / `patch-bump 4 plugins to force-refresh post-retraction caches` commits on master are an example of this recovery pattern.
 
 **Gotcha 4: unauthorized publish.** A publish go-signal authorizes the full three-step flow (version bumps, push to dev, merge to master). It does **not** authorize sweeping in adjacent unrelated work just because it happens to be staged or sitting on `dev`. If your feature commit is clean but `dev` has other commits, that's gotcha 1 territory — branch from master. The publish authorization is scoped to the work the user actually approved.
 
 **Recovery: how to retract.** A bad publish on master is fixed forward, never with `push --force` to master. Push a follow-up commit that either (a) reverts the bad commit and patch-bumps the affected plugins past the burned version, or (b) re-implements correctly under a new version. Consumers with `autoUpdate: true` then refresh on their next session start. Never rewrite master history — other machines have already fetched it.
+
+**Master drifts behind dev on non-plugin infra — reconcile periodically.** The publish flow cherry-picks *feature* commits (plugin code + version bumps) to master; it never carries the not-tied-to-a-feature changes — a CLAUDE.md gotcha you added while thinking about process, a new test file, a `.gitignore` tweak, dev tooling. So master silently falls behind dev on repo **infrastructure** — including, ironically, the safe-publish gotchas themselves and test coverage for *published* plugins. This is expected (the per-publish scoping in gotcha 4 is what causes it), not a bug — but reconcile it from time to time. Do it in the **master tree**, against `origin/dev`'s committed state (never the live dev working tree), keeping dev-only plugins back:
+
+```bash
+git diff --name-only origin/master origin/dev \
+  | grep -vE '^(plugins|tests)/(agent-glue|workflow-kit)/' \
+  | xargs git checkout origin/dev --
+```
+
+Then confirm no dev-only plugin content leaked (`git diff --cached --name-only`), run the brought tests, commit, push master. No version bumps, no `marketplace.json` change — pure infra sync, so consumers are unaffected. Skip the master→dev merge-back when the dev tree is being actively edited: the content already matches on both branches, so the history merge can wait for a calm moment.
 
 **Why both files**: Claude Code uses the `marketplace.json` version to decide whether to fetch a new cache entry. If you only bump `plugin.json` but not `marketplace.json`, consumers won't see the update. The regenerator + a pre-commit hook (`scripts/pre-commit-version-check.sh`) keep them in sync automatically.
 

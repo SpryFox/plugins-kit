@@ -114,59 +114,10 @@ from pathlib import Path
 from typing import Optional
 
 
-def _ensure_bootstrap_lib_importable() -> None:
-    """Make `bootstrap_lib` importable even when this script is launched
-    by a Python interpreter that isn't this plugin's bootstrap-managed venv.
-
-    `bootstrap_lib` is declared in p4-kit's pyproject.toml as a git dep and
-    is installed into the canonical plugin venv at
-    ``~/.claude/plugins/data/plugins-kit/p4-kit/.venv`` by the bootstrap
-    engine. When that venv's python runs this script the import is already
-    on sys.path -- this is a fast no-op. Otherwise (e.g. an operator runs
-    the script through a project-local python, or the SKILL.md tool
-    invocation picks a foreign python), we locate the venv's site-packages
-    and prepend it. Failing silently here would surface as a
-    `ModuleNotFoundError: No module named 'bootstrap_lib'` a few lines down.
-    """
-    try:
-        import bootstrap_lib  # noqa: F401
-        return
-    except ImportError:
-        pass
-
-    venv_root = (
-        Path.home() / ".claude" / "plugins" / "data"
-        / "plugins-kit" / "p4-kit" / ".venv"
-    )
-    if sys.platform == "win32":
-        candidates = [venv_root / "Lib" / "site-packages"]
-    else:
-        candidates = list((venv_root / "lib").glob("python*/site-packages"))
-
-    for site in candidates:
-        if not site.is_dir():
-            continue
-        site_str = str(site)
-        sys.path.insert(0, site_str)
-        try:
-            import bootstrap_lib  # noqa: F401
-            return
-        except ImportError:
-            sys.path.remove(site_str)
-
-    # Exhausted every candidate without importing bootstrap_lib -> the bootstrap
-    # plugin never provisioned this plugin's venv. Don't fall through silently
-    # (that surfaces as a raw ModuleNotFoundError below); emit the actionable
-    # "install/enable plugins-kit:bootstrap" message and exit.
-    from bootstrap_guard import require_bootstrap
-
-    require_bootstrap(
-        "p4-kit", feature="code review", missing="bootstrap_lib", force=True
-    )
-
-
-_ensure_bootstrap_lib_importable()
-
+# bootstrap_lib is linked onto p4-kit's venv by the bootstrap shared-libs .pth
+# (p4-kit declares "shared_lib_imports": ["bootstrap_lib"]). When this script runs
+# under that venv the import below just works -- no path discovery. The try/except
+# below remains as a safety net for the installed-but-not-yet-provisioned window.
 
 # Repair PATH before any subprocess fan-out. On Windows, a bloated
 # launching-shell PATH can overrun cmd.exe's variable size limit during

@@ -12,6 +12,7 @@
   "venv": {
     "check_imports": ["upyrc", "yaml", "websocket"]
   },
+  "shared_lib_imports": ["bootstrap_lib"],
   "project_config": {
     "file": ".local-data/unreal-kit/config.yaml",
     "legacy_file": ".claude/unreal-kit.yaml",

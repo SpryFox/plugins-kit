@@ -3,7 +3,7 @@ _schema_version: 1
 required_skills: ['md-read', 'skill-write']
 name: knowledge-encoding
 author: christina
-description: Encode conversation insights into persistent project locations
+description: Use when encoding a discovered insight into a persistent project location (CLAUDE.md, skill, reference doc). Do NOT use for end-of-session doc review.
 ---
 
 ## Skill Purpose

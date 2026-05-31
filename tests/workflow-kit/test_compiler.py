@@ -2,7 +2,7 @@
 
 from conftest import EXAMPLES, FIXTURES
 
-from workflow_glue_lib import compile_doc, load_workflow
+from workflow_kit_lib import compile_doc, load_workflow
 
 
 def _compile(path):

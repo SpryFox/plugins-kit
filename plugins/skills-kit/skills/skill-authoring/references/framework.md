@@ -266,6 +266,30 @@ L2 (SKILL.md) and L3 (references/*.md) are different load events: loading a refe
 
 **CRP-pass split (worked example):** a domain-skill whose body declares N member sub-domains, with a Conditional Loading entry per sub-domain. Each sub-domain reference fires on a different sub-task within the domain (e.g. "task-category-A" vs "task-category-B" vs "task-category-C"). A typical invocation loads SKILL.md plus one sub-domain reference, not all of them. Average load shrinks; the second tool call is paid only when actually navigating into the sub-domain.
 
+### When to consolidate skills into a domain (the merge direction)
+
+`compositional_order` covers building a *new* domain bottom-up; `auditing_procedure.mixed_type_check` covers splitting *one* skill that outgrew its type. This section covers the third, retroactive case: looking across the corpus at N existing standalone skills and deciding whether they should merge into one domain-skill.
+
+A domain-skill is a container that routes among operations on one shared subject. Consolidation is justified only when **both** hold:
+
+1. **2+ skills share a subject** -- not co-location, not topical adjacency, not a shared pattern. The same *subject*. One skill is just a skill; never wrap a singleton in a domain.
+2. **The skills are "doer" types** -- a domain's members are operations. Which type a skill is determines whether it merges as a member or folds in as supporting content:
+
+| Type | Role in consolidation |
+|---|---|
+| technique / capability / audit | **Merge as members** -- they are operations over the subject; multiple operations on one subject *is* the domain. |
+| reference / pattern / discipline | **Fold in, don't merge** -- knowledge, not operations. A reference becomes an L3 doc; a pattern stays standalone (it applies across many subjects); a discipline becomes the domain's guardrails. None needs its own member sub-trigger. |
+| domain | **Never nest** -- a domain inside a domain fails the top-level CRP test. |
+
+Consequences:
+- A cluster that is *one doer + N references* is one skill with references, not a domain.
+- Skills that share a **pattern** (e.g. several "produce an HTML insight view" skills) but operate on **different subjects** are not a domain -- they reference one pattern-skill and stay independent.
+- Skills co-located in one **plugin** are not thereby a domain. A plugin is a packaging unit; a domain is a subject unit. They can diverge (a junk-drawer plugin of unrelated skills) or a single subject can split across two plugins.
+
+The merge passes CRP for the same reason an L2 -> L3 split does: each member fires on a distinct sub-trigger, so a typical invocation loads the container plus one member, not all of them. If every candidate member would load on every invocation, it is a CRP-fail merge -- keep them as separate skills (or as one skill), exactly as you would revert a CRP-fail split.
+
+**Audit hook:** in a corpus inventory (`/skill-audit hierarchy`), cluster skills by subject and flag any subject owning 2+ doer-type skills as a domain-consolidation candidate; flag any domain-skill whose members all co-load as a CRP-fail to revert.
+
 ### Visibility criterion for examples and anti-patterns
 
 The L1/L2/L3 split above governs major content allocation. The same visibility decision recurs at the example/anti-pattern grain -- a single gotcha, a single anti-pattern record, a single escaping example. The criterion at that grain:

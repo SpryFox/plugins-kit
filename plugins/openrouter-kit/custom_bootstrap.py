@@ -42,8 +42,13 @@ _LEGACY_LOC_OPS_RELATIVE = Path(".local-data") / "loc" / ".env"
 
 
 def bootstrap(ctx: Any) -> None:
-    """Validate or initialize the OpenRouter credential."""
+    """Validate or initialize the OpenRouter credential.
 
+    openrouter_kit is published as a shared library to the standalone Python (and
+    consuming plugin venvs) declaratively via the ``shared_libs`` key in this
+    plugin's bootstrap.json -- the bootstrap engine handles the .pth registration,
+    so this script only manages the API credential.
+    """
     project_root = _resolve_project_root(ctx)
 
     # 1. Try the canonical resolution path (env -> project .env -> user .env).

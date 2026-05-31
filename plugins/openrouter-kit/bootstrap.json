@@ -1,4 +1,7 @@
 {
+  "shared_libs": [
+    { "name": "openrouter_kit", "src": "lib" }
+  ],
   "script": {
     "path": "custom_bootstrap.py",
     "entry_point": "bootstrap"

@@ -159,10 +159,18 @@ def check_universal(fm: Frontmatter | None, body: Body, skill_dir: Path) -> list
             f"body large (lines={body.lines}, tokens~{body.tokens_approx}); references/ exists",
         ))
     else:
+        # Size is a SIGNAL, not a verdict (framework Dec-11): a split is REQUIRED
+        # only if a CRP-passing decomposition exists -- sections serve different
+        # reading tasks. The mechanical check cannot evaluate CRP, so it must not
+        # FAIL. It emits judgment-required: the agent runs the CRP test before any
+        # split. A stub-plus-always-co-loaded-reference is a tool-call doubling,
+        # not a context-efficiency win.
         out.append(CheckResult(
             "progressive disclosure (conditional)",
-            FAIL,
-            f"body large (lines={body.lines}, tokens~{body.tokens_approx}) but no references/",
+            JUDGMENT,
+            f"body large (lines={body.lines}, tokens~{body.tokens_approx}) and no references/; "
+            "run the CRP test (do sections serve different reading tasks?) before splitting -- "
+            "size is a signal, not a verdict (Dec-11)",
         ))
 
     refs_dir = skill_dir / "references"

@@ -1,6 +1,6 @@
 """The `{{ ... }}` expression mini-language and its compilation to JavaScript.
 
-workflow-glue does NOT render templates at compile time. Instead it compiles each
+workflow-kit does NOT render templates at compile time. Instead it compiles each
 `{{ expr }}` into a live JS expression so interpolation happens inside the running
 Workflow engine with real values. A prompt string becomes a JS template literal;
 a bare value (an `over:` or `output:`) becomes a JS expression.

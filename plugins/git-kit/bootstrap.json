@@ -50,8 +50,9 @@
     }
   ],
   "venv": {
-    "check_imports": ["bootstrap_lib.code_review.chunking", "bootstrap_lib.code_review.claude_mds"]
+    "check_imports": []
   },
+  "shared_lib_imports": ["bootstrap_lib"],
   "script": {
     "path": "scripts/bootstrap.py",
     "entry_point": "bootstrap"

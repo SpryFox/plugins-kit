@@ -1,8 +1,74 @@
-# Content Allocation Through Package Cohesion
+---
+name: cohesion-principles
+author: christina
+skill-type: reference-skill
+description: Use when deciding where a fact should live across CLAUDE.md / SKILL.md / references (placement). Do NOT use for content shape (use content-authoring).
+---
 
-Where does a fact go? CLAUDE.md (and which CLAUDE.md), SKILL.md, or `references/*.md`? This file gives the cohesion-principles answer: every placement decision reduces to CRP / CCP / ADP applied to the load graph. `glossary.md` defines those terms; this file applies them to the file taxonomy and produces auditable rules per artifact.
+# Cohesion Principles (Content Allocation)
 
-The framework is principles-first: the L1/L2/L3 load levels familiar from the Anthropic best-practices doc fall out of CRP/CCP/ADP — they are the consequence, not the primary frame.
+The canonical framework for **where a fact, rule, or doc-section should live** across the project's load
+graph — CLAUDE.md (and which one), SKILL.md, or `references/*.md`. Every placement decision reduces to
+CRP / CCP / ADP applied to the load graph; the L1/L2/L3 load levels are a derived consequence, not the
+primary frame.
+
+This is the shared spine: the audit skills (`/claude-md-audit`, `/skill-audit`, `/references-audit`, via the
+`cohesion-audit` domain) and `skill-authoring` all defer to it. `content-authoring` is the companion that
+answers the orthogonal question — *how* a fact should be shaped (YAML vs prose vs frontmatter) — not where it lives.
+
+The `facts:` block below is a routable index; the `content_allocation:` block beneath it is the load-bearing
+framework the audits derive from.
+
+## Index
+
+```yaml
+reference_skill:
+  _schema_version: "1"
+  identity: The canonical framework for where a fact, rule, or doc-section should live across the project's load graph (CLAUDE.md / SKILL.md / references), via CCP / CRP / ADP.
+  scope:
+    covers:
+      - placing a fact, rule, or doc-section across CLAUDE.md / SKILL.md / references
+      - applying CCP (write-together) / CRP (read-together) / ADP (link-forward-only) to the load graph
+      - the per-artifact-role audit rules each surface must satisfy
+      - the size-is-a-signal CRP test for SKILL.md splits
+      - the skill-maturation pipeline (inline -> project reference -> skill)
+    excludes:
+      - content shape / form choice -- YAML vs prose vs frontmatter (use content-authoring)
+      - skill-type contracts and per-type schemas (use skill-authoring)
+      - running the audits that enforce these rules (use the cohesion-audit domain)
+  facts:
+    - id: placement_algorithm
+      summary: Place a fact by applying CCP (change cadence) -> CRP (reader set) -> ADP (load order) -> frequency tiebreak, in that order.
+      keywords: [placement algorithm, where does this go, ccp crp adp order, change cadence, reader set]
+      detail: CCP narrows by what changes force the fact to update; CRP narrows to the smallest scope whose readers all need it; ADP rejects forward load-graph edges; frequency breaks CRP ties. See placement_algorithm in the framework block below.
+      example:
+        input: "Where does the fact 'the validator has three states' go?"
+        output: "CCP: it changes with audit.py -> scripts/CLAUDE.md; CRP: only validator editors need it; ADP: valid (no upward edge). Verdict: scripts/CLAUDE.md."
+    - id: load_graph_dag
+      summary: The files Claude loads form a DAG in load order; references run forward-only -- later-loaded may cite earlier-loaded, never the reverse.
+      keywords: [load graph, dag, load order, forward-only, l1 l2 l3, surfaces]
+      detail: Surfaces are root/subsystem/directory CLAUDE.md + .local (L1), SKILL.md (L2), references/ (L3), project references (L3-equivalent), scripts/assets (out-of-band). An edge must not reverse load order (e.g. a reference must not cite SKILL.md sections). See load_graph in the framework block.
+    - id: three_principles
+      summary: Every placement reduces to CCP (write-together), CRP (read-together), ADP (link-forward-only); the L1/L2/L3 levels are a derived consequence.
+      keywords: [ccp, crp, adp, common closure, common reuse, acyclic dependencies]
+      detail: CCP co-locates facts that change together; CRP places a fact in the smallest scope whose readers all need it; ADP forbids depending on a later-loaded surface. See principles_applied_to_placement.
+      gotchas:
+        - Splitting same-change-cadence facts across files breaks SSOT and causes drift (CCP-fail).
+        - A SKILL.md trimmed to a stub that always co-loads its only reference is a CRP-fail tool-call doubling, not progressive disclosure.
+    - id: size_is_signal
+      summary: The 500-line / 3000-token threshold is a SIGNAL to evaluate a CRP split, not a verdict; split only when a CRP-passing decomposition exists.
+      keywords: [size threshold, signal not verdict, crp split, 500 lines 3000 tokens, progressive disclosure]
+      detail: Over-threshold prompts evaluation; CRP is the test (do sections serve different reading tasks?). If no decomposition passes CRP, keep the monolith. See crp_reader_set.note_on_size_threshold and skill-authoring framework.md "CRP is the test for L2 -> L3 splits".
+    - id: skill_maturation_pipeline
+      summary: Knowledge matures inline-in-CLAUDE.md -> project reference doc -> skill; project references are the escape-hatch / nursery, not the default home for reference content.
+      keywords: [skill maturation, project reference, nursery, escape hatch, graduate to skill]
+      detail: An inline tip grows into a project reference (cited from CLAUDE.md), then graduates into a structured skill once the content fits a skill type. The default home for reference content is a skill's references/, not a standalone project reference. See skill_maturation_pipeline.
+```
+
+## The placement framework
+
+The load-bearing content. The audit skills derive their criteria from this block; `audit-criteria.md` (in
+`claude-md-audit`) is the self-contained, audit-path summary derived from it.
 
 ```yaml
 content_allocation:
@@ -399,8 +465,8 @@ content_allocation:
       scenario: A SKILL.md has grown to 600 lines with sections on (a) common operations and (b) edge-case handling.
       ccp_step: both sections change when the skill's contract changes; same cadence.
       crp_step: common operations fire on every invocation; edge-case handling fires only when the user reports a specific failure. Different sub-triggers; CRP says split.
-      adp_step: SKILL.md cites references/edge-cases.md (one hop, downstream). Forward-only.
-      verdict: split edge-case handling into references/edge-cases.md.
+      adp_step: SKILL.md cites the edge-cases reference under references/ (one hop, downstream). Forward-only.
+      verdict: split edge-case handling into a references/ doc (an edge-cases reference).
     - id: parent_to_child_temptation
       scenario: Adding "for skill-authoring decisions, see skills/skill-authoring/CLAUDE.md" to plugins/skills-kit/CLAUDE.md.
       ccp_step: this is a content pointer, not a placement decision. It is acceptable as orientation IF the parent's correctness does not depend on the child being loaded.
@@ -461,6 +527,7 @@ content_allocation:
 
 ## Cross-references
 
-- **Vocabulary** -- `glossary.md` (CRP, CCP, ADP, SSOT, progressive disclosure, conditional details).
-- **CRP for SKILL.md size splits** -- `framework.md` "CRP is the test for L2 -> L3 splits" section. The placement algorithm here generalizes the CRP test to all placement decisions.
-- **Audit tooling** -- `scripts/audit.py` enforces the mechanical ADP rules (one-hop-deep references, broken citations) and the schema validation. The CCP / CRP judgments are run by the agent against the rules above.
+- **Vocabulary** -- `glossary.md` (in skills-kit:skill-authoring): CRP, CCP, ADP, SSOT, progressive disclosure, conditional details.
+- **CRP for SKILL.md size splits** -- `framework.md` (in skills-kit:skill-authoring) "CRP is the test for L2 -> L3 splits" section. The placement algorithm here generalizes the CRP test to all placement decisions.
+- **Content shape (the orthogonal question)** -- `/content-authoring` (in skills-kit): how a fact should be shaped once you know where it lives.
+- **The audits that enforce these rules** -- the `cohesion-audit` domain (`/claude-md-audit`, `/skill-audit`, `/references-audit`).

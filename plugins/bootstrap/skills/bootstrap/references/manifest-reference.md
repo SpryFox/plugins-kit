@@ -42,6 +42,10 @@ A declarative configuration file covering automatable operations. The engine rea
   "sync_to_data": [
     {"src": "lib", "dst": "lib"}
   ],
+  "shared_libs": [
+    {"name": "openrouter_kit", "src": "lib"}
+  ],
+  "shared_lib_imports": ["openrouter_kit"],
   "json_entries": [
     {
       "reference": "known_marketplaces.json",
@@ -147,6 +151,41 @@ if Path(sys.executable).resolve() != Path(_venv).resolve():
 
 **Fail-fast semantics**: if bootstrap cannot create the venv, no export line is written. Consumer scripts then error out on the unset var rather than re-exec'ing an invalid interpreter path.
 
+## `shared_libs` / `shared_lib_imports` — Cross-Plugin First-Party Libraries
+
+These two keys let one plugin reuse another plugin's first-party Python library **without declaring a dependency on the owning plugin** (reuse-by-availability). The engine shares the library SOURCE via a `.pth` file; it does NOT install third-party dependencies — each importing plugin declares those itself in its own `pyproject.toml` (a static test, `tests/bootstrap/test_dependency_completeness.py`, catches omissions).
+
+**Owner side — `shared_libs`** (the plugin that owns the library):
+
+```json
+{
+  "shared_libs": [
+    {"name": "openrouter_kit", "src": "lib"}
+  ]
+}
+```
+
+- `name` — the importable top-level package name. Identity key for layered merge.
+- `src` — directory (relative to the plugin root) that contains the package; the package itself lives at `<plugin_root>/<src>/<name>/`. Use `"."` when the package sits directly under the plugin root (e.g. `bootstrap_lib`).
+
+For each entry the engine: syncs the package source to a **stable, version-independent** location, `~/.claude/plugins/data/plugins-kit/_shared_libs/<name>/<name>/` (a clean re-sync that prunes deleted/renamed modules, content-hash cached); then writes a `<name>.pth` (pointing at `_shared_libs/<name>/`) into the **standalone Python's** site-packages and verifies `import <name>`.
+
+**Consumer side — `shared_lib_imports`** (a plugin that wants the library on its own venv):
+
+```json
+{
+  "shared_lib_imports": ["openrouter_kit"]
+}
+```
+
+A plain string list of library names (deduplicated-unioned across config layers). For each name the engine writes a `<name>.pth` into THIS plugin's own venv (`<plugin_data_dir>/.venv`) pointing at the shared location, then verifies the import. The consumer names only the LIBRARY, never the owning plugin — the location is derived from the name, so reuse stays decoupled from the owner.
+
+**Stable location, not versioned**: the `.pth` points at the version-independent `_shared_libs/<name>/`, so an owner version bump re-syncs one directory and every `.pth` (standalone + all consumer venvs) keeps resolving without a rewrite.
+
+**Ordering / eventual consistency**: the consumer link runs AFTER the `venv` handler (so the venv exists as the `.pth` target) but a consumer may be processed before its owner in a given session. A not-yet-published library is a soft skip (logged, not a failure) that self-heals on the next session; the runtime `bootstrap_guard` covers the installed-but-not-yet-provisioned window.
+
+**Source only**: a `.pth` shares first-party SOURCE, not third-party deps. If `openrouter_kit` needs `openai`, the plugin that imports it (under the interpreter that runs the importing script) must declare `openai` in its own `pyproject.toml` + `venv.check_imports`.
+
 ## `fonts` — Per-User Font Installation
 
 A plugin declares a `fonts` array to ensure a font (e.g. a Nerd Font for
@@ -203,17 +242,70 @@ Variable references are expanded by the engine from plugin context and config:
 | `${data_dir}` | Plugin's data directory |
 | `${uproject_dir}` | From plugin config (if applicable) |
 
-## Tool `installPath`
+## Tool resolution: `installPath`, `check`, and PATH linkage
 
-The optional `installPath` field on a tool entry tells the engine where the tool binary lives (or will live after install). This solves the chicken-and-egg problem where a tool is installed to a known directory that isn't in PATH yet at check time.
+A tool entry is resolved in this order: **`installPath` candidates** (file
+exists) → **`check` command** (exit 0) → **`shutil.which(name)`** (on PATH).
+First hit wins. A tool that resolves on disk but whose directory is not on PATH
+is **auto-linked onto PATH** by the engine (see "Tool → PATH linkage" below) —
+"installed but not reachable by name" is treated as actionable, not done.
+
+### `installPath` — one dir or a list
+
+Tells the engine where the binary lives (or will live after install). Solves the
+chicken-and-egg case where a tool is installed to a known directory not yet on
+PATH at check time. Accepts a single string **or a list of candidate dirs**
+(tried in order — useful when an installer may land in more than one place):
 
 ```json
 {"name": "node", "installPath": "~/.local/share/node", "install": {"windows": "..."}}
+{"name": "draw.io", "installPath": ["/c/Program Files/draw.io", "$LOCALAPPDATA/Programs/draw.io"]}
 ```
 
-- Supports `~` expansion
-- The engine checks `<installPath>/<name>` (and `<installPath>/<name>.exe` on Windows) before falling back to `shutil.which()`
-- The same `installPath` is used for the recheck after install
+- Supports `~` and `$VAR` / `${VAR}` expansion.
+- The engine checks `<dir>/<name>` (and `<dir>/<name>.exe` on Windows) for each
+  candidate before falling back to the `check` command, then `shutil.which()`.
+- The same `installPath` is used for the recheck after install.
+
+### `check` — a presence command
+
+Optional shell command whose **exit code 0 means "present."** Use it when a
+tool's presence can't be expressed as name-on-PATH or a fixed install dir (app
+bundles, a `--version` smoke test, multiple acceptable locations). Runs via the
+same bash-on-Windows shim as `install`, so Unix syntax works regardless of the
+launching shell.
+
+```json
+{"name": "draw.io",
+ "check": "command -v draw.io || test -f \"/c/Program Files/draw.io/draw.io.exe\"",
+ "install": {"windows": "winget install --id JGraph.Draw"}}
+```
+
+A `check`-resolved tool yields no concrete binary path, so it is not recorded in
+`tool_paths.json` and gets no PATH auto-link (the engine has no directory to add)
+— prefer `installPath` when you know the directory, since that path *is*
+recorded and linked.
+
+### Tool → PATH linkage
+
+When a tool resolves via `installPath` (or `which` from a dir off the persistent
+PATH) but its directory isn't on PATH, the engine adds that directory to PATH
+itself — shell RC files + Windows User PATH (registry) + the live process PATH —
+and logs `tool: on disk but not on PATH — added <dir>`. This is the linkage
+between `tools[]` and `path_entries[]`: a resolved tool pulls its own dir onto
+PATH, so you don't have to declare a separate `path_entries` entry, and a tool
+that's present-but-unreachable becomes reachable without any "restart your shell"
+instruction (per dependency-philosophy.md principle 4).
+
+### Install exit codes are advisory
+
+After running a tool's `install` command, the engine **re-checks regardless of
+the installer's exit code.** Some installers exit non-zero for "already
+installed / no upgrade available" (winget exit 43); the re-check, not the exit
+code, decides whether the tool is present. Only when the re-check still fails is
+a failure recorded (`install_failed` if the installer also errored,
+`installed_but_path_stale` if it reported success but the binary is still
+unfindable).
 
 ## `self_setup.python_stub_check`
 
@@ -396,6 +488,9 @@ Each array type has an identity key used for deduplication during merge:
 | `ini_settings` | `file` + `section` |
 | `sync_to_data` | `src` + `dst` |
 | `pypi_packages` | `package` |
+| `shared_libs` | `name` |
+
+`path_entries` and `shared_lib_imports` are plain string lists — unioned and deduplicated (order preserved), not identity-keyed.
 
 ### Example
 

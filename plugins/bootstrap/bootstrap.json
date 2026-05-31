@@ -1,4 +1,7 @@
 {
+  "shared_libs": [
+    { "name": "bootstrap_lib", "src": "." }
+  ],
   "tools": [
     {
       "name": "jq",

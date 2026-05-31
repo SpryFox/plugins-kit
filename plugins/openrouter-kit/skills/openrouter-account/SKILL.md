@@ -10,6 +10,49 @@ description: Use when checking, setting, or rotating the OpenRouter API key, or 
 
 Manage the shared OpenRouter API key that other plugins and project scripts depend on. The key is stored in a user-scoped `.env` file at `~/.claude/plugins/data/plugins-kit/openrouter-kit/.env` and consulted by anything that imports `openrouter_kit` (today: loc-ops; future: any plugin that calls OpenRouter).
 
+## Technique
+
+The load-bearing contract; the markdown below is reference detail for the CLI and the common scenarios.
+
+```yaml
+technique_skill:
+  _schema_version: "1"
+  identity: Manage the shared OpenRouter API credential other plugins depend on -- verify, set, rotate, and diagnose 401/402 -- via the openrouter-kit CLI.
+  scope:
+    covers:
+      - verifying whether the OpenRouter key is set and valid
+      - setting or rotating the user-scoped key
+      - diagnosing HTTP 401 (rejected key) vs 402 (no account balance)
+      - resolving which .env file wins the precedence order
+    excludes:
+      - choosing models, setting temperature, or shaping OpenRouter requests
+      - managing Anthropic / OpenAI / other providers' credentials
+      - inspecting or modifying the bootstrap engine
+  techniques:
+    - id: manage-openrouter-key
+      name: Verify, set, or rotate the OpenRouter credential
+      keywords: [openrouter key, api key, set-key, rotate credential, 401 402, status check]
+      goal: Bring the shared OpenRouter key to a validated state and diagnose any auth/credit failure a consumer hit.
+      steps:
+        - n: 1
+          action: Run `openrouter-kit status` to resolve the key (env var > project .env > user .env) and validate it against GET /auth/key.
+          expected: Exit 0 prints account label, usage, limit, and free-tier flag. Non-zero means the key is missing or rejected.
+        - n: 2
+          action: If the source is ambiguous, run `openrouter-kit which` to see which file the resolver reads and rule out a shadowing project .env.
+        - n: 3
+          action: To set or rotate, run `openrouter-kit set-key` (interactive hidden prompt -- the user runs it, prefix with `!`) or `openrouter-kit set-key --key sk-or-v1-...` (non-interactive; Claude may run it only when the user already shared the key in chat). The key validates against /auth/key before it is written.
+          on_failure: A typo is rejected at validation and never lands on disk; re-run with the corrected key.
+        - n: 4
+          action: Diagnose the failure class -- HTTP 401 means the key was revoked or rotated server-side (generate a new one at openrouter.ai/keys and re-run set-key); HTTP 402 means the key is valid but the account has no balance (top up at openrouter.ai/credits).
+        - n: 5
+          action: Re-run `openrouter-kit status` to confirm OK.
+          expected: status reports OK with the key's label; bootstrap auto-clears last_validated.sha256 on the next successful /auth/key call, so no manual cache reset is needed.
+      gotchas:
+        - "`set-key` without `--key` requires an interactive hidden prompt Claude cannot supply; the user must run it (prefix with `!`)."
+        - Precedence is env var > project .env > user .env. A project `.env` silently shadows the user-scoped file; use `which` to confirm the active source.
+        - HTTP 402 is not a key problem -- the key is valid and the account is out of credit. Do not rotate the key in response to 402.
+```
+
 ## When to invoke
 
 - The user wants to check whether their OpenRouter key is set up and working.

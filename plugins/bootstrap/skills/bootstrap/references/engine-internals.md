@@ -179,6 +179,18 @@ Library boundaries follow Robert C. Martin's [package cohesion principles](https
 - **Common Closure Principle (CCP)**: Modules that change for the same reason belong together. A bug fix or feature change should affect one library, not scatter across several.
 - **Acyclic Dependencies Principle (ADP)**: Libraries must not have circular dependencies. The dependency graph is a DAG.
 
+## Cross-Plugin Shared Libraries (`shared_libs` / `shared_lib_imports`)
+
+A manifest-phase capability (module `bootstrap_lib/shared_lib.py`, wired into `_process_manifest` after `pypi_packages` and before the script phase) that lets one plugin reuse another's first-party Python package **without a declared plugin dependency** — the reuse-by-availability posture. It shares first-party SOURCE only via a `.pth`; third-party deps remain each importing plugin's own `pyproject.toml` concern (a static test, `tests/bootstrap/test_dependency_completeness.py`, catches omissions). Schema + author-facing semantics live in [manifest-reference.md](manifest-reference.md#shared_libs--shared_lib_imports--cross-plugin-first-party-libraries); the engine behavior:
+
+- **Owner (`shared_libs`)**: `sync_shared_lib()` content-hashes the package source at `<plugin_root>/<src>/<name>/` and, on change, clean-re-syncs it (remove-then-copy, pruning stale modules — unlike `sync_to_data`'s merge-only copy) to the stable `~/.claude/plugins/data/plugins-kit/_shared_libs/<name>/<name>/`. Then `link_shared_lib()` writes `<name>.pth` (pointing at `_shared_libs/<name>/`) into the standalone Python and verifies `import <name>`.
+- **Consumer (`shared_lib_imports`)**: `link_shared_lib()` writes the same `.pth` into this plugin's own `<plugin_data_dir>/.venv` (the venv handler ran earlier in the same manifest pass, so it exists as the target).
+- **Stable, not versioned**: the `.pth` targets the version-independent `_shared_libs/<name>/`, so an owner version bump re-syncs one directory and every `.pth` keeps resolving — no per-consumer rewrite needed.
+- **Eventual consistency**: a consumer may be processed before its owner in a session; a not-yet-published library is a soft skip (logged, not a failure) that self-heals next session. The runtime `bootstrap_guard` covers the installed-but-not-yet-provisioned window.
+- **Logging**: per the "every check logs its outcome" rule — `log_ok` on cached/skipped (verbose-only), action log on real sync/link, failure on a post-`.pth` import check that fails.
+
+This is distinct from the "Shared Library" section above, which describes `bootstrap_lib` itself (the engine's own code package). `bootstrap_lib` is in fact migrated ONTO this capability — it declares itself a `shared_lib` so p4-kit / git-kit / unreal-kit import it via the `.pth` instead of hand-rolled discovery — while external consumers (update06) still use the git-dependency model.
+
 ## Script (Optional)
 
 A Python module at a conventional location in the plugin's install path. Runs after manifest processing. The script:

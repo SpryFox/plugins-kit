@@ -2,7 +2,7 @@
 
 The full criteria for `/claude-md-audit`. Organized by cohesion principle (CCP / CRP / ADP) plus universal hygiene. Each criterion has a testable rule and a severity (FAIL / INFO / PASS); decision rules at the bottom.
 
-The placement principles these criteria derive from live in `plugins/skills-kit/skills/skill-authoring/references/content-allocation.md`. When the two diverge, content-allocation.md wins; this file gets updated to match.
+The placement principles these criteria derive from live in the `cohesion-principles` skill (`plugins/skills-kit/skills/cohesion-principles/SKILL.md`). When the two diverge, cohesion-principles wins; this file gets updated to match.
 
 ## Role-to-criteria map
 
@@ -119,7 +119,7 @@ CRP says: a fact lives in the smallest scope whose readers all need it. Readers 
 
 **Rule:** Files that exceed 500 lines / 3000 tokens deserve a CRP evaluation, not an automatic split.
 
-**Why CRP:** the threshold is a signal that the file may have accumulated multiple reading tasks. Splitting is correct ONLY if a CRP-passing decomposition exists -- sections must serve different reading tasks. A stub-with-always-co-loaded reference is CRP-fail (tool-call doubling without context-efficiency win); see `content-allocation.md` and framework.md "CRP is the test for L2 -> L3 splits."
+**Why CRP:** the threshold is a signal that the file may have accumulated multiple reading tasks. Splitting is correct ONLY if a CRP-passing decomposition exists -- sections must serve different reading tasks. A stub-with-always-co-loaded reference is CRP-fail (tool-call doubling without context-efficiency win); see `cohesion-principles` and framework.md "CRP is the test for L2 -> L3 splits."
 
 **Test:**
 1. Count effective lines (excluding trailing blanks).
@@ -134,7 +134,7 @@ CRP says: a fact lives in the smallest scope whose readers all need it. Readers 
 
 1. **A skill** (SKILL.md + structured contract) -- if the content fits a skill type (procedure -> technique-skill; rule + counter -> discipline-skill; lookup table -> reference-skill; tool/MCP/API wrapper -> capability-skill). This is the highest-leverage destination: discoverable trigger, audit surface, typed contract.
 2. **A skill's references/ folder** -- if the content already belongs to an existing skill but lives inline in CLAUDE.md by accident. Cite via `for X, invoke /skill-name`.
-3. **A project reference doc** (a markdown file outside any skill, e.g. `<project>/docs/<topic>.md` or `.claude/docs/<topic>.md`) -- the escape hatch when the content does not yet fit a skill type but is too large for inline. Useful for emerging concepts that may eventually graduate into a skill (see "Skill-maturation pipeline" in `content-allocation.md`).
+3. **A project reference doc** (a markdown file outside any skill, e.g. `<project>/docs/<topic>.md` or `.claude/docs/<topic>.md`) -- the escape hatch when the content does not yet fit a skill type but is too large for inline. Useful for emerging concepts that may eventually graduate into a skill (see "Skill-maturation pipeline" in `cohesion-principles`).
 4. **A child CLAUDE.md** (loaded lazily when agent enters that directory) -- if the content is directory-specific and serves the in-directory editor reader.
 
 **Maturation flag:** when identifying a project-reference destination, also check whether the content has matured into a structured shape that fits a skill type. If yes, recommend graduation into a skill rather than placement as a project reference.
