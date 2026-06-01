@@ -26,6 +26,7 @@ Stdlib-only.
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -34,6 +35,83 @@ DESCEND_MAX_DEPTH = 6
 SKIP_DIR_NAMES = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache",
                   "Intermediate", "Saved", "Binaries", "DerivedDataCache", "Build",
                   ".claude/plugins", "tmp"}
+
+# --- Code-directory dimension trigger (Level 1) -------------------------------
+# A CLAUDE.md gets the code-directory insight-validation dimension (fidelity +
+# value scrutiny) when it sits inside / describes a directory of code or data, OR
+# when its body carries review-claim / shape markers. Otherwise it gets the
+# classic placement+hygiene treatment only. The flag is mechanical (one dir
+# listing + one regex pass) so it is idempotent. See code-dir-insight-filter.md
+# and the proposal's section 5.0.
+
+CODE_DATA_EXT = {
+    ".c", ".cc", ".cpp", ".cxx", ".h", ".hpp", ".hh", ".cs", ".py", ".go",
+    ".rs", ".java", ".kt", ".swift", ".m", ".mm", ".ts", ".tsx", ".js", ".jsx",
+    ".lua", ".rb", ".php", ".scala", ".sql", ".yaml", ".yml", ".csv", ".json",
+    ".toml", ".proto", ".fbs", ".gradle", ".cmake", ".tf", ".sh", ".ps1",
+}
+# .md files that are docs, not review-notes; CLAUDE.md/local are the audited file.
+_MD_LIKE = {".md", ".mdx", ".rst", ".txt"}
+_CLAUDE_NAMES = {"CLAUDE.md", "CLAUDE.local.md"}
+
+# Signal-B content markers (any hit flips the file to code-directory).
+_SIGNAL_B = re.compile(
+    r"(?im)"
+    r"(^\s*#{1,4}\s*Review\s+Checks\b"          # Shape B payload heading
+    r"|\bFORBIDDEN\b"                             # Shape C safety rail
+    r"|gitignored|is a leak|clean checkout"       # negative-existence / Shape C
+    r"|\(see\s+/"                                 # Shape D repo-root pointer
+    r"|\bdo not\b|\bdon't\b|\bnever\b"            # gotcha phrasing
+    r"|must match|don't copy|silent at build|search for usages"
+    r"|lines?\s*~?\d"                             # line anchors
+    r"|`[^`]+\.(?:cpp|h|hpp|cs|py|go|rs|ts|js|lua|yaml|yml|fbs)`"  # file anchors
+    r")"
+)
+# Negative guard: a declared claude_md: contract block forces classic.
+_HAS_SCHEMA_BLOCK = re.compile(r"(?m)^\s*claude_md:\s*$")
+
+
+def classify_dimension(claude_md_path: Path) -> str:
+    """Return 'code-directory' or 'classic' for one CLAUDE.md.
+
+    Level-1 trigger from the proposal: code-directory if (Signal A: the file's
+    own directory is mostly code/data siblings) OR (Signal B: the body carries
+    review-claim/shape markers). Negative guard forces 'classic' when the file
+    declares a claude_md: schema block or sits in a skill directory (SKILL.md
+    sibling). Best-effort and side-effect-free; any read error -> 'classic'.
+    """
+    try:
+        directory = claude_md_path.parent
+        # Negative guard: a skill directory's CLAUDE.md is decision-provenance,
+        # not code-directory review notes -> classic.
+        if (directory / "SKILL.md").exists():
+            return "classic"
+
+        # Signal A -- sibling extension tally (non-recursive, files only).
+        code_data = 0
+        md_like = 0
+        try:
+            for entry in directory.iterdir():
+                if not entry.is_file() or entry.name in _CLAUDE_NAMES:
+                    continue
+                ext = entry.suffix.lower()
+                if ext in CODE_DATA_EXT:
+                    code_data += 1
+                elif ext in _MD_LIKE:
+                    md_like += 1
+        except OSError:
+            pass
+        signal_a = code_data >= 1 and code_data >= md_like
+
+        # Read the body once for the schema guard and Signal B.
+        body = claude_md_path.read_text(encoding="utf-8", errors="ignore")
+        if _HAS_SCHEMA_BLOCK.search(body):
+            return "classic"
+        signal_b = bool(_SIGNAL_B.search(body))
+
+        return "code-directory" if (signal_a or signal_b) else "classic"
+    except OSError:
+        return "classic"
 
 
 def is_skipped(path: Path, cwd: Path) -> bool:
@@ -143,8 +221,14 @@ def main() -> int:
     cwd = Path(args.cwd).resolve() if args.cwd else Path.cwd().resolve()
     results = discover(cwd)
 
+    # role=local files are personal-scoped; they never take the code-directory
+    # dimension. Everything else gets the Level-1 trigger classified.
+    def dim_for(path: Path, role: str) -> str:
+        return "classic" if role == "local" else classify_dimension(path)
+
     if args.json:
-        print(json.dumps([{"index": i + 1, "path": str(p), "role": role}
+        print(json.dumps([{"index": i + 1, "path": str(p), "role": role,
+                           "dimension": dim_for(p, role)}
                           for i, (p, role) in enumerate(results)], indent=2))
         return 0
 
@@ -158,7 +242,9 @@ def main() -> int:
             display = path.relative_to(cwd)
         except ValueError:
             display = path
-        print(f"  {i:>3}. [{role:<8}] {display}")
+        dim = dim_for(path, role)
+        tag = "code-dir" if dim == "code-directory" else "classic"
+        print(f"  {i:>3}. [{role:<8}] [{tag:<8}] {display}")
     return 0
 
 

@@ -15,6 +15,10 @@ The role of a CLAUDE.md determines which subset of criteria applies. Roles are c
 | `ancestor` | CLAUDE.md above cwd (loaded ambient from the user's session) | CCP (all), CRP (all), ADP (all), Hygiene (all) |
 | `local` | CLAUDE.local.md at any directory | CCP only (C-3, C-4); ADP and Hygiene skipped because the file is personal-scoped by design |
 
+### Code-directory dimension (orthogonal to role)
+
+Independently of role, `discover.py` flags each file `dimension: code-directory | classic` (Level-1 trigger; see `scripts/discover.py::classify_dimension`). A `code-directory` file — a per-directory review-notes CLAUDE.md sitting inside code/YAML/CSV — gets the criteria above **plus** the code-directory insight-validation dimension (CD-1…CD-6: anchor-modality classification, fidelity, value filter), which validates that its claims still match the code and still earn their place. Those criteria are self-contained in `references/code-dir-insight-filter.md`; load that doc in addition to this one when, and only when, the file is flagged `code-directory`. A `classic` file (root project file, docs, skill dir, or any file declaring a `claude_md:` block) runs the criteria above only — do not load the insight filter for it.
+
 ## CCP findings (write-together / change cadence)
 
 CCP says: content that changes for the same reason belongs in the same file. A CLAUDE.md fact lives where its change driver lives.
