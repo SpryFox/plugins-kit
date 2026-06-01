@@ -21,7 +21,11 @@
 // args = {
 //   files: [ { path: string, role: "root"|"ancestor"|"child"|"local",
 //              parentPath: string|null } ],
+//   files[i].dimension: "code-directory" | "classic"  (from discover.py; when
+//            "code-directory" the lane also loads refs.codeDirFilter and runs the
+//            CD-* insight-validation criteria. Absent/"classic" -> classic only.)
 //   refs:  { criteria: <abs path to references/audit-criteria.md>,
+//            codeDirFilter: <abs path to references/code-dir-insight-filter.md>,
 //            pluginRoot: <abs path to plugins/skills-kit (parent of skills_kit_lib)>,
 //            venvPython: <abs path to skills-kit venv python> }
 // NOTE: contentAllocation is no longer consumed by lanes (dropped for cache
@@ -52,7 +56,7 @@ const FILE_FINDINGS_SCHEMA = {
         type: 'object',
         additionalProperties: false,
         properties: {
-          group: { type: 'string', enum: ['CCP', 'CRP', 'ADP', 'Hygiene', 'Schema'] },
+          group: { type: 'string', enum: ['CCP', 'CRP', 'ADP', 'Hygiene', 'Schema', 'CodeDir'] },
           severity: { type: 'string', enum: ['PASS', 'FAIL', 'INFO', 'JUDGMENT'] },
           criterion: { type: 'string', description: 'criterion id or short name, e.g. ccp_cross_file_duplication' },
           message: { type: 'string' },
@@ -85,14 +89,19 @@ function lanePrompt(f) {
     ? `This is a CHILD file. Also Read its parent CLAUDE.md at ${f.parentPath} so you can run the CCP cross-file duplication check (a rule restated from the parent is a FAIL, taxonomy B, bucket AUTO).`
     : `No parent read is required for role=${f.role}.`
 
+  const codeDirClause = f.dimension === 'code-directory'
+    ? `This file is flagged \`code-directory\` (it is per-directory review notes for code/YAML/CSV). After the classic checks, ALSO read the insight-validation criteria at ${refs.codeDirFilter} and run the CD-* dimension on it. The order is fixed: (a) identify the file's shape(s) A/B/C/D; (b) for EVERY concrete anchor a claim makes, classify its modality FIRST (requires-present / requires-absent / external-unverifiable / template-or-env / vendored-don't-read / generated-or-unsynced / non-anchor) — only \`requires-present\` is eligible for FAIL, and \`requires-absent\` is scored INVERTED (presence of the asserted-absent thing is the FAIL); (c) apply CD-2 fidelity_anchor_resolves (FAIL=H/H2), CD-3 line-drift (AUTO=I2, silent if the author gave a recovery hint), CD-4 claim_holds (DISCUSS=I; counted magnitudes never FAIL), CD-5 value filter honoring every carve-out (DISCUSS/AUTO=J), CD-6 silent_failure_preserved (INFO). Resolve symbol anchors repo-wide and leading-slash paths against repo root. Emit these under group "CodeDir". Validate existing claims only — do NOT crawl the directory for new gotchas (non-idempotent). NEVER FAIL an external/template/vendored/generated/non-anchor anchor.`
+    : `This file is flagged \`classic\` — run the classic CCP/CRP/ADP/Hygiene/Schema criteria only; do NOT load or apply the code-directory insight filter.`
+
   const schemaClause = refs.pluginRoot && refs.venvPython
     ? `If the file body contains a \`claude_md:\` YAML contract block, run the mechanical schema validator via Bash (it is a package module, so cd into the plugin root first):\n    (cd "${refs.pluginRoot}" && "${refs.venvPython}" -m skills_kit_lib.audit "${f.path}" --json)\nand merge its results as Schema-group findings (validation failure on a non-optional field = FAIL, taxonomy E). If the validator is unavailable or errors, emit one Schema finding with severity JUDGMENT and message "schema validator unavailable" and continue. If there is no \`claude_md:\` block, skip the Schema group entirely (do NOT fail a file for not declaring a contract).`
     : `Schema validator path was not provided; if the file has a \`claude_md:\` block, emit one Schema finding with severity JUDGMENT noting the validator was unavailable.`
 
   return `You are ONE lane of a CLAUDE.md audit. Audit exactly one file and return structured findings. This is DETECTION ONLY — do not modify any file.
 
-Target: ${f.path}
-Role:   ${f.role}
+Target:    ${f.path}
+Role:      ${f.role}
+Dimension: ${f.dimension || 'classic'}
 
 Steps:
 1. Read the target file. Count its lines and estimate tokens (~chars/4).
@@ -100,13 +109,15 @@ Steps:
 3. ${parentClause}
 4. Apply the criteria that the role-to-criteria map says apply to role=${f.role}. Produce findings tagged with group (CCP / CRP / ADP / Hygiene) and severity (PASS / FAIL / INFO / JUDGMENT). For role=local, only the D-group / local criteria apply (skip Hygiene and ADP per the map).
 5. ${schemaClause}
-6. Classify EVERY non-PASS finding into a taxonomy id (A-G, or K if nothing fits) and a remediation bucket:
-     - AUTO    = mechanical, safe to auto-apply (e.g. B: delete restated parent rule)
-     - DISCUSS = needs a user decision (A, C, D, E-authorial, F, G)
+6. ${codeDirClause}
+7. Classify EVERY non-PASS finding into a taxonomy id and a remediation bucket:
+     - AUTO    = mechanical, safe to auto-apply (e.g. B: delete restated parent rule; I2: drop a drifted line number)
+     - DISCUSS = needs a user decision (A, C, D, E-authorial, F, G; CodeDir H, H2, I, J)
      - SPECIAL = K, unclassified
+   Classic-dimension findings use taxonomy A-G/K; CodeDir-group findings use H_stale_anchor / H2_inverted_absence / I_claim_drift / I2_line_drift / J_low_value_insight (or K).
    PASS / INFO / JUDGMENT findings that need no remediation get taxonomy "none" and bucket "NONE".
    For each AUTO/DISCUSS/SPECIAL finding write a concrete \`remediation\` (what edit you propose, with line refs).
-7. Verdict: NON-COMPLIANT if ANY finding has severity FAIL; otherwise COMPLIANT. INFO/JUDGMENT never gate.
+8. Verdict: NON-COMPLIANT if ANY finding has severity FAIL; otherwise COMPLIANT. INFO/JUDGMENT never gate. (A CodeDir CD-2 H/H2 FAIL gates exactly like a classic FAIL.)
 
 Idempotency matters: apply the fixed criteria and taxonomy deterministically. Do not invent findings; report only what the criteria actually surface. Return the structured object.`
 }
@@ -117,7 +128,7 @@ const perFile = await parallel(input.files.map((f) => () =>
     label: `audit:${f.path.split(/[\\/]/).pop()}`,
     phase: 'Audit',
     schema: FILE_FINDINGS_SCHEMA,
-  }).then((r) => ({ ...r, path: f.path, role: f.role }))
+  }).then((r) => ({ ...r, path: f.path, role: f.role, dimension: f.dimension || 'classic' }))
 ))
 
 const results = perFile.filter(Boolean)

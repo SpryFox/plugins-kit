@@ -30,6 +30,7 @@ audit_skill:
       - "auditing a CLAUDE.md or CLAUDE.local.md against CCP / CRP / ADP placement rules (judgment-based from cohesion-principles)"
       - "applying the role-to-criteria map (root / ancestor / child / local roles have different applicable rules)"
       - "schema validation when a `claude_md:` YAML contract block is present in the file"
+      - "the code-directory insight-validation dimension (CD-1..CD-6) for files flagged `dimension: code-directory` by discover.py -- anchor-modality classification, fidelity-to-code, and the what-we-care-about value filter (self-contained in references/code-dir-insight-filter.md)"
       - "categorizing findings into remediation buckets (AUTO / DISCUSS / SPECIAL)"
       - "listing CLAUDE.md files visible from cwd (the cwd-relative discover.py helper for index-based selection)"
     excludes:
@@ -82,6 +83,42 @@ audit_skill:
       summary: "Files carrying a `claude_md:` YAML contract block in the body must validate against CLAUDE_MD_SCHEMA in schemas.py. Files without the block are not gated on schema validation."
       severity: "FAIL"
       detail: "Mechanical validation via audit.py when the block is present. Conditional: applies only when the file declares the contract."
+    - id: "cd_anchor_modality_classify"
+      name: "CodeDir -- classify every anchor's modality before any existence check"
+      keywords: ["code-directory", "anchor modality", "requires-present", "requires-absent", "external", "template", "vendored", "generated"]
+      summary: "For a code-directory file, tag each concrete anchor (symbol / file / sibling / field / name) with exactly one modality FIRST. Only `requires-present` is eligible for FAIL; `requires-absent` scores inverted; external / template-or-env / vendored / generated-or-unsynced / non-anchor never FAIL."
+      severity: "JUDGMENT"
+      detail: "Precondition for cd_fidelity. The Level-2 safety valve: because the Level-1 trigger fires generously, modality classification is what prevents false FAILs on negative-existence, external, templated, and generated anchors. Full table in references/code-dir-insight-filter.md."
+    - id: "cd_fidelity_anchor_resolves"
+      name: "CodeDir -- claim anchor resolves (or, for requires-absent, stays absent)"
+      keywords: ["code-directory", "fidelity", "stale anchor", "anchor resolves", "inverted absence"]
+      summary: "A `requires-present` anchor that is named-and-absent after a repo-wide check is a FAIL (H_stale_anchor). A `requires-absent` anchor whose asserted-absent thing is now present is a FAIL (H2_inverted_absence -- the invariant is violated). All other modalities are PASS/INFO."
+      severity: "FAIL"
+      detail: "Mechanical resolution: symbols repo-wide, leading-slash paths against repo root. Conditional on dimension=code-directory. This is the only CD criterion that gates compliance."
+    - id: "cd_fidelity_line_anchor"
+      name: "CodeDir -- cited line number tracks its symbol"
+      keywords: ["code-directory", "line drift", "line anchor", "re-anchor", "symbol coupled"]
+      summary: "When a claim cites a line number, find the enclosing symbol it names; if the symbol resolves but is >~30 lines from the cited number, flag I2_line_drift (drop the number, keep the symbol). Stay silent if the author supplied a recovery hint."
+      severity: "JUDGMENT"
+      detail: "Coupled to symbol resolution; never fires when no line number is cited. Bucket AUTO (the remediation is the mechanical removal of the stale number)."
+    - id: "cd_fidelity_claim_holds"
+      name: "CodeDir -- claim still matches the code in kind"
+      keywords: ["code-directory", "claim drift", "stale claim", "in kind", "counted magnitude"]
+      summary: "Read the anchored code; if the claim no longer holds in kind (god-object now decomposed, TODO now resolved, bypass now gone) flag I_claim_drift. Counted magnitudes ('7200-line', '12 files') are intentionally fuzzy -- never FAIL on the number; flag only on kind-inversion."
+      severity: "JUDGMENT"
+      detail: "Never auto-FAIL: the audit cannot perfectly re-derive the gotcha, it flags divergence for a human. Bucket DISCUSS."
+    - id: "cd_value_insight_earns_place"
+      name: "CodeDir -- section earns its place under the what-we-care-about filter"
+      keywords: ["code-directory", "value filter", "earns place", "low value", "inventory", "carve-out"]
+      summary: "Each section must pass the value lattice (silent-failure > blast-radius > deliberately-wrong > safety > perf > ownership). Linter-caught / default / bare-inventory / pure-restatement sections are low-value (J). Honor every carve-out: annotated Files/Schema blocks, SSOT-pointing catalogs, safety-rail cheatsheets, topology tables are NOT low-value."
+      severity: "JUDGMENT"
+      detail: "Bucket DISCUSS; deletion of a genuinely bare un-annotated inventory may be AUTO. Carve-outs are load-bearing -- both maintainer-agents required them."
+    - id: "cd_silent_failure_preserved"
+      name: "CodeDir -- highest-value content still present"
+      keywords: ["code-directory", "silent failure preserved", "erosion signal", "value erosion"]
+      summary: "Positive check: if the file has been reduced to only structural description with no tier-1/tier-2 silent-failure or blast-radius claim, emit an erosion INFO -- the highest-value content may have been edited out."
+      severity: "INFO"
+      detail: "Advisory only; never gates. Surfaces value erosion across edits."
   taxonomy:
     - id: "A_wrong_role_content"
       name: "Content sits at the wrong role in the CLAUDE.md hierarchy"
@@ -125,10 +162,40 @@ audit_skill:
       detection_signal: "CLAUDE.local.md body contains project-conventional content that should be in the checked-in CLAUDE.md instead of a personal override."
       default_remediation: "Propose moving the project-conventional content to the checked-in CLAUDE.md (so all collaborators see it). User confirms before moving."
       bucket: "DISCUSS"
+    - id: "H_stale_anchor"
+      name: "CodeDir: requires-present anchor no longer resolves"
+      keywords: ["code-directory", "stale anchor", "broken symbol", "missing sibling", "fidelity"]
+      detection_signal: "A `requires-present` anchor (symbol / file / sibling / field the claim says should exist) is absent after a repo-wide check, and is not classified external / generated / template / vendored."
+      default_remediation: "Re-anchor the claim to the current symbol/path, or delete the claim if the code it describes is gone. User confirms."
+      bucket: "DISCUSS"
+    - id: "H2_inverted_absence"
+      name: "CodeDir: requires-absent thing is now present"
+      keywords: ["code-directory", "negative existence", "tracked secret", "forbidden present", "invariant violated"]
+      detection_signal: "A `requires-absent` claim's asserted-absent thing now exists (a tracked file under a gitignored SSOT path; a FORBIDDEN name that now resolves)."
+      default_remediation: "Surface loudly -- the invariant the claim guards is violated. The fix is in the code/repo, not the CLAUDE.md. User decides."
+      bucket: "DISCUSS"
+    - id: "I_claim_drift"
+      name: "CodeDir: claim no longer matches the code in kind"
+      keywords: ["code-directory", "claim drift", "stale claim", "in kind"]
+      detection_signal: "Reading the anchored code contradicts the claim in kind (decomposed god-object, resolved TODO, bypass now gone). NOT a counted-magnitude difference."
+      default_remediation: "Re-validate with the user; update the mechanism/magnitude or retire the claim."
+      bucket: "DISCUSS"
+    - id: "I2_line_drift"
+      name: "CodeDir: cited line number drifted from its symbol"
+      keywords: ["code-directory", "line drift", "re-anchor", "drop line number"]
+      detection_signal: "The enclosing symbol the claim names resolves but is >~30 lines from the cited number, and the author gave no recovery hint."
+      default_remediation: "Drop the line number; keep the symbol anchor."
+      bucket: "AUTO"
+    - id: "J_low_value_insight"
+      name: "CodeDir: section fails the what-we-care-about value filter"
+      keywords: ["code-directory", "low value", "bare inventory", "restatement", "value filter"]
+      detection_signal: "A section is linter-caught / a language default / a bare un-annotated inventory / a pure schema restatement -- AND not protected by a carve-out (annotated Files/Schema, SSOT-pointing catalog, safety-rail cheatsheet, topology table)."
+      default_remediation: "Propose deletion (bare inventory) or downgrade. User confirms; bare-inventory deletion may be AUTO."
+      bucket: "DISCUSS"
     - id: "K_unclassified"
       name: "Unclassified / special case"
       keywords: ["unclassified", "special case", "escape hatch", "K bucket"]
-      detection_signal: "Finding does not match any A-G detection signal after deliberate attempt."
+      detection_signal: "Finding does not match any A-G or H-J detection signal after deliberate attempt."
       default_remediation: "Surface to the user with the audit row that fired, attempted matches, and reasons none fit. User proposes strategy."
       bucket: "SPECIAL"
   procedures:
@@ -138,21 +205,22 @@ audit_skill:
       goal: "For each target CLAUDE.md, run mechanical and judgment-based checks against the framework's contract, classify findings into the taxonomy, dispatch remediations to AUTO/DISCUSS/SPECIAL buckets, and emit a per-file compliance verdict."
       preconditions:
         - "audit.py is reachable (mechanical schema validator -- only needed if a claude_md: YAML block is present)."
-        - "references/audit-criteria.md is loadable (the single self-contained criteria doc; the upstream cohesion-principles is its derivation and is NOT loaded by the audit path)."
+        - "references/audit-criteria.md is loadable (the self-contained classic criteria doc; the upstream cohesion-principles is its derivation and is NOT loaded by the audit path)."
+        - "references/code-dir-insight-filter.md is loadable -- needed only when a target is flagged dimension=code-directory; the self-contained CD-1..CD-6 criteria, anchor-modality table, and value filter."
         - "The user is in a project directory so role classification works."
       steps:
         - n: 1
-          action: "Resolve the audit target set from $ARGUMENTS. Empty -> cwd/CLAUDE.md. 'list' -> emit numbered list via discover.py and stop. Integers -> map to paths from last list. Path -> use directly. Strip any non-interactive token ('fast', '--fast', '--yes', '-y') from the args first and set non_interactive accordingly (also set it if the user's prose expresses non-interactive intent, e.g. 'just apply everything, don't ask'). For each target capture (path, role, parentPath) where role is root / ancestor / child / local and parentPath is the nearest ancestor CLAUDE.md for a child (else null)."
+          action: "Resolve the audit target set from $ARGUMENTS. Empty -> cwd/CLAUDE.md. 'list' -> emit numbered list via discover.py and stop. Integers -> map to paths from last list. Path -> use directly. Strip any non-interactive token ('fast', '--fast', '--yes', '-y') from the args first and set non_interactive accordingly (also set it if the user's prose expresses non-interactive intent, e.g. 'just apply everything, don't ask'). For each target capture (path, role, dimension, parentPath) where role is root / ancestor / child / local, dimension is the `code-directory`|`classic` flag discover.py emits (Level-1 trigger), and parentPath is the nearest ancestor CLAUDE.md for a child (else null)."
           tool: "discover.py"
           input: "uv run python ${CLAUDE_PLUGIN_ROOT}/skills/claude-md-audit/scripts/discover.py [--json]"
-          expected: "Resolved (path, role, parentPath) tuples + non_interactive flag."
-          on_failure: "If no CLAUDE.md resolves, surface cwd and stop."
+          expected: "Resolved (path, role, dimension, parentPath) tuples + non_interactive flag."
+          on_failure: "If no CLAUDE.md resolves, surface cwd and stop. If a path is given directly (not via discover.py), classify its dimension by reading scripts/discover.py::classify_dimension semantics or default to `code-directory` when the file has code/yaml/csv siblings or review-claim markers and no `claude_md:` block."
         - n: 2
-          action: "DETECT phase (before-Q&A). Choose execution mode by file count -- this threshold equalizes the Workflow tool's per-run overhead. ONE file: audit inline in the main loop (read the file + its parent if child; Read references/audit-criteria.md -- the single self-contained criteria doc, which states each testable rule with its CCP/CRP/ADP derivation inline; do NOT also load cohesion-principles; apply the role-to-criteria map; if a `claude_md:` block is present run the schema validator; classify each finding into taxonomy + bucket). TWO OR MORE files: call the Workflow tool with scriptPath ${CLAUDE_PLUGIN_ROOT}/skills/claude-md-audit/workflow/detect.js and args = { files:[{path,role,parentPath}], refs:{criteria, pluginRoot, venvPython} }. The workflow fans one lane out per file and returns { perFile:[...], totals }. Detection only -- no file is edited in this phase."
+          action: "DETECT phase (before-Q&A). Choose execution mode by file count -- this threshold equalizes the Workflow tool's per-run overhead. ONE file: audit inline in the main loop (read the file + its parent if child; Read references/audit-criteria.md -- the single self-contained criteria doc, which states each testable rule with its CCP/CRP/ADP derivation inline; do NOT also load cohesion-principles; apply the role-to-criteria map; if a `claude_md:` block is present run the schema validator; if dimension=code-directory ALSO Read references/code-dir-insight-filter.md and run the CD-1..CD-6 insight-validation dimension -- classify each anchor's modality first, then fidelity/line/claim/value; for dimension=classic do NOT load the filter; classify each finding into taxonomy + bucket). TWO OR MORE files: call the Workflow tool with scriptPath ${CLAUDE_PLUGIN_ROOT}/skills/claude-md-audit/workflow/detect.js and args = { files:[{path,role,dimension,parentPath}], refs:{criteria, codeDirFilter, pluginRoot, venvPython} }. The workflow fans one lane out per file and returns { perFile:[...], totals }. Detection only -- no file is edited in this phase."
           tool: "Workflow | inline"
-          input: "detect.js args.refs: criteria=${CLAUDE_PLUGIN_ROOT}/skills/claude-md-audit/references/audit-criteria.md; pluginRoot=${CLAUDE_PLUGIN_ROOT}; venvPython=<plugin venv python>. (cohesion-principles is intentionally NOT passed -- lanes load only the single self-contained criteria doc for cache efficiency.) Schema validator is run as: (cd ${CLAUDE_PLUGIN_ROOT} && <venvPython> -m skills_kit_lib.audit <path> --json)."
-          expected: "Structured per-file findings (group, severity, criterion, message, line, taxonomy, bucket, remediation) + per-file verdict."
-          on_failure: "If the schema validator is unavailable, the lane marks the Schema group JUDGMENT ('validator unavailable') and continues -- never fail a file for that."
+          input: "detect.js args.refs: criteria=${CLAUDE_PLUGIN_ROOT}/skills/claude-md-audit/references/audit-criteria.md; codeDirFilter=${CLAUDE_PLUGIN_ROOT}/skills/claude-md-audit/references/code-dir-insight-filter.md; pluginRoot=${CLAUDE_PLUGIN_ROOT}; venvPython=<plugin venv python>. Each file carries its dimension; the lane loads the code-dir filter only for dimension=code-directory. (cohesion-principles is intentionally NOT passed -- lanes load only the self-contained criteria doc(s) for cache efficiency.) Schema validator is run as: (cd ${CLAUDE_PLUGIN_ROOT} && <venvPython> -m skills_kit_lib.audit <path> --json)."
+          expected: "Structured per-file findings (group incl. CodeDir, severity, criterion, message, line, taxonomy, bucket, remediation) + per-file verdict."
+          on_failure: "If the schema validator is unavailable, the lane marks the Schema group JUDGMENT ('validator unavailable') and continues -- never fail a file for that. If an anchor cannot be classified or resolved cheaply, mark it external-unverifiable/INFO rather than FAIL."
         - n: 3
           action: "Render the per-file report (output_template) from the collected findings: per-file verdict blocks followed by an overall summary with bucket counts. This is the before-Q&A surface the user reads."
           expected: "Markdown report in the user's chat with compliance verdicts and AUTO/DISCUSS/SPECIAL counts."
@@ -186,6 +254,9 @@ audit_skill:
         ### Schema (when claude_md: YAML block present)
         [PASS|FAIL] <yaml row>: <message>
 
+        ### CodeDir (when dimension = code-directory)
+        [PASS|FAIL|JUDGMENT|INFO] <CD-criterion> <taxonomy>: <message>
+
         ### Compliance verdict
 
         <P> PASS / <F> FAIL / <I> INFO / <J> JUDGMENT-REQUIRED
@@ -201,7 +272,18 @@ audit_skill:
       - category: "B_ccp_cross_file_duplication"
         procedure: "Delete the restated rule from the child file. The parent rule loads automatically when the agent descends into the child directory."
         agent_template: "Background agent receives child CLAUDE.md path + duplicated-rule line range + parent rule reference. Applies the deletion and confirms the parent rule is still present."
+      - category: "I2_line_drift"
+        procedure: "Remove the stale line number from the claim, keeping the symbol anchor. The symbol resolves; only the number rotted."
+        agent_template: "Background agent receives the claim line + the cited (drifted) line number + the resolved symbol location. Strips the number, leaves the symbol reference intact."
     discuss:
+      - category: "H_stale_anchor"
+        procedure: "Surface the unresolved requires-present anchor. Re-anchor to the current symbol/path the user identifies, or delete the claim if the code is gone."
+      - category: "H2_inverted_absence"
+        procedure: "Surface the violated invariant (the asserted-absent thing is now present). The remediation is in the repo, not the CLAUDE.md; confirm whether the claim should escalate to a code-review finding."
+      - category: "I_claim_drift"
+        procedure: "Show the claim and the contradicting code read. User updates the mechanism/magnitude or retires the claim. Counted magnitudes alone are never flagged."
+      - category: "J_low_value_insight"
+        procedure: "Show the low-value section and why it fails the value filter (after carve-outs). User confirms deletion or downgrade; a genuinely bare inventory may be deleted as AUTO."
       - category: "A_wrong_role_content"
         procedure: "Propose moving the misplaced section to the correct-scope CLAUDE.md. Show the destination and the line range to move. User confirms before applying."
       - category: "C_crp_split_candidate"
@@ -286,4 +368,6 @@ When the non-interactive flag is set (argument token or expressed intent), the Q
 
 - Canonical placement framework: `cohesion-principles (in skills-kit)`. The criteria in this skill's `references/audit-criteria.md` derive directly from that skill's content_allocation framework; when the two diverge, the canonical framework wins.
 - Schema validation tooling: `plugins/skills-kit/skills/skill-authoring/scripts/audit.py` (validates `claude_md:` YAML blocks against `CLAUDE_MD_SCHEMA` in schemas.py).
+- Code-directory insight-validation criteria: `references/code-dir-insight-filter.md` (the self-contained CD-1..CD-6 dimension, loaded only for dimension=code-directory files). The Level-1 trigger that flags the dimension lives in `scripts/discover.py::classify_dimension`.
+- Authoring counterpart: `claude-md-authoring:references/code-directory-claude-md.md` -- authoring code-directory CLAUDE.md files to that doc is what keeps this audit green (same four shapes, observation taxonomy, anchoring + path discipline).
 - Sibling audit skills: `/skill-audit` for SKILL.md files; `/references-audit` for broken cross-references across markdown.

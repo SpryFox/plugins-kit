@@ -36,6 +36,7 @@ technique_skill:
       - producing a valid claude_md block (scope.covers/excludes, insights, optional conventions/glossary)
       - refining an existing CLAUDE.md against the claude_md schema and the cohesion framework
       - choosing which CLAUDE.md in the load graph a fact belongs to (by deferring to cohesion-principles)
+      - authoring a code-directory CLAUDE.md (per-directory review notes for code/yaml/csv) per references/code-directory-claude-md.md -- shapes, high-value observation kinds, anchoring + path discipline (no claude_md block)
     excludes:
       - authoring a SKILL.md or its type contract (use skill-authoring)
       - where a fact lives across the load graph -- the placement question (use cohesion-principles)
@@ -50,8 +51,9 @@ technique_skill:
         - "A fact, convention, or insight needs to live in a CLAUDE.md (not a SKILL.md or reference)."
       steps:
         - n: 1
-          action: "Confirm the artifact is a CLAUDE.md and the content belongs there. If it is really skill-contract content, hand off to skill-authoring; if it is a reference body, it belongs in a skill's references/, not a CLAUDE.md."
-          expected: "Confirmation that a claude_md block is the right home."
+          action: "Confirm the artifact is a CLAUDE.md and the content belongs there. If it is really skill-contract content, hand off to skill-authoring; if it is a reference body, it belongs in a skill's references/, not a CLAUDE.md. BRANCH: if the target sits INSIDE a directory of code / YAML / CSV (a per-directory review-notes file, not a project-root or docs CLAUDE.md), this is a code-directory CLAUDE.md -- it carries review intelligence, NOT a `claude_md:` schema block. Load and follow references/code-directory-claude-md.md (shapes A/B/C/D, the high-value observation kinds, anchoring + path discipline, the value gate); steps 3-5 below (the claude_md block + schema validation) do NOT apply to it."
+          tool: "Read (references/code-directory-claude-md.md) when code-directory"
+          expected: "Confirmation that a claude_md block is the right home -- OR a determination that this is a code-directory review-notes file, authored per references/code-directory-claude-md.md."
         - n: 2
           action: "Choose WHICH CLAUDE.md in the load graph (root / subsystem / directory) via cohesion-principles (CCP change-cadence -> CRP reader-set -> ADP load-order). Do not re-derive placement."
           tool: "Skill (skills-kit:cohesion-principles)"
@@ -73,6 +75,8 @@ technique_skill:
         - "Omitting scope.excludes -- the exclusion clause is what stops adjacent areas from drifting into this file's ownership; the schema requires it."
         - "Putting skill-contract or decision-provenance content into a CLAUDE.md that should be SKILL.md (skill-authoring) or a reference -- match the artifact to the content."
         - "Keywords cluster under 3 entries on an insight record -- the schema floor is >=3 for chat-term routing."
+        - "Treating a code-directory review-notes file like a schema-block CLAUDE.md (or vice-versa). Review-notes files in code/yaml/csv dirs carry gotchas/Review-Checks/boundary claims, not a `claude_md:` block; author them per references/code-directory-claude-md.md and do not run the schema validator on them."
+        - "Line-only anchors in a code-directory file. Line numbers rot fast; prefer a symbol anchor and drop the number unless the gotcha is sub-function (per references/code-directory-claude-md.md)."
   anti_patterns:
     - id: duplicate_across_claude_mds
       name: Same fact in two CLAUDE.mds
@@ -87,5 +91,6 @@ technique_skill:
 - **Domain (parent)** — `/md-authoring` (reached via `/md-authoring claude-md`).
 - **Where a fact lives** — `cohesion-principles` (placement: CCP / CRP / ADP).
 - **What shape a fact takes** — `content-authoring` (md-authoring reference).
+- **Authoring a code-directory CLAUDE.md** — `references/code-directory-claude-md.md` (shapes A/B/C/D, observation kinds, anchoring + path discipline). Its audit counterpart is `claude-md-audit:references/code-dir-insight-filter.md`.
 - **Sibling specialization (the skill artifact)** — `skill-authoring`.
 - **The claude_md schema instance** — `knowledge-encoding` (current owner_doc).
