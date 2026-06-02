@@ -4,7 +4,7 @@ version = "0.2.0"
 description = "OpenRouter API key resolution and account validation for Claude Code plugins"
 requires-python = ">=3.10"
 
-dependencies = []
+dependencies = ["pyyaml"]
 
 [project.optional-dependencies]
 sdk = ["openai>=1.0.0"]
