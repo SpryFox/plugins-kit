@@ -465,6 +465,11 @@ claude_md:
           macOS/Linux: ~/.claude/plugins/data/<marketplace>/<plugin>/.venv/bin/python
         The path does not change across plugin versions and resolves correctly from any cwd.
         Use it directly in SKILL.md examples instead of `uv run python`.
+
+        Script-side self-defense (the code that consumes a shared lib) is a plugin
+        implementation detail -- see plugins/CLAUDE.md "Shared-lib scripts must re-exec
+        under the plugin venv" for the reexec_under_plugin_venv rule that makes a
+        standalone script invocation-method-agnostic.
       origin: "Surfaced 2026-05-05 in unreal-kit fix-up-redirectors -- broke Phase 2 with ModuleNotFoundError: yaml. Fixed in 0.9.4."
       added: "2026-05-05"
     - id: manifest_changes_need_version_bump

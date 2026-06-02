@@ -64,3 +64,60 @@ def require_bootstrap(plugin: str, marketplace: str = "plugins-kit",
     if force or not is_provisioned(plugin, marketplace):
         print(message(plugin, marketplace, feature, missing), file=sys.stderr)
         sys.exit(EXIT_BOOTSTRAP_MISSING)
+
+
+def plugin_venv_python(plugin: str, marketplace: str = "plugins-kit") -> Path | None:
+    """Path to the interpreter inside the plugin's bootstrap-provisioned venv.
+
+    Bootstrap creates a dedicated venv at `<data_dir>/.venv` and links shared
+    libraries (e.g. bootstrap_lib) onto it via a `.pth` file. A script that
+    needs those shared libs must run under THIS interpreter -- a bare `python`
+    or `uv run` lands in a different environment that has no such `.pth`.
+
+    Returns None when the venv (or its interpreter) does not exist.
+    """
+    venv = data_dir(plugin, marketplace) / ".venv"
+    for rel in (("Scripts", "python.exe"), ("bin", "python"), ("bin", "python3")):
+        candidate = venv.joinpath(*rel)
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+# Env flag set across the os.execv boundary so a missing/already-active venv can
+# never cause an exec loop.
+_REEXEC_GUARD_ENV = "_BOOTSTRAP_GUARD_VENV_REEXEC"
+
+
+def reexec_under_plugin_venv(plugin: str, marketplace: str = "plugins-kit") -> None:
+    """Re-exec the current process under the plugin's provisioned venv if needed.
+
+    Call this at the TOP of a script that imports a bootstrap-provisioned shared
+    lib (e.g. `bootstrap_lib`), BEFORE the import:
+
+        from bootstrap_guard import reexec_under_plugin_venv
+        reexec_under_plugin_venv("p4-kit")
+        from bootstrap_lib... import ...   # now resolvable
+
+    Plugins define their own venv and should run under it preferentially. A
+    script launched by a bare `python` or `uv run` would otherwise miss the
+    shared-lib `.pth` and fail the import even though bootstrap provisioned the
+    venv correctly -- surfacing a misleading "not provisioned" error.
+
+    No-op when already running under the provisioned venv, so it is safe to call
+    unconditionally. Stdlib-only; loop-guarded via an env flag. If the venv
+    cannot be located, returns quietly and lets the caller's normal
+    `require_bootstrap()` guard report the genuine absence.
+    """
+    if os.environ.get(_REEXEC_GUARD_ENV):
+        return  # already re-exec'd once in this process tree
+    target = plugin_venv_python(plugin, marketplace)
+    if target is None:
+        return  # not provisioned; let require_bootstrap() report it
+    try:
+        if Path(sys.executable).resolve() == target.resolve():
+            return  # already the provisioned interpreter
+    except OSError:
+        return
+    os.environ[_REEXEC_GUARD_ENV] = "1"
+    os.execv(str(target), [str(target), *sys.argv])
