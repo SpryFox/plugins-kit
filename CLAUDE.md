@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**plugins-kit** is the **development repository** (source of truth) for the plugins-kit Claude Code marketplace. It contains the source code for all plugins in the marketplace. Currently ships (published): **awesome-kit** (cross-domain skills: shared comms framework, update-documentation, /plugin-ecosystem, /html-pdf), **bootstrap** (dependency management), **cache-kit** (cache-usage reporting from transcripts), **claude-ui-kit** (status line + /statusline), **git-kit** (Git/GitHub multi-agent code review + gh bootstrap), **openrouter-kit** (OpenRouter key management + shared model registry), **p4-kit** (Perforce multi-agent code review), **prototypes** (experimental skills awaiting graduation), **skills-kit** (skill-authoring framework), **test-plugin** (bootstrap exerciser), and **unreal-kit** (Unreal Engine Python API automation). Dev-only (not published, `published: false`): **agent-glue**, **workflow-kit**.
+**plugins-kit** is the **development repository** (source of truth) for the plugins-kit Claude Code marketplace. It contains the source code for all plugins in the marketplace. Currently ships (published): **awesome-kit** (cross-domain skills: shared comms framework, /plugin-ecosystem, /html-pdf), **bootstrap** (dependency management), **cache-kit** (cache-usage reporting from transcripts), **claude-ui-kit** (status line + /statusline), **git-kit** (Git/GitHub multi-agent code review + gh bootstrap), **openrouter-kit** (OpenRouter key management + shared model registry), **p4-kit** (Perforce multi-agent code review), **prototypes** (experimental skills awaiting graduation), **skills-kit** (verb x artifact authoring/audit matrix for skills + CLAUDE.md: /md-authoring, /md-audit, cohesion-principles, knowledge-encoding, update-documentation), **test-plugin** (bootstrap exerciser), and **unreal-kit** (Unreal Engine Python API automation). Dev-only (not published, `published: false`): **agent-glue**, **workflow-kit**.
 
 This repo is a **Claude Code plugin marketplace** — it extends Claude Code with skills, commands, and hooks via the `.claude-plugin/marketplace.json` manifest. Plugins are loaded either via `--plugin-dir` (local development) or `enabledPlugins` in settings (production installs from the remote repo).
 
@@ -111,9 +111,9 @@ uv run --extra dev pytest tests/bootstrap/test_marketplace_lifecycle.py::TestChe
 
 Only run the full suite (`uv run --extra dev pytest -v`) when explicitly asked or before a release.
 
-**Known pre-existing failures (don't chase as regressions).** Two clusters fail independent of your changes:
-- 4 `tests/skills-kit/` schema tests (`test_schemas`, `test_anti_patterns`, `test_capability_skill_schema`, `test_step_tracker_or_checklist`) fail to *collect* — they `import schemas` / `_shared`, which moved into `skills_kit_lib` (now `schema_registry`) / were deleted at the library extraction. They need a rewrite against the current `skills_kit_lib` API, not an import tweak.
-- ~8 bootstrap `engine`/`venv` tests (`test_engine_background`, `test_engine_multiplugin`, `test_venv_check`) throw `CalledProcessError` under **uv's default Python 3.14 on Windows** but pass under the 3.12 `.venv` — likely a 3.14 incompatibility, not a regression. Pin the interpreter (`uv run -p 3.12 ...` or the `.venv` python) when running these.
+**Interpreter: the repo is pinned to Python 3.12** via a repo-root `.python-version`, so bare `uv run` / `uv venv` select 3.12 everywhere — no `-p 3.12` needed. Nothing needs 3.14 (four plugins exclude it: `requires-python ">=3.12,!=3.14.*"`); it used to leak in only as uv's global default when no pin was present.
+
+The two formerly-documented "pre-existing failure" clusters (the `tests/skills-kit/` collection errors and the bootstrap `engine`/`venv` `CalledProcessError`s) were **fixed**, not version quirks — both were test-only issues: skills-kit imported the pre-extraction `schemas`/`_shared` modules, and the bootstrap tests spawned WSL `bash` to `source` a Windows env file and didn't isolate `HOME`. The full suite is green; investigate any failure as a real regression.
 
 **Local development** — use `--plugin-dir` to test plugins from the working copy:
 
@@ -176,6 +176,16 @@ Some plugins live on `dev` for in-development work and must not reach consumers 
 - `workflow-kit` — kit of incremental, native-preserving improvements on top of the native Workflow tool (renamed from `workflow-glue`; 0.2.0). Ships a declarative `*.workflow.yaml` -> native-script compiler (compile-to-native; does not reimplement execution). Adds a generically-named `workflow-kit-agent` executor (extensible) plus script + openrouter node strategies that fulfil a file-passing contract (`$OUT`/`$STATUS`, shell-redirected so payloads bypass the model context — cheap haiku shim, not a deterministic runtime). The openrouter node reuses openrouter-kit's `make_openai_client` runner (`scripts/openrouter_run.py`) + the `openai` SDK (installed into the standalone Python) — both hosted outside workflow-kit, so workflow-kit's only dep stays pyyaml. Domain-skill container (light index + reference docs). Has `bootstrap.json`; tests in `tests/workflow-kit/`. Conceptually supersedes agent-glue's graph-system + claude-dispatch now that the Workflow tool exists.
 
 When you see commits for a dev-only plugin in `git log origin/master..origin/dev`, that's still gotcha 1 territory — branch from master, cherry-pick only the publish-ready commits, and leave the dev-only commits on `dev`. The regenerator is a backstop for the marketplace listing, not a substitute for picking the right commits to merge.
+
+### dev -> master reconcile: conflict-resolution policy
+
+A full `dev`/`master` reconcile (the "publish: reconcile master with dev" release) conflicts because both branches independently edit the same files (marketplace.json, plugin.json versions, CLAUDE.md, .gitignore, skills). `dev` is the source of truth for a reconcile — master's divergent commits are prior publish/reconcile artifacts that `dev` supersedes. Resolve **toward dev**, with one guard that prevents silently dropping a master-only fix:
+
+- **Generated / JSON files** (`marketplace.json`, every `plugin.json`, `index.html`): clobber with dev unconditionally. `plugin.json` versions are dev >= master by construction; `marketplace.json` is regenerated from them anyway (`scripts/regen_marketplace.py` after the merge); `index.html` is a post-publish regen.
+- **Non-generated text** (`.gitignore`, `CLAUDE.md`, `*.md`, `*.py`, etc.): first run `git diff dev origin/master -- <file>` and inspect the `+` lines (content master has that dev LACKS). If any are important, **back-port them to dev first** (commit on dev), then clobber with dev. If there are no master-only lines, dev is a superset — clobber with dev directly, no loss. (In practice these conflicts are usually textual-only: dev already contains master's content via a different commit, so the `+` set is empty and the clobber is safe.)
+- **`published: false` plugins** (agent-glue, workflow-kit): dev-only by design and filtered out of `marketplace.json` by the regenerator, so their divergence never reaches consumers — take dev and move on; don't agonize over their conflicts.
+
+Mechanics: `git checkout master && git merge --no-commit --no-ff dev`, resolve each conflict per the rules above (`git checkout --theirs <file>` takes dev while on master; `git rm` honors a dev-side delete), then `python scripts/regen_marketplace.py`, run `pytest tests/bootstrap` + `regen_marketplace.py --check`, commit the merge, and push master. The back-port-then-clobber rule is what makes the wholesale "dev wins" resolution safe rather than blind.
 
 ### Pre-publish validation (default)
 
@@ -465,6 +475,11 @@ claude_md:
           macOS/Linux: ~/.claude/plugins/data/<marketplace>/<plugin>/.venv/bin/python
         The path does not change across plugin versions and resolves correctly from any cwd.
         Use it directly in SKILL.md examples instead of `uv run python`.
+
+        Script-side self-defense (the code that consumes a shared lib) is a plugin
+        implementation detail -- see plugins/CLAUDE.md "Shared-lib scripts must re-exec
+        under the plugin venv" for the reexec_under_plugin_venv rule that makes a
+        standalone script invocation-method-agnostic.
       origin: "Surfaced 2026-05-05 in unreal-kit fix-up-redirectors -- broke Phase 2 with ModuleNotFoundError: yaml. Fixed in 0.9.4."
       added: "2026-05-05"
     - id: manifest_changes_need_version_bump

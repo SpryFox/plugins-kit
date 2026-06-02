@@ -75,6 +75,16 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+# Plugins define their own bootstrap-provisioned venv and must run under it
+# preferentially. A bare `python` or `uv run` invocation lands in a different
+# environment with no shared-libs .pth, so re-exec under the provisioned venv
+# before importing bootstrap_lib below -- a no-op when already there. The guard
+# is the vendored, stdlib-only bootstrap_guard next to this script; importing it
+# can never itself trip the missing-bootstrap_lib failure.
+from bootstrap_guard import reexec_under_plugin_venv  # noqa: E402
+
+reexec_under_plugin_venv("git-kit")
+
 try:
     from bootstrap_lib.path_repair import repair_path  # noqa: E402
 

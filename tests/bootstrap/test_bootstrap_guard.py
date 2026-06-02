@@ -95,3 +95,85 @@ class TestVendoredCopies:
             if not filecmp.cmp(_CANON, vendored, shallow=False):
                 diffs.append(str(vendored.relative_to(_REPO_ROOT)))
         assert not diffs, f"vendored bootstrap_guard.py diverged from canonical: {diffs}"
+
+
+class TestReexecUnderPluginVenv:
+    """reexec_under_plugin_venv() re-execs the process under the plugin's
+    bootstrap-provisioned venv so a script invoked by a bare python / uv run
+    still gains the shared-lib .pth. It must be a safe no-op in every case
+    where re-exec is unnecessary or impossible (loop guard, missing venv,
+    already-active venv)."""
+
+    def _fake_venv_python(self, tmp_path, plugin, marketplace="plugins-kit"):
+        base = (tmp_path / ".claude" / "plugins" / "data" / marketplace / plugin
+                / ".venv" / "Scripts")
+        base.mkdir(parents=True)
+        py = base / "python.exe"
+        py.write_text("", encoding="utf-8")
+        return py
+
+    def test_plugin_venv_python_found(self, tmp_path, monkeypatch):
+        mod = _load_canon()
+        monkeypatch.setattr(mod.os.path, "expanduser", lambda p: str(tmp_path))
+        py = self._fake_venv_python(tmp_path, "p4-kit")
+        got = mod.plugin_venv_python("p4-kit")
+        assert got is not None and got.resolve() == py.resolve()
+
+    def test_plugin_venv_python_missing(self, tmp_path, monkeypatch):
+        mod = _load_canon()
+        monkeypatch.setattr(mod.os.path, "expanduser", lambda p: str(tmp_path))
+        assert mod.plugin_venv_python("p4-kit") is None
+
+    def test_reexec_noop_when_guard_env_set(self, tmp_path, monkeypatch):
+        mod = _load_canon()
+        monkeypatch.setattr(mod.os.path, "expanduser", lambda p: str(tmp_path))
+        self._fake_venv_python(tmp_path, "p4-kit")
+        monkeypatch.setenv(mod._REEXEC_GUARD_ENV, "1")
+        called = []
+        monkeypatch.setattr(mod.os, "execv", lambda *a: called.append(a))
+        mod.reexec_under_plugin_venv("p4-kit")
+        assert called == []
+
+    def test_reexec_noop_when_venv_missing(self, tmp_path, monkeypatch):
+        mod = _load_canon()
+        monkeypatch.setattr(mod.os.path, "expanduser", lambda p: str(tmp_path))
+        monkeypatch.delenv(mod._REEXEC_GUARD_ENV, raising=False)
+        called = []
+        monkeypatch.setattr(mod.os, "execv", lambda *a: called.append(a))
+        mod.reexec_under_plugin_venv("p4-kit")
+        assert called == []
+
+    def test_reexec_noop_when_already_under_venv(self, tmp_path, monkeypatch):
+        mod = _load_canon()
+        monkeypatch.setattr(mod.os.path, "expanduser", lambda p: str(tmp_path))
+        py = self._fake_venv_python(tmp_path, "p4-kit")
+        monkeypatch.delenv(mod._REEXEC_GUARD_ENV, raising=False)
+        monkeypatch.setattr(mod.sys, "executable", str(py))
+        called = []
+        monkeypatch.setattr(mod.os, "execv", lambda *a: called.append(a))
+        mod.reexec_under_plugin_venv("p4-kit")
+        assert called == []
+
+    def test_reexec_execs_into_venv_when_needed(self, tmp_path, monkeypatch):
+        import pytest
+        mod = _load_canon()
+        monkeypatch.setattr(mod.os.path, "expanduser", lambda p: str(tmp_path))
+        py = self._fake_venv_python(tmp_path, "p4-kit")
+        monkeypatch.setattr(mod.sys, "executable", str(tmp_path / "other.exe"))
+        monkeypatch.setattr(mod.sys, "argv", ["script.py", "152779"])
+        monkeypatch.delenv(mod._REEXEC_GUARD_ENV, raising=False)
+        captured = {}
+
+        def fake_execv(path, args):
+            captured["path"] = path
+            captured["args"] = args
+            # os.execv replaces the process; simulate that the call terminates here.
+            raise SystemExit(0)
+
+        monkeypatch.setattr(mod.os, "execv", fake_execv)
+        with pytest.raises(SystemExit):
+            mod.reexec_under_plugin_venv("p4-kit")
+        assert captured["path"] == str(py)
+        assert captured["args"] == [str(py), "script.py", "152779"]
+        # The loop-guard env flag is set before handing off to the new interpreter.
+        assert mod.os.environ.get(mod._REEXEC_GUARD_ENV) == "1"

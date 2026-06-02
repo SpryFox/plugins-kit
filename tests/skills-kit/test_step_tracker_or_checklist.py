@@ -21,12 +21,14 @@ from pathlib import Path
 
 import pytest
 
-from _shared import (
+# _shared/audit were extracted into skills_kit_lib (on sys.path via pyproject.toml pythonpath).
+from skills_kit_lib.markdown_heuristics import (
     has_step_tracker_invocation,
     has_tickbox_list,
+    parse_body,
+    parse_frontmatter,
 )
-from audit import check_technique_skill
-from _shared import parse_body, parse_frontmatter
+from skills_kit_lib.audit import check_technique_skill
 
 
 SKILL_HEADER = """---

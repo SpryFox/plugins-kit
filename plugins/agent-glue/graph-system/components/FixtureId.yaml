@@ -1,0 +1,6 @@
+kind: FixtureId
+description: Identifier for a Fixture entity, unique within its cohort. Matches the filename stem (`<fixture_id>.yaml`).
+fields:
+  id:
+    type: string
+    required: true

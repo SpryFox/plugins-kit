@@ -8,18 +8,29 @@ self-correcting-loop dogfood: the validator must catch the failures the
 framework documents.
 """
 
-from schemas import (
+# schemas/_shared were extracted into skills_kit_lib (on sys.path via
+# pyproject.toml [tool.pytest.ini_options].pythonpath = "plugins/skills-kit").
+from skills_kit_lib.schemas.skill_types import (
     REFERENCE_SKILL_SCHEMA,
     PATTERN_SKILL_SCHEMA,
     TECHNIQUE_SKILL_SCHEMA,
     DISCIPLINE_SKILL_SCHEMA,
     DOMAIN_SKILL_SCHEMA,
-    CLAUDE_MD_SCHEMA,
+)
+from skills_kit_lib.schemas.claude_md import CLAUDE_MD_SCHEMA
+from skills_kit_lib.schema_registry import (
     SCHEMAS_BY_ROOT,
     detect_mixed_type_yaml,
     resolve_schema,
-    validate,
 )
+from skills_kit_lib.schema_engine import validate
+
+# The "at least one fact / gotcha / example" requirement moved OUT of the schema
+# (facts: is now optional there, because facts may live nested in reference_skill:
+# OR as a top-level portable facts: unit) and INTO an audit-time cross-source rule.
+import yaml
+
+from skills_kit_lib.audit import FAIL, check_facts_cross_rules
 
 
 def _has_fail_at(fails, path_substring: str) -> bool:
@@ -28,6 +39,15 @@ def _has_fail_at(fails, path_substring: str) -> bool:
 
 def _has_fail_with_msg(fails, msg_substring: str) -> bool:
     return any(msg_substring in msg for _, msg in fails)
+
+
+def _ref_body(data: dict) -> str:
+    """Wrap a reference_skill dict as a SKILL.md body with a fenced yaml block."""
+    return "```yaml\n" + yaml.safe_dump(data, sort_keys=False) + "```\n"
+
+
+def _fail_rows(results):
+    return [r for r in results if r.verdict == FAIL]
 
 
 # ---------------------------------------------------------------------------
@@ -41,9 +61,11 @@ class TestReferenceSkill:
         assert fails == [], f"unexpected fails: {fails}"
 
     def test_missing_facts_fails(self, minimal_reference_skill, make_invalid):
+        # Enforced at audit time (cross-source), not by the schema: a reference
+        # skill must carry at least one fact somewhere (nested or top-level unit).
         bad = make_invalid(minimal_reference_skill, lambda d: d["reference_skill"].pop("facts"))
-        fails, _ = validate(bad, REFERENCE_SKILL_SCHEMA)
-        assert _has_fail_at(fails, "reference_skill.facts")
+        results = check_facts_cross_rules(_ref_body(bad), "reference-skill")
+        assert any("facts present" in r.row for r in _fail_rows(results))
 
     def test_empty_facts_list_fails_min_len(self, minimal_reference_skill, make_invalid):
         bad = make_invalid(minimal_reference_skill, lambda d: d["reference_skill"].update({"facts": []}))
@@ -59,20 +81,22 @@ class TestReferenceSkill:
         assert _has_fail_at(fails, "keywords")
 
     def test_facts_must_include_gotcha(self, minimal_reference_skill, make_invalid):
+        # Cross-source audit rule: at least one fact must carry a gotchas list.
         bad = make_invalid(
             minimal_reference_skill,
             lambda d: d["reference_skill"]["facts"][0].pop("gotchas"),
         )
-        fails, _ = validate(bad, REFERENCE_SKILL_SCHEMA)
-        assert _has_fail_with_msg(fails, "gotchas")
+        results = check_facts_cross_rules(_ref_body(bad), "reference-skill")
+        assert any("gotchas" in r.row for r in _fail_rows(results))
 
     def test_facts_must_include_example(self, minimal_reference_skill, make_invalid):
+        # Cross-source audit rule: at least one fact must carry an example block.
         bad = make_invalid(
             minimal_reference_skill,
             lambda d: d["reference_skill"]["facts"][0].pop("example"),
         )
-        fails, _ = validate(bad, REFERENCE_SKILL_SCHEMA)
-        assert _has_fail_with_msg(fails, "example")
+        results = check_facts_cross_rules(_ref_body(bad), "reference-skill")
+        assert any("example" in r.row for r in _fail_rows(results))
 
     def test_forbidden_key_rules_fails(self, minimal_reference_skill, make_invalid):
         bad = make_invalid(

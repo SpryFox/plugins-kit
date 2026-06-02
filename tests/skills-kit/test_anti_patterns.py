@@ -8,12 +8,13 @@ time -- a list of bullets without rationalization counters cannot survive
 pressure testing.
 """
 
-from schemas import (
+# schemas was extracted into skills_kit_lib (on sys.path via pyproject.toml pythonpath).
+from skills_kit_lib.schemas.skill_types import (
     TECHNIQUE_SKILL_SCHEMA,
     DISCIPLINE_SKILL_SCHEMA,
     REFERENCE_SKILL_SCHEMA,
-    validate,
 )
+from skills_kit_lib.schema_engine import validate
 
 
 def _full_anti_pattern() -> dict:

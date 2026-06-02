@@ -3,10 +3,10 @@ _schema_version: 1
 name: skill-audit
 author: christina
 skill-type: audit-skill
-description: Use when md-audit dispatches a SKILL.md audit -- contract, cohesion, or roster/hierarchy inventory. Do NOT use for CLAUDE.md (use claude-md-audit).
+description: Use when md-audit dispatches a SKILL.md audit (contract, cohesion, roster/hierarchy), fanning multi-file runs via the Workflow tool. Do NOT use for CLAUDE.md.
 disable-model-invocation: true
 user-invocable: false
-argument-hint: "[ (none) | list | <path> | <numbers> | roster [path|-] | hierarchy [path|-] ]"
+argument-hint: "[ (none) | list | <path> | <numbers> [fast] | roster [path|-] | hierarchy [path|-] ]"
 ---
 
 # Skill Audit
@@ -185,40 +185,35 @@ audit_skill:
       keywords: ["audit", "single-file audit", "namesake operation", "dispatch", "compliance verdict"]
       goal: "For each target SKILL.md, run mechanical and judgment-based checks against the framework's contract, classify findings into the taxonomy, dispatch remediations to AUTO/DISCUSS/SPECIAL buckets, and emit a per-file compliance verdict (COMPLIANT or NON-COMPLIANT)."
       preconditions:
-        - "audit.py is reachable (mechanical schema validator)."
-        - "cohesion-principles is loadable (cohesion-principle reference)."
+        - "The mechanical validator (skills_kit_lib.audit) is reachable via the plugin venv."
+        - "The skill-md cohesion recap (CCP / CRP / ADP / decision-provenance) is embedded in the DETECT step and the detect.js lane prompt; no separate cohesion-principles load is required for the audit path."
+        - "workflow/detect.js and workflow/remediate.js are present (used for the 2+-file fan-out)."
       steps:
         - n: 1
-          action: "Resolve the audit target set from $ARGUMENTS. Empty -> cwd/SKILL.md if present, else stop. 'list' -> emit numbered list via discover.py and stop. Integers -> map to paths from last list output. Path -> use it directly."
+          action: "Resolve the audit target set from $ARGUMENTS. Empty -> cwd/SKILL.md if present, else stop. 'list' -> emit numbered list via discover.py and stop. Integers -> map to paths from last list output. Path -> use it directly. Strip any non-interactive token ('fast', '--fast', '--yes', '-y') first and set non_interactive accordingly (also set it if the user's prose expresses non-interactive intent, e.g. 'just apply everything, don't ask')."
           tool: "discover.py"
           input: "uv run python ${CLAUDE_PLUGIN_ROOT}/skills/skill-audit/scripts/discover.py [--json]"
-          expected: "A resolved list of SKILL.md file paths to audit."
+          expected: "A resolved list of SKILL.md file paths + non_interactive flag."
           on_failure: "If no target resolves, surface cwd and stop. Do not improvise a target."
         - n: 2
-          action: "Load cohesion-principles into context (the cohesion-principles audit rules)."
-          tool: "Read"
-          input: "skills-kit:cohesion-principles -- the content_allocation framework"
-          expected: "CCP / CRP / ADP placement rules and per-artifact audit criteria are now loaded."
+          action: "DETECT phase (before-Q&A). Choose execution mode by file count -- this threshold equalizes the Workflow tool's per-run overhead. ONE file: audit inline in the main loop (run the mechanical validator; apply the embedded skill-md cohesion recap; classify each finding into taxonomy + bucket). TWO OR MORE files: call the Workflow tool with scriptPath ${CLAUDE_PLUGIN_ROOT}/skills/skill-audit/workflow/detect.js and args = { files:[{path}], refs:{pluginRoot, venvPython} }. The workflow fans one lane out per file and returns { perFile, totals }. Detection only -- no file is edited in this phase. Cohesion recap (used by both the inline path and the detect.js lane): CCP = SKILL.md content belongs here only when it changes with the skill's contract (project-convention content -> co-located CLAUDE.md, taxonomy F); decision-provenance Dec-N / audit-finding logs are a CCP FAIL (taxonomy I, AUTO); CRP = SKILL.md is read together, references/ load on-demand for distinct sub-tasks, size is a signal not a verdict (taxonomy G/J); ADP = references/*.md are one hop deep and must not cite SKILL.md (back-reference FAIL, taxonomy H, AUTO)."
+          tool: "Workflow | inline"
+          input: "detect.js args.refs: pluginRoot=${CLAUDE_PLUGIN_ROOT}; venvPython=<plugin venv python>. The validator is run as: (cd ${CLAUDE_PLUGIN_ROOT} && <venvPython> -m skills_kit_lib.audit <path> --json)."
+          expected: "Structured per-file findings (group, severity, criterion, message, line, taxonomy, bucket, remediation) + per-file verdict."
+          on_failure: "If the validator is unavailable, mark the Schema group JUDGMENT ('validator unavailable') and continue with cohesion judgment only -- never fail a file for that."
         - n: 3
-          action: "For each target, run audit.py to get mechanical schema validation findings."
-          tool: "audit.py"
-          input: "uv run python ${CLAUDE_PLUGIN_ROOT}/../skill-authoring/scripts/audit.py <path> --json"
-          expected: "Per-row PASS / FAIL / JUDGMENT-REQUIRED verdicts for universal rules, YAML schema, type-specific checks, and mixed-type signal."
-          on_failure: "If pyyaml is unavailable, mark Schema group as 'unavailable' and proceed with cohesion-principle judgment only."
+          action: "Render the per-file report (output_template) from the collected findings: per-file verdict blocks followed by an overall summary with bucket counts. This is the before-Q&A surface the user reads."
+          expected: "Markdown report in the user's chat with compliance verdicts and AUTO/DISCUSS/SPECIAL counts."
         - n: 4
-          action: "For each target, read the SKILL.md and apply cohesion-principle judgment from cohesion-principles per_artifact_role.skill_md.audit_rules. Output findings under CCP / CRP / ADP / Hygiene groups."
-          expected: "Judgment-based finding list per file."
+          action: "Q&A GATE. If non_interactive is FALSE (default): for each DISCUSS and SPECIAL finding, ask the user for a decision (apply as-proposed / skip / a refined instruction). Surface one decision at a time or a tight grouped set; do not dump a giant list. For category C (wrong skill-type), this is where classify.py is run to confirm the suggestion before any type change. If non_interactive is TRUE: infer each decision from the taxonomy's default_remediation plus the file content and proceed WITHOUT prompting -- record each inferred decision in the final summary. AUTO findings need no decision (they apply by definition)."
+          expected: "A decision (explicit or inferred) attached to every AUTO/DISCUSS/SPECIAL finding."
         - n: 5
-          action: "Classify every finding into a taxonomy category (A-J, or K for SPECIAL). For each category, assign the bucket per the taxonomy's bucket field."
-          expected: "Findings sorted into AUTO / DISCUSS / SPECIAL buckets."
+          action: "REMEDIATE phase (after-Q&A). Assemble per-file remediation lists from the decided findings (AUTO=apply; DISCUSS/SPECIAL=per decision; drop skips). Choose mode by how many FILES carry remediation work. ONE file: apply inline with Edit. TWO OR MORE files: call the Workflow tool with scriptPath ${CLAUDE_PLUGIN_ROOT}/skills/skill-audit/workflow/remediate.js and args = { perFile:[{path,remediations:[{criterion,taxonomy,bucket,line,instruction,decision}]}] }. One lane per file (disjoint skills never conflict; taxonomy H edits a references/*.md and taxonomy I moves Dec-N into the co-located CLAUDE.md, both under the same skill dir)."
+          tool: "Workflow | inline"
+          expected: "Edits applied to the target files; per-file applied/skipped/failed summary."
         - n: 6
-          action: "Dispatch in parallel: AUTO findings to a background agent with per-finding payloads; DISCUSS + SPECIAL findings to a foreground Q&A round. Do not block one on the other."
-          tool: "Agent"
-          input: "Per-finding payloads with file:line, category, default_remediation. For DISCUSS, include the agent's recommendation."
-          expected: "Background agent applies AUTO edits; foreground Q&A collects user decisions."
-        - n: 7
-          action: "Render the per-file report (output_template). When auditing multiple files, render the per-file blocks followed by an overall summary."
-          expected: "Markdown report in the user's chat with compliance verdicts and finding-bucket summaries."
+          action: "Render the final summary: what was applied per file, what was skipped, any failures, and the bucket totals. Remind the user that re-running the audit should now reproduce a clean (or reduced-FAIL) verdict -- detection and remediation are separate passes, so the re-run is the verification step."
+          expected: "Closing summary; user can re-run /md-audit skill to verify FAILs cleared."
       output_template: |
         ## <skill name> (<skill-type>) -- <file path>
 
@@ -352,6 +347,7 @@ Per-skill audit (the namesake procedure):
 - `list` -- show numbered list of SKILL.md files under cwd; do not audit.
 - `<path>` -- audit a specific SKILL.md.
 - `<numbers>` -- audit files by index from the most recent `list` output (e.g. `3 7`).
+- `fast` / `--fast` / `--yes` / `-y` -- non-interactive: skip the Q&A round and infer every DISCUSS/SPECIAL decision. Combine with any selector, e.g. `/md-audit skill 3 7 fast`. Prose intent ("audit these and just apply everything, don't ask me") sets the same flag.
 
 Corpus-wide reports:
 
@@ -367,6 +363,32 @@ Typical workflows:
 - *Audit one skill*: `/skill-audit list` to see what's nearby, then `/skill-audit 3` to audit by index.
 - *Inventory all skills*: `/skill-audit roster` -- scan the markdown to spot odd entries.
 - *Browse with detail*: `/skill-audit hierarchy` -- open the HTML to see every frontmatter key per skill.
+
+## Workflow orchestration
+
+The per-skill audit runs in two phases split by an interactive Q&A gate, and uses the Workflow tool to fan the work out across files. **Invoking this skill authorizes the Workflow-tool calls described below** (the skill's instructions are the opt-in; do not re-prompt the user for permission to orchestrate). Roster and hierarchy are script-based inventory and do not use the Workflow tool.
+
+```
+resolve (main loop)
+  -> DETECT  (before-Q&A)  : 1 file inline | 2+ files via workflow/detect.js   -> structured findings
+  -> render report (main loop)
+  -> Q&A GATE (main loop)  : interactive decisions | inferred when non-interactive
+  -> REMEDIATE (after-Q&A) : 1 file inline | 2+ files via workflow/remediate.js -> edits applied
+  -> final summary + "re-run to verify"
+```
+
+**Multi-file threshold (the overhead equalizer).** The Workflow tool has real per-run overhead (background orchestration, agent spin-up). For a single file that overhead is not worth it, so a 1-file audit runs inline in the main loop. At 2+ files the parallel fan-out pays for itself, so detection (and, separately, remediation) go through the workflow scripts. Detection and remediation are **always separate passes** even in workflow mode -- the interactive Q&A sits between them, and a background workflow cannot ask the user anything. This split is also what preserves the `audit_then_self_remediate` anti-pattern: re-running the audit reproduces the same findings because nothing was remediated during detection.
+
+**The two workflow scripts** (hand-authored, shipped as skill assets):
+
+- `workflow/detect.js` -- before-Q&A. One lane per SKILL.md: run the mechanical validator -> apply the embedded CCP/CRP/ADP/decision-provenance recap -> classify. Returns `{ perFile, totals }`. No edits.
+- `workflow/remediate.js` -- after-Q&A. One lane per file (disjoint skills, no conflicts): apply the decided edits (some touch a sibling `references/*.md` or the skill's co-located CLAUDE.md). Returns `{ perFile, summary }`.
+
+Both accept `args` as an object or JSON string. Pass absolute `refs` paths (they run from the session cwd, not the skill dir).
+
+## Non-interactive mode
+
+When the non-interactive flag is set (argument token or expressed intent), the Q&A gate does not prompt. Instead, infer each DISCUSS/SPECIAL decision from the taxonomy's `default_remediation` plus the file content, apply them, and **list every inferred decision in the final summary** so the user can see and reverse them. AUTO findings apply regardless. FAIL findings are still gated by the verdict; non-interactive only changes how the *decisions* are obtained, not the audit contract.
 
 ## Decision rules (per-skill audit verdict)
 

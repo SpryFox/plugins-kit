@@ -1,6 +1,7 @@
 """Tests for venv_check.py — Python venv validation."""
 
 import os
+import shlex
 import stat
 import subprocess
 from unittest.mock import patch
@@ -13,6 +14,24 @@ from bootstrap_lib.venv_check import (
     export_venv_env_var,
     venv_env_var_name,
 )
+
+
+def _sourced_value(env_file, var):
+    """Return the value of `export <var>=...` from an env file, parsed the way a
+    POSIX shell would (shlex implements shell quote-removal/word-splitting).
+
+    Used instead of spawning `bash -c 'source ...'` because the `bash` on PATH
+    may be WSL, which cannot source a Windows-path file or see a Windows venv --
+    so a real-shell round-trip is unreliable here. shlex.split tests the same
+    property the round-trip did: a correctly quoted path does not split on spaces.
+    """
+    prefix = f"export {var}="
+    for line in env_file.read_text().splitlines():
+        line = line.strip()
+        if line.startswith(prefix):
+            parts = shlex.split(line[len(prefix):])
+            return parts[0] if parts else ""
+    return None
 
 
 class TestCheckVenv:
@@ -208,10 +227,9 @@ class TestExportVenvEnvVar:
         line = env_file.read_text().strip()
         # shlex.quote wraps in single quotes when spaces are present
         assert "'" in line
-        # Round-trip: spawn a shell sourcing the file and read the var back
-        result = subprocess.run(
-            ["bash", "-c", f"source {env_file}; echo \"$SPACE_PLUGIN_VENV\""],
-            capture_output=True, text=True, check=True,
-        )
-        assert "has space" in result.stdout
-        assert os.path.isfile(result.stdout.strip())
+        # Parse the export the way a POSIX shell would: the quoted path must come
+        # back as ONE token (space preserved), resolving to the real venv python.
+        value = _sourced_value(env_file, "SPACE_PLUGIN_VENV")
+        assert value is not None
+        assert "has space" in value
+        assert os.path.isfile(value)

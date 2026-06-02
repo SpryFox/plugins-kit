@@ -13,12 +13,32 @@ BOOTSTRAP_ROOT = os.path.normpath(
 ENGINE_SCRIPT = os.path.join(BOOTSTRAP_ROOT, "engine", "bootstrap_engine.py")
 
 
-def run_engine(data_dir, plugin_root=BOOTSTRAP_ROOT):
-    """Run the bootstrap engine as a subprocess."""
+def run_engine(data_dir, plugin_root=BOOTSTRAP_ROOT, home=None):
+    """Run the bootstrap engine as a subprocess.
+
+    When ``home`` is given, HOME/USERPROFILE are overridden for the subprocess
+    so the engine resolves the production registry
+    (``$HOME/.claude/plugins/installed_plugins.json``, see engine.py) under an
+    isolated, empty home instead of the developer's real one. Without this, a
+    populated dev box makes the engine enumerate and provision real installed
+    plugins, so "silent on success" assertions fail off-CI even though the code
+    is correct (CI passes either way because its home has no installed plugins).
+    """
+    env = dict(os.environ)
+    if home is not None:
+        env["HOME"] = home
+        env["USERPROFILE"] = home
+        # Pre-satisfy self_setup.path_entries (~/.local/bin) in the live PATH so
+        # check_path_entry passes (a gated ok) instead of performing+reporting a
+        # PATH add -- which would emit an action line AND mutate .bashrc / the
+        # Windows User PATH registry on every run.
+        local_bin = os.path.join(home, ".local", "bin")
+        env["PATH"] = local_bin + os.pathsep + env.get("PATH", "")
     return subprocess.run(
         [sys.executable, ENGINE_SCRIPT, "--plugin-root", plugin_root, "--data-dir", data_dir],
         capture_output=True,
         text=True,
+        env=env,
     )
 
 
@@ -49,10 +69,17 @@ class TestEngineIntegration:
         (fake_root / "bootstrap.json").write_text(json.dumps(manifest))
         return str(fake_root)
 
+    @staticmethod
+    def _isolated_home(tmp_path):
+        """An empty home so the engine sees no production installed_plugins.json."""
+        home = tmp_path / "home"
+        home.mkdir()
+        return str(home)
+
     def test_first_run_silent_on_success(self, data_dir, tmp_path):
         """With log_success disabled, successful runs produce no output."""
         fake_root = self._make_minimal_root(tmp_path)
-        result = run_engine(data_dir, plugin_root=fake_root)
+        result = run_engine(data_dir, plugin_root=fake_root, home=self._isolated_home(tmp_path))
         assert result.returncode == 0
         # No stdout when everything succeeds and success logging is off
         assert result.stdout.strip() == ""
@@ -60,8 +87,9 @@ class TestEngineIntegration:
     def test_cached_run_silent(self, data_dir, tmp_path):
         """Second run should hit cache — no output with success logging off."""
         fake_root = self._make_minimal_root(tmp_path)
-        run_engine(data_dir, plugin_root=fake_root)  # First run populates cache
-        result = run_engine(data_dir, plugin_root=fake_root)  # Second run hits cache
+        home = self._isolated_home(tmp_path)
+        run_engine(data_dir, plugin_root=fake_root, home=home)  # First run populates cache
+        result = run_engine(data_dir, plugin_root=fake_root, home=home)  # Second run hits cache
         assert result.returncode == 0
         assert result.stdout.strip() == ""
 
