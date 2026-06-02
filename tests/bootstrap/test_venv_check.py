@@ -123,6 +123,11 @@ class TestVenvEnvVarName:
         # Not kebab, but just in case — upper + replace is idempotent.
         assert venv_env_var_name("Foo-Bar") == "FOO_BAR_VENV"
 
+    def test_dot_sanitized_to_underscore(self):
+        # Any char that isn't a valid shell identifier char must become an
+        # underscore so the resulting export line is valid.
+        assert venv_env_var_name("foo.bar") == "FOO_BAR_VENV"
+
 
 class TestExportVenvEnvVar:
     def _make_venv(self, data_dir):

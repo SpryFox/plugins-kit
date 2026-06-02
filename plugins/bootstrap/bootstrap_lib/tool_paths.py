@@ -17,6 +17,7 @@ State file:
 
 import json
 import os
+import re
 import tempfile
 from datetime import datetime, timezone
 
@@ -142,15 +143,22 @@ def all_paths(data_dir):
 def tool_env_var_name(name):
     """Compute the env var name for a recorded tool.
 
-    Uppercases the tool name and swaps hyphens for underscores. Mirrors
-    the convention used by bootstrap_lib.venv_check.venv_env_var_name.
+    Uppercases the tool name and replaces every character that is not a
+    valid POSIX shell identifier character (anything other than A-Z, 0-9,
+    or underscore) with an underscore. Tool names are derived from binary
+    filenames, which can contain dots (e.g. ``draw.io``); a bare dot would
+    produce ``BOOTSTRAP_BIN_DRAW.IO``, which is not a valid identifier and
+    fails to ``export`` in the shell. Mirrors the convention used by
+    bootstrap_lib.venv_check.venv_env_var_name.
 
     >>> tool_env_var_name("git")
     'BOOTSTRAP_BIN_GIT'
     >>> tool_env_var_name("github-cli")
     'BOOTSTRAP_BIN_GITHUB_CLI'
+    >>> tool_env_var_name("draw.io")
+    'BOOTSTRAP_BIN_DRAW_IO'
     """
-    return "BOOTSTRAP_BIN_" + name.upper().replace("-", "_")
+    return "BOOTSTRAP_BIN_" + re.sub(r"[^A-Z0-9_]", "_", name.upper())
 
 
 def export_tool_env_vars(data_dir):
