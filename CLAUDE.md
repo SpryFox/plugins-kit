@@ -177,6 +177,16 @@ Some plugins live on `dev` for in-development work and must not reach consumers 
 
 When you see commits for a dev-only plugin in `git log origin/master..origin/dev`, that's still gotcha 1 territory — branch from master, cherry-pick only the publish-ready commits, and leave the dev-only commits on `dev`. The regenerator is a backstop for the marketplace listing, not a substitute for picking the right commits to merge.
 
+### dev -> master reconcile: conflict-resolution policy
+
+A full `dev`/`master` reconcile (the "publish: reconcile master with dev" release) conflicts because both branches independently edit the same files (marketplace.json, plugin.json versions, CLAUDE.md, .gitignore, skills). `dev` is the source of truth for a reconcile — master's divergent commits are prior publish/reconcile artifacts that `dev` supersedes. Resolve **toward dev**, with one guard that prevents silently dropping a master-only fix:
+
+- **Generated / JSON files** (`marketplace.json`, every `plugin.json`, `index.html`): clobber with dev unconditionally. `plugin.json` versions are dev >= master by construction; `marketplace.json` is regenerated from them anyway (`scripts/regen_marketplace.py` after the merge); `index.html` is a post-publish regen.
+- **Non-generated text** (`.gitignore`, `CLAUDE.md`, `*.md`, `*.py`, etc.): first run `git diff dev origin/master -- <file>` and inspect the `+` lines (content master has that dev LACKS). If any are important, **back-port them to dev first** (commit on dev), then clobber with dev. If there are no master-only lines, dev is a superset — clobber with dev directly, no loss. (In practice these conflicts are usually textual-only: dev already contains master's content via a different commit, so the `+` set is empty and the clobber is safe.)
+- **`published: false` plugins** (agent-glue, workflow-kit): dev-only by design and filtered out of `marketplace.json` by the regenerator, so their divergence never reaches consumers — take dev and move on; don't agonize over their conflicts.
+
+Mechanics: `git checkout master && git merge --no-commit --no-ff dev`, resolve each conflict per the rules above (`git checkout --theirs <file>` takes dev while on master; `git rm` honors a dev-side delete), then `python scripts/regen_marketplace.py`, run `pytest tests/bootstrap` + `regen_marketplace.py --check`, commit the merge, and push master. The back-port-then-clobber rule is what makes the wholesale "dev wins" resolution safe rather than blind.
+
 ### Pre-publish validation (default)
 
 **Default gate: before any publish, smoke-test the dev working copy with `claudx`.** `claudx` (defined in `~/.bashrc`) launches a `claude` session loading every `plugins/<name>` dir via one `--plugin-dir` each, so the session runs each plugin's skills/hooks/engine **code** straight from disk — no cache, no `installed_plugins.json` change, reverts on exit. Run it, exercise the changed surface (invoke the skill, trigger the hook, run the command), confirm it behaves, then publish.
