@@ -40,10 +40,9 @@ Route by the artifact under audit, then load that member's SKILL.md and run its 
 
 | You want to audit… | Dispatch | Member (loaded by md-audit) | What it does |
 |---|---|---|---|
-| a **SKILL.md** (contract + cohesion) | `/md-audit skill <path>` | `skill-audit` | per-skill contract + CCP/CRP/ADP; also `roster` / `hierarchy` corpus inventory |
+| a **SKILL.md** (contract + cohesion) | `/md-audit skill <path>` | `skill-audit` | per-skill contract + CCP/CRP/ADP; fans multi-file runs via the Workflow tool; also `roster` / `hierarchy` corpus inventory |
 | a **CLAUDE.md** (multi-file capable) | `/md-audit claude-md <path>` | `claude-md-audit` | CCP/CRP/ADP + hygiene + optional `claude_md:` schema; fans multi-file runs via the Workflow tool |
-| a **CLAUDE.md** (single-loop, no fan-out) | `/md-audit claude-md <path> --noworkflow` | `claude-md-audit-noworkflow` | the preserved inline variant of the above |
-| **broken skill cross-references** | `/md-audit references [flags]` | `references-audit` | scans markdown for dangling `/skill` refs and unresolved `skill:` hard deps |
+| **broken skill cross-references** | `/md-audit references [flags]` | `references-audit` | scans markdown for dangling `/skill` refs and unresolved `skill:` hard deps; fans multi-file classify/remediate via the Workflow tool |
 
 To dispatch: read the member skill's `SKILL.md` (e.g. `skills/skill-audit/SKILL.md`) and follow its procedure, including running its scaffolding script via the plugin venv. The member keeps its full contract, taxonomy, and scripts; md-audit only chooses which one and feeds it the target.
 
@@ -73,7 +72,7 @@ domain_skill:
     summary: |
       Four member audits share one subject -- auditing md artifacts against the cohesion framework --
       and one shared framework (the audit-framework glossary + data model, owned here in references/).
-      They specialize by artifact: skill-audit for SKILL.md, claude-md-audit (+ its noworkflow variant)
+      They specialize by artifact: skill-audit for SKILL.md, claude-md-audit
       for CLAUDE.md, references-audit for cross-references. This is a broader union domain: /md-audit is
       a thin router that greets, then argument-dispatches into exactly one member and loads only that one.
       The members' standalone slash commands were collapsed into /md-audit; route, then load the member.
@@ -101,18 +100,14 @@ domain_skill:
         type: audit-skill
         ref: claude-md-audit
         keywords: [claude.md audit, cohesion, ccp crp adp, workflow fan-out, multi-file]
-      - name: claude-md-audit-noworkflow
-        type: audit-skill
-        ref: claude-md-audit-noworkflow
-        keywords: [claude.md audit, single-loop, no workflow, inline variant]
       - name: references-audit
         type: audit-skill
         ref: references-audit
-        keywords: [broken references, cross-reference scan, soft ref, hard dep]
+        keywords: [broken references, cross-reference scan, soft ref, hard dep, workflow fan-out]
 ```
 
 ## Cross-references
 
 - **Placement spine (what the audits judge against)** — `cohesion-principles` (in skills-kit).
 - **Authoring the same artifacts (sibling domain)** — `/md-authoring` (in skills-kit).
-- **Members (reached via `/md-audit <artifact>`)** — `skill-audit`, `claude-md-audit`, `claude-md-audit-noworkflow`, `references-audit`.
+- **Members (reached via `/md-audit <artifact>`)** — `skill-audit`, `claude-md-audit`, `references-audit`. All three fan multi-file runs out via the Workflow tool.

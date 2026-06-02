@@ -3,7 +3,7 @@ _schema_version: 1
 name: references-audit
 author: christina
 skill-type: audit-skill
-description: Use when md-audit dispatches a scan for broken skill cross-references. Do NOT use for single-skill validation (use skill-audit).
+description: Use when md-audit dispatches a scan for broken skill cross-references; fans multi-file runs via the Workflow tool. Do NOT use for single-skill validation.
 disable-model-invocation: true
 user-invocable: false
 argument-hint: "[--scope skills|references|md|all] [--path FILE] [--ignore-dir GLOB] [--ignore-file GLOB] [--verbose] [--json]"
@@ -183,26 +183,25 @@ audit_skill:
     - id: "classify_and_dispatch"
       name: "Categorize findings per taxonomy and dispatch by bucket"
       keywords: ["classify", "categorize", "taxonomy", "bucket", "dispatch", "AUTO DISCUSS SPECIAL"]
-      goal: "For each finding from the scan, assign exactly one category from A-K, route to its bucket (AUTO / DISCUSS / SPECIAL), and dispatch remediation appropriately. Background-agent execution for AUTO; foreground Q&A for DISCUSS + SPECIAL."
+      goal: "For each finding from the scan, assign exactly one category from A-K and its bucket (AUTO / DISCUSS / SPECIAL), then remediate in two phases split by a Q&A gate: classify (fan-out), gather DISCUSS/SPECIAL decisions, remediate (fan-out). The Workflow tool fans both the classification and the remediation out across files; the scan itself stays a single script run."
       preconditions:
         - "The scan procedure has completed; findings are available as JSON."
+        - "workflow/classify.js and workflow/remediate.js are present (used for the 2+-file fan-out)."
       steps:
         - n: 1
-          action: "For each finding, identify its detection signal and match to a taxonomy category (A-J). If none fits after deliberate attempt, classify as K (SPECIAL)."
-          expected: "Every finding has exactly one category assignment."
+          action: "Group the scanner's findings by containing file. CLASSIFY phase (no edits). Choose mode by how many FILES carry findings -- this threshold equalizes the Workflow tool's per-run overhead. ONE file: classify inline in the main loop (read the file around each cited line; match each finding to a taxonomy category A-K; assign its bucket; for AUTO compute the exact before/after). TWO OR MORE files: call the Workflow tool with scriptPath ${CLAUDE_PLUGIN_ROOT}/skills/references-audit/workflow/classify.js and args = { files:[{file, findings:[{severity,line,ref}]}], refs:{taxonomyDoc} }. One lane per file; returns { perFile, totals }. No edits in this phase."
+          tool: "Workflow | inline"
+          input: "classify.js args.refs: taxonomyDoc=${CLAUDE_PLUGIN_ROOT}/skills/references-audit/references/finding-taxonomy.md."
+          expected: "Every finding has exactly one category (A-K) + bucket (AUTO/DISCUSS/SPECIAL); AUTO findings carry before/after text."
         - n: 2
-          action: "Assign bucket per category (per the bucket field): AUTO when the category's default remediation is mechanical and unambiguous; DISCUSS when the category requires user input on a sub-case or mapping; SPECIAL for K."
-          expected: "Findings sorted into AUTO / DISCUSS / SPECIAL buckets."
+          action: "Q&A GATE. AUTO findings need no decision (mechanical -- apply by definition). For DISCUSS + SPECIAL findings, batch them all into ONE foreground question round (a numbered list with category, options, and a recommendation) and collect the user's decisions. Do NOT per-finding round-trip."
+          expected: "A decision attached to every DISCUSS/SPECIAL finding; AUTO findings ready to apply."
         - n: 3
-          action: "For the AUTO bucket, compute the exact before-text (read the cited file at the cited line) and the after-text (per the category's default_remediation). Bundle one payload per finding."
-          expected: "Per-finding edit payloads ready for the background agent."
+          action: "REMEDIATE phase (after-Q&A). Assemble per-file edit lists (AUTO=apply; DISCUSS/SPECIAL=per decision; drop skips). Choose mode by how many FILES carry edits. ONE file: apply inline with Edit. TWO OR MORE files: call the Workflow tool with scriptPath ${CLAUDE_PLUGIN_ROOT}/skills/references-audit/workflow/remediate.js and args = { perFile:[{file, edits:[{category,bucket,line,before,after,instruction,decision}]}] }. One lane per file (disjoint files never conflict)."
+          tool: "Workflow | inline"
+          expected: "Edits applied; per-file applied/skipped/failed summary."
         - n: 4
-          action: "Dispatch in parallel -- launch a single background agent for the AUTO bucket (Skill tool with the brief template); open foreground Q&A for DISCUSS + SPECIAL findings. Do not block one on the other."
-          tool: "Agent"
-          input: "Background-agent brief template (see references/finding-taxonomy.md, 'Background-agent brief template' section)."
-          expected: "Background agent applies AUTO edits; foreground Q&A collects user decisions for DISCUSS/SPECIAL."
-        - n: 5
-          action: "After both return, merge edits and re-run the scan procedure. Iterate only on newly-surfaced findings (do not re-classify already-resolved ones)."
+          action: "Re-run the scan procedure to verify. Iterate only on newly-surfaced findings (do not re-classify already-resolved ones)."
           expected: "Audit confirms no new findings introduced; remaining findings (if any) are surfaced for next-pass remediation."
       output_template: |
         ## Audit summary
@@ -223,10 +222,10 @@ audit_skill:
         Skipped (file changed): <N>
         Outstanding (newly surfaced or unclassifiable): <N>
       gotchas:
-        - "Do not reclassify findings the taxonomy has already settled. The agent's job is classification + judgment on OPTIONS within a category, not second-guessing the taxonomy."
-        - "The background agent (AUTO) does not classify -- it applies edits from the brief. Build the brief with exact before/after text; the agent skips findings whose before-text no longer matches."
+        - "Do not reclassify findings the taxonomy has already settled. The lane's job is the category match + judgment on OPTIONS within a category, not second-guessing the taxonomy."
+        - "The remediate lanes do not classify -- they apply edits from the decided list. Carry exact before/after text for AUTO; a lane records 'failed' (not a guess) when the before-text no longer matches."
         - "Re-running the audit after remediation is required; newly-surfaced findings often appear (e.g. a backticked literal reveals another broken ref nearby that was previously masked)."
-        - "When the AUTO bucket and the DISCUSS bucket are dispatched in parallel, the user's foreground answers do NOT gate the background-agent run. Both run independently; their results merge at the end."
+        - "Detection and remediation are separate phases split by the Q&A gate. AUTO findings need no decision, but they are still applied in the REMEDIATE phase (alongside the decided DISCUSS edits), not during classification -- this keeps the scan idempotent so a re-run reproduces the same findings."
   remediations:
     auto:
       - category: "A_renamed"
@@ -279,12 +278,12 @@ audit_skill:
       why_it_seems_right: "Each DISCUSS finding has a genuine user decision; surely the agent should ask about each one individually so the user can give the right answer."
       why_it_is_wrong: "Per-finding round-trips multiply conversation friction and slow remediation to a crawl. The user has to context-switch into each finding individually. Cost of being wrong is one revert; cost of friction is the user abandoning the audit."
       alternative: "Batch every DISCUSS + SPECIAL finding into one foreground question round. Render as a numbered list with category, options, and a recommendation. The user answers in one pass."
-    - id: "bucket_gates_other_bucket"
-      name: "Gating AUTO on DISCUSS answers (or vice versa)"
-      keywords: ["gating", "sequencing", "parallel dispatch", "blocking"]
-      why_it_seems_right: "It seems prudent to wait for the user's DISCUSS answers before letting the background agent loose on AUTO findings -- maybe the answers reveal that the AUTO classifications were wrong."
-      why_it_is_wrong: "AUTO and DISCUSS classifications are independent by construction (different detection signals, different categories). Gating AUTO on DISCUSS serializes work that should run in parallel and doubles the time-to-fix."
-      alternative: "Dispatch AUTO and DISCUSS in parallel. Merge edits at the end. If a DISCUSS answer reveals a genuine AUTO misclassification, the re-run after merge surfaces it; iterate on the re-run, not by serializing the original dispatch."
+    - id: "classify_then_self_remediate"
+      name: "Classify and remediate in the same pass"
+      keywords: ["self-remediation", "single-pass", "idempotency", "classify and fix"]
+      why_it_seems_right: "Classifying a finding and applying its fix in the same step seems efficient -- one lane, fewer round trips."
+      why_it_is_wrong: "Mixing classification and remediation breaks idempotency. Classification (detection) and remediation are separate phases with an interactive Q&A gate between them; conflating them mutates files before the user has decided the DISCUSS/SPECIAL cases and prevents a clean re-run from reproducing the same findings."
+      alternative: "Run the CLASSIFY phase to completion (fan out one lane per file, no edits). Gather DISCUSS/SPECIAL decisions at the Q&A gate. Then run the REMEDIATE phase (fan out one lane per file). Re-run the scan to verify."
 ```
 
 ## What this skill does
@@ -387,10 +386,32 @@ The flow is encoded in the `classify_and_dispatch` procedure of the audit-skill 
 1. Re-run the script with `--json` if you didn't already.
 2. For each finding, classify into one of the categories in the contract's `taxonomy:` block (A–J, plus K for special cases). Full detection signals and remediation details live in `references/finding-taxonomy.md`.
 3. Bucket findings into **AUTO** / **DISCUSS** / **SPECIAL** per the taxonomy.
-4. **In parallel**: launch a single background agent for the AUTO bucket with the brief template from `references/finding-taxonomy.md`, and open a foreground Q&A round for DISCUSS + SPECIAL.
-5. After both return, merge changes, re-run the audit, iterate only on newly-surfaced findings.
+4. **CLASSIFY (fan-out)**: group findings by file. 1 file with findings → classify inline; 2+ → the Workflow tool with `workflow/classify.js`. One lane per file assigns category + bucket and computes AUTO before/after. No edits.
+5. **Q&A gate**: batch all DISCUSS + SPECIAL findings into one foreground round (AUTO needs no decision).
+6. **REMEDIATE (fan-out)**: 1 file with edits → apply inline; 2+ → the Workflow tool with `workflow/remediate.js`. One lane per file applies the decided edits. Then re-run the scan and iterate only on newly-surfaced findings.
 
-The taxonomy doc is the authoritative reference for the **background-agent brief template** and the **foreground Q&A batching pattern**. The contract above declares the taxonomy structure; the reference doc supplies the operational templates.
+The taxonomy doc is the authoritative reference for the **finding detection signals** and the **foreground Q&A batching pattern**. The contract above declares the taxonomy structure; the reference doc supplies the operational templates.
+
+## Workflow orchestration
+
+Categorize-and-remediate runs in two phases split by an interactive Q&A gate, and uses the Workflow tool to fan the work out across files. **Invoking this skill authorizes the Workflow-tool calls described below** (the skill's instructions are the opt-in; do not re-prompt for permission to orchestrate). The **scan stays a single `references_audit.py` run** — it is fast, stdlib-only, and whole-corpus, so there is nothing to parallelize there; the fan-out applies to the agent work (classify + remediate).
+
+```
+scan (single script run) -> findings grouped by file
+  -> CLASSIFY   (before-Q&A) : 1 file inline | 2+ files via workflow/classify.js   -> categorized findings
+  -> Q&A GATE   (main loop)  : batch DISCUSS/SPECIAL decisions (AUTO needs none)
+  -> REMEDIATE  (after-Q&A)  : 1 file inline | 2+ files via workflow/remediate.js  -> edits applied
+  -> re-run scan to verify
+```
+
+**Multi-file threshold (the overhead equalizer).** The Workflow tool has real per-run overhead. For a single file with findings that overhead is not worth it, so it is classified / remediated inline. At 2+ files the parallel fan-out pays for itself. Classification and remediation are **always separate passes** even in workflow mode — the interactive Q&A sits between them, and a background workflow cannot ask the user anything. AUTO findings need no decision, but they are applied in the REMEDIATE phase (with the decided DISCUSS edits), not during classification — this keeps the scan idempotent (`classify_then_self_remediate` anti-pattern).
+
+**The two workflow scripts** (hand-authored, shipped as skill assets):
+
+- `workflow/classify.js` — before-Q&A. One lane per file-with-findings: read the file around each cited line → match each finding to an A–K category + bucket → compute AUTO before/after. Returns `{ perFile, totals }`. No edits.
+- `workflow/remediate.js` — after-Q&A. One lane per file (disjoint files, no conflicts): apply the decided edits. Returns `{ perFile, summary }`.
+
+Both accept `args` as an object or JSON string. Pass absolute `refs` paths (they run from the session cwd, not the skill dir).
 
 ## Scope Definitions in Detail
 
