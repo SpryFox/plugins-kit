@@ -1,9 +1,9 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "plugins-kit",
-  "description": "Development plugins for Claude Code",
+  "name": "plugins-kit-sf",
+  "description": "SpryFox fork of plugins-kit (kitaekatt). Carries the unreal-kit multi-editor-misroute fix; tracks upstream via the 'upstream' remote.",
   "owner": {
-    "name": "kitaekatt"
+    "name": "SpryFox"
   },
   "plugins": [
     {
